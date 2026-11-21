@@ -119,6 +119,13 @@ def build_sounds():
         silence(0.18) + tone(783.99, 783.99, 0.28, decay=6.0, amp=0.45),
     )
 
+    # Storm warning: deep rumble that rises then falls.
+    sounds["storm"] = mix(
+        noise_burst(1.1, decay=2.4, amp=0.55, smooth=0.05),
+        tone(78, 44, 1.1, decay=1.7, amp=0.55, harmonics=(1.0, 0.5)),
+        tone(160, 80, 0.9, decay=2.5, amp=0.18),
+    )
+
     return sounds
 
 

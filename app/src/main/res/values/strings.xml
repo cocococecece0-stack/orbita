@@ -20,4 +20,10 @@
     <string name="power_slow">ЗАМЕДЛЕНИЕ</string>
     <string name="power_double">ДВОЙНЫЕ</string>
     <string name="combo_badge">x%1$d</string>
+    <string name="storm_banner">МЕТЕОРНЫЙ ДОЖДЬ</string>
+    <string name="stats_format">Забегов: %1$d · Лучшее комбо: %2$d</string>
+    <string name="orbs_run">Сферы: %1$d</string>
+    <string name="top_label">ЛУЧШИЕ</string>
+    <string name="vibro_on">ВИБРО: ВКЛ</string>
+    <string name="vibro_off">ВИБРО: ВЫКЛ</string>
 </resources>

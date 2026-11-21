@@ -1,6 +1,7 @@
 package com.example.orbit.ui
 
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -10,6 +11,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.unit.dp
+import com.example.orbit.game.AsteroidKind
 import com.example.orbit.game.GameEngine
 import com.example.orbit.game.Palette
 import com.example.orbit.game.PowerUpKind
@@ -28,6 +30,7 @@ fun DrawScope.drawGame(engine: GameEngine, frameTick: Long) {
     val center = Offset(engine.centerX, engine.centerY)
     val w = size.width
     val h = size.height
+    val skin = engine.skinColor
 
     drawRect(
         brush = Brush.radialGradient(
@@ -51,13 +54,34 @@ fun DrawScope.drawGame(engine: GameEngine, frameTick: Long) {
 
     translate(shakeX, shakeY) {
         drawPlanet(engine, center)
+        drawComboRing(engine, center)
         drawOrbitRing(engine, center)
-        drawTrail(engine)
+        drawTrail(engine, skin)
         drawOrbs(engine, center)
         drawPowerUps(engine, center)
         drawAsteroids(engine, center)
-        drawPlayer(engine)
+        drawPlayer(engine, skin)
         drawParticles(engine)
+    }
+
+    // High combo paints the screen edges.
+    if (engine.multiplier >= 3) {
+        drawRect(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    Color.Transparent,
+                    skin.copy(alpha = (engine.multiplier - 2) * 0.07f),
+                ),
+                center = center,
+                radius = max(w, h) * 0.72f,
+            ),
+        )
+    }
+
+    // Meteor storm warning.
+    if (engine.stormWarning > 0f) {
+        val pulse = 0.5f + 0.5f * sin(engine.time * 12f)
+        drawRect(color = Palette.Danger.copy(alpha = engine.stormWarning * (0.06f + 0.06f * pulse)))
     }
 
     // Near-miss flash.
@@ -116,6 +140,21 @@ private fun DrawScope.drawPlanet(engine: GameEngine, center: Offset) {
     )
 }
 
+private fun DrawScope.drawComboRing(engine: GameEngine, center: Offset) {
+    if (engine.combo <= 0) return
+    val ringRadius = engine.planetRadius * 1.28f
+    val sweep = 360f * (engine.comboTime / 2.5f).coerceIn(0f, 1f)
+    drawArc(
+        color = engine.skinColor.copy(alpha = 0.5f),
+        startAngle = -90f,
+        sweepAngle = sweep,
+        useCenter = false,
+        topLeft = Offset(center.x - ringRadius, center.y - ringRadius),
+        size = Size(ringRadius * 2f, ringRadius * 2f),
+        style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round),
+    )
+}
+
 private fun DrawScope.drawOrbitRing(engine: GameEngine, center: Offset) {
     drawCircle(
         color = Color(0xFF6D5BD0).copy(alpha = 0.22f),
@@ -128,11 +167,11 @@ private fun DrawScope.drawOrbitRing(engine: GameEngine, center: Offset) {
     )
 }
 
-private fun DrawScope.drawTrail(engine: GameEngine) {
+private fun DrawScope.drawTrail(engine: GameEngine, skin: Color) {
     engine.trail.forEach { point ->
         val life = point.life.coerceIn(0f, 1f)
         drawCircle(
-            color = Palette.Player.copy(alpha = life * 0.35f),
+            color = skin.copy(alpha = life * 0.35f),
             radius = engine.playerRadius * (0.4f + life * 0.8f),
             center = Offset(point.x, point.y),
         )
@@ -233,6 +272,12 @@ private fun DrawScope.drawAsteroids(engine: GameEngine, center: Offset) {
             center.x + cos(asteroid.angle) * asteroid.distance,
             center.y + sin(asteroid.angle) * asteroid.distance,
         )
+
+        if (asteroid.kind == AsteroidKind.Comet) {
+            drawComet(asteroid, position)
+            return@forEach
+        }
+
         val path = Path()
         val count = asteroid.shape.size
         for (index in 0 until count) {
@@ -252,7 +297,42 @@ private fun DrawScope.drawAsteroids(engine: GameEngine, center: Offset) {
     }
 }
 
-private fun DrawScope.drawPlayer(engine: GameEngine) {
+private fun DrawScope.drawComet(asteroid: com.example.orbit.game.Asteroid, position: Offset) {
+    val dx = cos(asteroid.angle)
+    val dy = sin(asteroid.angle)
+    val tailStart = Offset(position.x + dx * asteroid.radius, position.y + dy * asteroid.radius)
+    val tailEnd = Offset(
+        position.x + dx * asteroid.radius * 7f,
+        position.y + dy * asteroid.radius * 7f,
+    )
+    drawLine(
+        brush = Brush.linearGradient(
+            colors = listOf(Color(0xFFFFB86B).copy(alpha = 0.85f), Color.Transparent),
+            start = tailStart,
+            end = tailEnd,
+        ),
+        start = tailStart,
+        end = tailEnd,
+        strokeWidth = asteroid.radius * 0.9f,
+        cap = StrokeCap.Round,
+    )
+    drawCircle(
+        brush = Brush.radialGradient(
+            colors = listOf(Color(0xFFFFF1C1), Color(0xFFFB7185)),
+            center = position,
+            radius = asteroid.radius,
+        ),
+        radius = asteroid.radius,
+        center = position,
+    )
+    drawCircle(
+        color = Color(0xFFFFE4B5).copy(alpha = 0.9f),
+        radius = asteroid.radius * 0.35f,
+        center = position,
+    )
+}
+
+private fun DrawScope.drawPlayer(engine: GameEngine, skin: Color) {
     val position = Offset(engine.playerX(), engine.playerY())
     val alpha = if (engine.invulnerable > 0f) {
         0.4f + 0.6f * abs(sin(engine.time * 22f))
@@ -262,7 +342,7 @@ private fun DrawScope.drawPlayer(engine: GameEngine) {
 
     drawCircle(
         brush = Brush.radialGradient(
-            colors = listOf(Palette.Player.copy(alpha = 0.35f * alpha), Color.Transparent),
+            colors = listOf(skin.copy(alpha = 0.35f * alpha), Color.Transparent),
             center = position,
             radius = engine.playerRadius * 4.5f,
         ),
@@ -287,7 +367,7 @@ private fun DrawScope.drawPlayer(engine: GameEngine) {
 
     if (engine.reverseFlash > 0f) {
         drawCircle(
-            color = Palette.Player.copy(alpha = engine.reverseFlash * 0.5f),
+            color = skin.copy(alpha = engine.reverseFlash * 0.5f),
             radius = engine.playerRadius * (1.5f + (1f - engine.reverseFlash) * 3f),
             center = position,
             style = Stroke(width = engine.playerRadius * 0.35f),
@@ -311,7 +391,7 @@ private fun DrawScope.drawPlayer(engine: GameEngine) {
         )
         close()
     }
-    drawPath(ship, Palette.Player, alpha = alpha)
+    drawPath(ship, skin, alpha = alpha)
     drawCircle(color = Color.White.copy(alpha = alpha), radius = engine.playerRadius * 0.55f, center = position)
 }
 

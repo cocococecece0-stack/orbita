@@ -17,6 +17,8 @@ object Palette {
 
 enum class PowerUpKind { Shield, Slow, Double }
 
+enum class AsteroidKind { Rock, Comet }
+
 /** Everything the UI layer needs to react to: sounds, haptics, banners. */
 sealed interface GameEvent {
     data object Tap : GameEvent
@@ -27,6 +29,7 @@ sealed interface GameEvent {
     data object Crash : GameEvent
     data class LevelUp(val level: Int) : GameEvent
     data object NearMiss : GameEvent
+    data object Storm : GameEvent
 }
 
 class Asteroid(
@@ -37,6 +40,7 @@ class Asteroid(
     val shape: FloatArray,
     var rotation: Float,
     val spin: Float,
+    val kind: AsteroidKind = AsteroidKind.Rock,
 ) {
     var dodged: Boolean = false
     var nearMissed: Boolean = false

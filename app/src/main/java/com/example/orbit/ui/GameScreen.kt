@@ -7,6 +7,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -39,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -59,6 +61,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.orbit.GameViewModel
 import com.example.orbit.R
 import com.example.orbit.audio.SoundEngine
+import com.example.orbit.data.PlayerStats
 import com.example.orbit.game.GameEngine
 import com.example.orbit.game.GameEvent
 import com.example.orbit.game.GameStatus
@@ -69,10 +72,24 @@ private val Neon = Color(0xFF22D3EE)
 private val Amber = Color(0xFFFBBF24)
 private val Pink = Color(0xFFF472B6)
 
+/** Unlock thresholds are based on the all-time best score. */
+private val ShipSkins = listOf(
+    Color(0xFF22D3EE),
+    Color(0xFFFB7185),
+    Color(0xFFA3E635),
+    Color(0xFFC084FC),
+)
+private val SkinThresholds = listOf(0, 150, 400, 800)
+
 @Composable
 fun GameScreen(viewModel: GameViewModel = viewModel()) {
     val best by viewModel.best.collectAsStateWithLifecycle()
     val muted by viewModel.muted.collectAsStateWithLifecycle()
+    val hapticsEnabled by viewModel.hapticsEnabled.collectAsStateWithLifecycle()
+    val skinIndex by viewModel.skinIndex.collectAsStateWithLifecycle()
+    val topScores by viewModel.topScores.collectAsStateWithLifecycle()
+    val stats by viewModel.stats.collectAsStateWithLifecycle()
+
     val engine = remember { GameEngine() }
     val haptics = LocalHapticFeedback.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -90,9 +107,13 @@ fun GameScreen(viewModel: GameViewModel = viewModel()) {
 
     SideEffect {
         engine.best = best
+        engine.skinColor = ShipSkins[skinIndex.coerceIn(0, ShipSkins.lastIndex)]
         sound.muted = muted
-        engine.onNewRecord = { score -> viewModel.submit(score) }
+        engine.onRunEnd = { score, orbs, combo -> viewModel.submitRun(score, orbs, combo) }
         engine.onEvent = { event ->
+            val buzz: (HapticFeedbackType) -> Unit = { type ->
+                if (hapticsEnabled) haptics.performHapticFeedback(type)
+            }
             when (event) {
                 GameEvent.Tap -> {
                     sound.play(R.raw.tap)
@@ -109,22 +130,24 @@ fun GameScreen(viewModel: GameViewModel = viewModel()) {
 
                 is GameEvent.PowerUp -> {
                     sound.play(R.raw.powerup)
-                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    buzz(HapticFeedbackType.TextHandleMove)
                 }
 
                 GameEvent.ShieldBreak -> {
                     sound.play(R.raw.shield)
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    buzz(HapticFeedbackType.LongPress)
                 }
 
                 GameEvent.Crash -> {
                     sound.play(R.raw.crash)
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    buzz(HapticFeedbackType.LongPress)
                 }
 
                 is GameEvent.LevelUp -> sound.play(R.raw.level)
 
-                GameEvent.NearMiss -> haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                GameEvent.NearMiss -> buzz(HapticFeedbackType.TextHandleMove)
+
+                GameEvent.Storm -> sound.play(R.raw.storm)
             }
         }
     }
@@ -222,18 +245,42 @@ fun GameScreen(viewModel: GameViewModel = viewModel()) {
             )
         }
 
+        if (engine.stormWarning > 0f) {
+            Text(
+                text = stringResource(R.string.storm_banner),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 190.dp),
+                color = Pink.copy(alpha = (0.4f + 0.6f * engine.stormWarning / 1.6f).coerceIn(0f, 1f)),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 4.sp,
+            )
+        }
+
         when {
             engine.paused -> PausedCard(
                 onResume = { engine.tap() },
                 onRestart = { engine.start() },
             )
 
-            engine.status == GameStatus.Ready -> ReadyCard(best = maxOf(best, engine.best))
+            engine.status == GameStatus.Ready -> ReadyCard(
+                best = maxOf(best, engine.best),
+                skinIndex = skinIndex,
+                stats = stats,
+                hapticsEnabled = hapticsEnabled,
+                onSelectSkin = viewModel::selectSkin,
+                onToggleHaptics = viewModel::toggleHaptics,
+            )
 
             engine.status == GameStatus.GameOver -> GameOverCard(
                 score = engine.score,
                 best = maxOf(best, engine.score),
                 level = engine.level,
+                orbs = engine.orbsCollected,
+                maxCombo = engine.maxCombo,
+                topScores = topScores,
                 isNewRecord = engine.isNewRecord,
                 onRestart = { engine.start() },
             )
@@ -341,7 +388,14 @@ private fun EffectChip(label: String, color: Color) {
 }
 
 @Composable
-private fun ReadyCard(best: Int) {
+private fun ReadyCard(
+    best: Int,
+    skinIndex: Int,
+    stats: PlayerStats,
+    hapticsEnabled: Boolean,
+    onSelectSkin: (Int) -> Unit,
+    onToggleHaptics: () -> Unit,
+) {
     val transition = rememberInfiniteTransition(label = "ready")
     val pulse by transition.animateFloat(
         initialValue = 0.3f,
@@ -381,7 +435,49 @@ private fun ReadyCard(best: Int) {
                 fontWeight = FontWeight.SemiBold,
             )
         }
-        Spacer(Modifier.height(26.dp))
+
+        Spacer(Modifier.height(18.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            ShipSkins.forEachIndexed { index, color ->
+                val unlocked = best >= SkinThresholds[index]
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .alpha(if (unlocked) 1f else 0.25f)
+                        .clip(CircleShape)
+                        .background(color)
+                        .border(
+                            width = if (index == skinIndex) 2.dp else 1.dp,
+                            color = if (index == skinIndex) Color.White else Color.White.copy(alpha = 0.2f),
+                            shape = CircleShape,
+                        )
+                        .clickable(enabled = unlocked) { onSelectSkin(index) },
+                )
+            }
+        }
+
+        if (stats.runs > 0) {
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = stringResource(R.string.stats_format, stats.runs, stats.bestCombo),
+                color = Color.White.copy(alpha = 0.35f),
+                fontSize = 11.sp,
+            )
+        }
+
+        Spacer(Modifier.height(10.dp))
+        Text(
+            text = stringResource(if (hapticsEnabled) R.string.vibro_on else R.string.vibro_off),
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .clickable(onClick = onToggleHaptics)
+                .padding(horizontal = 10.dp, vertical = 4.dp),
+            color = Color.White.copy(alpha = 0.4f),
+            fontSize = 10.sp,
+            letterSpacing = 1.sp,
+        )
+
+        Spacer(Modifier.height(20.dp))
         Text(
             text = stringResource(R.string.ready_tap),
             color = Neon.copy(alpha = pulse),
@@ -429,6 +525,9 @@ private fun GameOverCard(
     score: Int,
     best: Int,
     level: Int,
+    orbs: Int,
+    maxCombo: Int,
+    topScores: List<Int>,
     isNewRecord: Boolean,
     onRestart: () -> Unit,
 ) {
@@ -465,11 +564,31 @@ private fun GameOverCard(
         }
         Spacer(Modifier.height(6.dp))
         Text(
-            text = stringResource(R.string.level_banner, level),
+            text = "${stringResource(R.string.level_banner, level)} · " +
+                stringResource(R.string.orbs_run, orbs) +
+                " · " + stringResource(R.string.combo_badge, maxCombo),
             color = Color.White.copy(alpha = 0.35f),
             fontSize = 11.sp,
-            letterSpacing = 3.sp,
+            letterSpacing = 1.sp,
         )
+
+        if (topScores.size > 1) {
+            Spacer(Modifier.height(14.dp))
+            Text(
+                text = stringResource(R.string.top_label),
+                color = Color.White.copy(alpha = 0.3f),
+                fontSize = 10.sp,
+                letterSpacing = 3.sp,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = topScores.joinToString(" · "),
+                color = Color.White.copy(alpha = 0.55f),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+
         Spacer(Modifier.height(22.dp))
         Button(
             onClick = onRestart,
@@ -488,10 +607,10 @@ private fun CenterCard(content: @Composable ColumnScope.() -> Unit) {
         Surface(
             color = Color(0xE60A0618),
             shape = RoundedCornerShape(28.dp),
-            modifier = Modifier.padding(32.dp),
+            modifier = Modifier.padding(24.dp),
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 28.dp, vertical = 32.dp),
+                modifier = Modifier.padding(horizontal = 28.dp, vertical = 28.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 content = content,
             )

@@ -5,7 +5,9 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
@@ -14,8 +16,8 @@ import kotlin.math.sqrt
 import kotlin.random.Random
 
 /**
- * Pure game simulation: orbiting player, incoming asteroids, orbs, power-ups
- * and a particle system. Coordinates are pixels relative to the canvas size.
+ * Pure game simulation: orbiting player, incoming asteroids, comets, storms,
+ * orbs, power-ups and a particle system. Coordinates are pixels.
  */
 class GameEngine {
 
@@ -37,9 +39,15 @@ class GameEngine {
         private set
     var shield by mutableStateOf(false)
         private set
+    var orbsCollected by mutableIntStateOf(0)
+        private set
+    var maxCombo by mutableIntStateOf(0)
+        private set
+    var skinColor by mutableStateOf(Palette.Player)
 
     var onEvent: (GameEvent) -> Unit = {}
     var onNewRecord: (Int) -> Unit = {}
+    var onRunEnd: (score: Int, orbs: Int, bestCombo: Int) -> Unit = { _, _, _ -> }
 
     var width = 0f
         private set
@@ -76,6 +84,10 @@ class GameEngine {
         private set
     var doubleTimer = 0f
         private set
+    var stormWarning = 0f
+        private set
+    var comboTime = 0f
+        private set
     var playerAngle = -PI.toFloat() / 2f
         private set
     var direction = 1
@@ -97,7 +109,7 @@ class GameEngine {
     private var spawnTimer = 0f
     private var orbTimer = 0f
     private var powerTimer = 0f
-    private var comboTime = 0f
+    private var stormTimer = 0f
 
     fun resize(w: Int, h: Int) {
         if (w <= 0 || h <= 0) return
@@ -126,13 +138,14 @@ class GameEngine {
         particles.clear()
         trail.clear()
         score = 0
-        best = max(best, score)
         isNewRecord = false
         paused = false
         combo = 0
         multiplier = 1
         level = 1
         shield = false
+        orbsCollected = 0
+        maxCombo = 0
         comboTime = 0f
         slowTimer = 0f
         doubleTimer = 0f
@@ -141,11 +154,13 @@ class GameEngine {
         flash = 0f
         levelUpFlash = 0f
         shieldFlash = 0f
+        stormWarning = 0f
         playerAngle = -PI.toFloat() / 2f
         direction = 1
         spawnTimer = 0.7f
         orbTimer = 3.5f
         powerTimer = 6f
+        stormTimer = 22f
         time = 0f
         shake = 0f
         reverseFlash = 0f
@@ -197,8 +212,21 @@ class GameEngine {
         playerAngle += direction * (1.45f + speedLevel * 0.65f) * step
         trail.addLast(TrailPoint(playerX(), playerY(), 1f))
 
+        if (level >= 2) {
+            stormTimer -= step
+            if (stormTimer <= 0f && stormWarning <= 0f) {
+                stormWarning = 1.6f
+                stormTimer = 24f + random.nextFloat() * 12f
+                onEvent(GameEvent.Storm)
+            }
+        }
+        if (stormWarning > 0f) {
+            stormWarning -= step
+            if (stormWarning <= 0f) spawnStorm()
+        }
+
         spawnTimer -= step
-        if (spawnTimer <= 0f) {
+        if (spawnTimer <= 0f && stormWarning <= 0f) {
             spawnAsteroid()
             val base = 1.05f - score * 0.015f
             spawnTimer = base.coerceIn(0.30f, 1.05f) * (0.75f + random.nextFloat() * 0.5f)
@@ -250,7 +278,7 @@ class GameEngine {
             if (!asteroid.dodged && asteroid.distance < orbitRadius - asteroid.radius) {
                 asteroid.dodged = true
                 bumpCombo()
-                addPoints(1)
+                addPoints(if (asteroid.kind == AsteroidKind.Comet) 2 else 1)
                 onEvent(GameEvent.Dodge(combo))
             }
             if (asteroid.distance < planetRadius * 0.35f) {
@@ -272,6 +300,7 @@ class GameEngine {
             val ox = centerX + cos(orb.angle) * orbitRadius
             val oy = centerY + sin(orb.angle) * orbitRadius
             if (distance(ox, oy, px, py) < playerRadius * 2.4f) {
+                orbsCollected += 1
                 bumpCombo()
                 addPoints(3)
                 burst(ox, oy, 14, Palette.Orb, 0.9f)
@@ -307,6 +336,7 @@ class GameEngine {
         combo += 1
         comboTime = 2.5f
         multiplier = min(5, 1 + combo / 3)
+        if (combo > maxCombo) maxCombo = combo
     }
 
     private fun addPoints(base: Int) {
@@ -346,28 +376,52 @@ class GameEngine {
         paused = false
         shake = 1f
         hitStop = 0.09f
-        burst(playerX(), playerY(), 34, Palette.Player, 1.4f)
+        burst(playerX(), playerY(), 34, skinColor, 1.4f)
         burst(playerX(), playerY(), 14, Palette.Danger, 0.9f)
         if (score > best) {
             best = score
             isNewRecord = true
             onNewRecord(score)
         }
+        onRunEnd(score, orbsCollected, maxCombo)
         onEvent(GameEvent.Crash)
     }
 
     private fun spawnAsteroid() {
-        val radius = minDim * (0.028f + random.nextFloat() * 0.02f)
-        val speed = minDim * (0.30f + speedLevel * 0.25f) * (0.85f + random.nextFloat() * 0.3f)
-        val spawnDistance = sqrt(width * width + height * height) * 0.5f + radius
-        asteroids += Asteroid(
-            angle = random.nextFloat() * TAU,
-            distance = spawnDistance,
-            speed = speed,
-            radius = radius,
+        val kind = if (level >= 2 && random.nextFloat() < 0.18f) {
+            AsteroidKind.Comet
+        } else {
+            AsteroidKind.Rock
+        }
+        asteroids += makeAsteroid(random.nextFloat() * TAU, kind)
+    }
+
+    private fun spawnStorm() {
+        val safeAngle = random.nextFloat() * TAU
+        repeat(8) {
+            var angle = random.nextFloat() * TAU
+            var attempts = 0
+            while (angularDistance(angle, safeAngle) < 0.8f && attempts < 24) {
+                angle = random.nextFloat() * TAU
+                attempts += 1
+            }
+            asteroids += makeAsteroid(angle, AsteroidKind.Rock)
+        }
+    }
+
+    private fun makeAsteroid(angle: Float, kind: AsteroidKind): Asteroid {
+        val baseRadius = minDim * (0.028f + random.nextFloat() * 0.02f)
+        val baseSpeed = minDim * (0.30f + speedLevel * 0.25f) * (0.85f + random.nextFloat() * 0.3f)
+        val comet = kind == AsteroidKind.Comet
+        return Asteroid(
+            angle = angle,
+            distance = sqrt(width * width + height * height) * 0.5f + baseRadius,
+            speed = if (comet) baseSpeed * 1.9f else baseSpeed,
+            radius = if (comet) baseRadius * 0.7f else baseRadius,
             shape = FloatArray(9) { 0.78f + random.nextFloat() * 0.4f },
             rotation = random.nextFloat() * TAU,
             spin = (random.nextFloat() - 0.5f) * 1.6f,
+            kind = kind,
         )
     }
 
@@ -379,7 +433,7 @@ class GameEngine {
         if (shieldFlash > 0f) shieldFlash = max(0f, shieldFlash - step * 2.5f)
     }
 
-    private fun burst(x: Float, y: Float, count: Int, color: androidx.compose.ui.graphics.Color, power: Float) {
+    private fun burst(x: Float, y: Float, count: Int, color: Color, power: Float) {
         repeat(count) {
             val angle = random.nextFloat() * TAU
             val velocity = minDim * (0.05f + random.nextFloat() * 0.18f) * power
@@ -440,6 +494,11 @@ class GameEngine {
         PowerUpKind.Shield -> Palette.Shield
         PowerUpKind.Slow -> Palette.Slow
         PowerUpKind.Double -> Palette.Double
+    }
+
+    private fun angularDistance(a: Float, b: Float): Float {
+        val diff = abs(a - b) % TAU
+        return min(diff, TAU - diff)
     }
 
     private fun distance(x1: Float, y1: Float, x2: Float, y2: Float): Float {
