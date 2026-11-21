@@ -89,7 +89,10 @@ export function applyRun(state: DailyState, run: DailyRun): number[] {
     const value = valueFor(m.kind, run);
     const before = state.progress[i] ?? 0;
     state.progress[i] = Math.min(m.goal, Math.max(before, value));
-    if (state.progress[i] >= m.goal && !state.claimed[i]) completed.push(i);
+    if (state.progress[i] >= m.goal && !state.claimed[i]) {
+      state.claimed[i] = true;
+      completed.push(i);
+    }
   }
   return completed;
 }

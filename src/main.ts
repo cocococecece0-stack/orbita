@@ -21,6 +21,7 @@ const entities = new EntityRenderer(renderer.getGl());
 const audio = new AudioManager();
 const game = new Game(save.get().best);
 const ui = new UI(uiRoot);
+const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
 
 let audioReady = false;
 let diveTimer = 0;
@@ -40,10 +41,11 @@ function applyTheme(): void {
   }
   renderer.refreshTheme();
   game.setAccent(gl[0] ?? 1, gl[1] ?? 0.706, gl[2] ?? 0.329);
-  game.setReducedMotion(s.reducedMotion);
+  game.setReducedMotion(s.reducedMotion || reducedMotionQuery.matches);
   game.setFxScale(s.fx);
 }
 applyTheme();
+reducedMotionQuery.addEventListener('change', () => applyTheme());
 ui.setMenuBest(data.best);
 ui.syncSettings(save.get());
 {
@@ -149,6 +151,7 @@ ui.on('sound', () => {
 ui.onInput('set-sound', (v) => { save.get().settings.sound = v === 'true'; audio.setMuted(v !== 'true'); save.save(); });
 ui.onInput('set-music', (v) => { save.get().settings.music = v === 'true'; audio.setMusicEnabled(v === 'true'); save.save(); });
 ui.onInput('set-haptics', (v) => { save.get().settings.haptics = v === 'true'; save.save(); });
+ui.onInput('set-reduced', (v) => { save.get().settings.reducedMotion = v === 'true'; applyTheme(); save.save(); });
 ui.onInput('set-lowfps', (v) => { save.get().settings.lowFps = v === 'true'; loop.setFpsCap(v === 'true' ? 30 : 0); save.save(); });
 ui.onInput('set-fx', (v) => { save.get().settings.fx = Number(v); applyTheme(); save.save(); });
 ui.onInput('set-theme', (v) => { save.setTheme(v as 'observatory' | 'neon' | 'sunset'); applyTheme(); });
@@ -229,6 +232,30 @@ canvas.addEventListener('pointercancel', () => {
   if (diveTimer) { clearTimeout(diveTimer); diveTimer = 0; }
   game.setDiving(false);
 }, { passive: true });
+
+// Клавиатура: те же действия, что и тап, без изменения правил симуляции.
+window.addEventListener('keydown', (event) => {
+  const target = event.target;
+  if (target instanceof HTMLButtonElement || target instanceof HTMLInputElement
+      || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement) return;
+  if (event.repeat) return;
+  const code = event.code;
+  if (code === 'Space' || code === 'Enter' || code === 'ArrowLeft'
+      || code === 'ArrowRight' || code === 'Escape' || code === 'KeyP') event.preventDefault();
+  const screen = game.getScreen();
+  if (code === 'ArrowLeft') { game.setOrbit(0); return; }
+  if (code === 'ArrowRight') { game.setOrbit(1); return; }
+  if (code === 'Space' || code === 'Enter') {
+    if (screen === 'menu' || screen === 'gameover') startRun();
+    else if (screen === 'paused') { game.resume(); ui.show('playing'); }
+    else { game.tap(); sfx('tap'); }
+    return;
+  }
+  if (code === 'Escape' || code === 'KeyP') {
+    if (screen === 'playing') { game.pause(); ui.show('paused'); }
+    else if (screen === 'paused') { game.resume(); ui.show('playing'); }
+  }
+});
 
 let wasPlaying = false;
 const loop = new GameLoop({

@@ -27,6 +27,8 @@ export class UI {
     this.root = parent;
     this.toastHost = document.createElement('div');
     this.toastHost.className = 'toast-host';
+    this.toastHost.setAttribute('role', 'status');
+    this.toastHost.setAttribute('aria-live', 'polite');
 
     this.screens.menu = this.div('screen menu');
     this.screens.menu.innerHTML = `
@@ -58,7 +60,7 @@ export class UI {
       <div class="hud-effects hidden" id="hud-effects"></div>
       <div class="hud-boss hidden" id="hud-boss">БОСС</div>
       <div class="hud-storm hidden" id="hud-storm">МЕТЕОРИТНЫЙ ДОЖДЬ</div>
-      <div class="hud-controls"><button class="icon-btn" id="sound">♪</button><button class="icon-btn" id="pause">II</button></div>`;
+      <div class="hud-controls"><button class="icon-btn" id="sound" aria-label="Звук">♪</button><button class="icon-btn" id="pause" aria-label="Пауза">II</button></div>`;
 
     this.screens.paused = this.div('screen modal hidden');
     this.screens.paused.innerHTML = `<div class="panel"><div class="kicker">${T.pause}</div>
@@ -92,6 +94,7 @@ export class UI {
         <label> ТЕМА <select id="set-theme"></select></label>
         <label>ПАЛИТРА <select id="set-palette"><option value="default">ОСНОВНАЯ</option><option value="protan">ПРОТАН</option><option value="deutan">ДЕЙТАН</option><option value="tritan">ТРИТАН</option></select></label>
         <label>ЯЗЫК <select id="set-locale"><option value="ru">RU</option><option value="en">EN</option></select></label>
+        <label>УМЕНЬШИТЬ АНИМАЦИЮ <input type="checkbox" id="set-reduced"></label>
         <label>ЭКОНОМИЯ БАТАРЕИ <input type="checkbox" id="set-lowfps"></label>
       </div>
       <div class="shop-label">ПЕРЕНОС СОХРАНЕНИЯ</div>
@@ -356,6 +359,7 @@ export class UI {
     check('set-music', s.music);
     check('set-haptics', s.haptics);
     check('set-lowfps', s.lowFps);
+    check('set-reduced', s.reducedMotion);
     const fx = this.q<HTMLInputElement>('set-fx');
     if (fx) fx.value = String(s.fx);
     const pal = this.q<HTMLSelectElement>('set-palette');

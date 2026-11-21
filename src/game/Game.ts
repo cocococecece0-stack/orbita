@@ -121,6 +121,7 @@ export class Game {
   readonly particles = new Pool<Entity>(CONFIG.maxParticles, makeEntity);
 
   private visual = { pulse: 0, crack: 0, shake: 0, zoom: 0 };
+  private readonly effectTypes = new Int32Array(7);
 
   private snapshot: GameSnapshot = {
     screen: 'menu', score: 0, best: 0, combo: 0, mult: 1, level: 1,
@@ -923,20 +924,22 @@ export class Game {
 
     // Спутники активных эффектов вокруг кометы.
     const mask = this.effectMask();
-    const effects: number[] = [];
-    if (mask & FX.SHIELD) effects.push(KIND.SHIELD);
-    if (mask & FX.SLOW) effects.push(KIND.SLOW);
-    if (mask & FX.MAGNET) effects.push(KIND.MAGNET);
-    if (mask & FX.DOUBLE) effects.push(KIND.DOUBLE);
-    if (mask & FX.PHASE) effects.push(KIND.PHASE);
-    if (mask & FX.FREEZE) effects.push(KIND.FREEZE);
-    if (mask & FX.SECOND) effects.push(KIND.SECOND);
-    for (let i = 0; i < effects.length; i++) {
-      const a = this.elapsed * 2.2 + i * (TAU / effects.length);
-      const c = this.effectColor(effects[i] ?? 0);
+    const effects = this.effectTypes;
+    let count = 0;
+    if (mask & FX.SHIELD) effects[count++] = KIND.SHIELD;
+    if (mask & FX.SLOW) effects[count++] = KIND.SLOW;
+    if (mask & FX.MAGNET) effects[count++] = KIND.MAGNET;
+    if (mask & FX.DOUBLE) effects[count++] = KIND.DOUBLE;
+    if (mask & FX.PHASE) effects[count++] = KIND.PHASE;
+    if (mask & FX.FREEZE) effects[count++] = KIND.FREEZE;
+    if (mask & FX.SECOND) effects[count++] = KIND.SECOND;
+    for (let i = 0; i < count; i++) {
+      const type = effects[i] ?? 0;
+      const a = this.elapsed * 2.2 + i * (TAU / count);
+      const c = this.effectColor(type);
       n = Game.write(out, n, max,
         this.px + Math.cos(a) * 34, this.py + Math.sin(a) * 34,
-        7, a, c.r, c.g, c.b, 0.95, effects[i] ?? 0, 0, 0.9, 0);
+        7, a, c.r, c.g, c.b, 0.95, type, 0, 0.9, 0);
     }
     return n;
   }

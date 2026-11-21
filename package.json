@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "cap:sync": "cap sync",
     "check:size": "python3 tools/size_budget.py",
-    "check:assets": "python3 tools/resource_checksum.py"
+    "check:assets": "python3 tools/resource_checksum.py",
+    "check:logic": "node tools/qa_logic.mjs"
   },
   "dependencies": {
     "@capacitor/core": "8.6.2",

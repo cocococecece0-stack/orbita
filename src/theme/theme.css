@@ -342,3 +342,7 @@ html, body {
 .season-tier { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: var(--fs-tiny); color: var(--c-muted); padding: 6px 0; }
 .season-tier b { color: var(--c-ink); font-weight: var(--fw-mono-b); }
 .season-tier button { pointer-events: auto; padding: 6px 10px; min-height: var(--tap-target); background: var(--c-accent); color: var(--c-void); border: 0; font-family: var(--font-mono); font-size: var(--fs-tiny); cursor: pointer; }
+
+/* ---- Фаза 7: доступность ---- */
+:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 3px; }
+.mode, .nav button, .icon-btn { min-height: var(--tap-target); }

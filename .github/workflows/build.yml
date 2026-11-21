@@ -52,6 +52,9 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      - name: Deterministic logic QA
+        run: pnpm run check:logic
+
       - name: Build web core
         run: pnpm run build
 
