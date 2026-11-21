@@ -60,6 +60,9 @@ jobs:
 
       - name: Sync Capacitor
         run: pnpm exec cap sync
+      - name: Deterministic build manifest
+        run: pnpm run check:manifest
+
 
       - name: Asset checksum and platform parity
         run: |

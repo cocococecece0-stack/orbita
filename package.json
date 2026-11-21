@@ -11,9 +11,12 @@
     "cap:sync": "cap sync",
     "check:size": "python3 tools/size_budget.py",
     "check:assets": "python3 tools/resource_checksum.py",
-    "check:logic": "node tools/qa_logic.mjs"
+    "check:logic": "node tools/qa_logic.mjs",
+    "check:manifest": "python3 tools/build_manifest.py > /dev/null"
   },
   "dependencies": {
+    "@capacitor/app": "8.1.2",
+    "@capacitor/clipboard": "8.0.1",
     "@capacitor/core": "8.6.2",
     "@capacitor/haptics": "8.0.2"
   },
@@ -21,8 +24,8 @@
     "@capacitor/android": "8.6.2",
     "@capacitor/cli": "8.6.2",
     "@capacitor/ios": "8.6.2",
+    "esbuild": "0.28.2",
     "typescript": "5.9.3",
-    "vite": "8.3.8",
-    "esbuild": "0.28.2"
+    "vite": "8.3.8"
   }
 }

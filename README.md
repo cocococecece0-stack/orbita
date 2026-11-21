@@ -18,9 +18,8 @@
 - сохранение JSON v2 с ghost-траекторией, миграцией старых ключей + код переноса `ORB1-...` (Base64 + CRC32) через буфер обмена;
 - 8 достижений, 3 ежедневных задания, 4 сезонных уровня, жетоны, 4 скина планеты и 4 шлейфа;
 - звук AAC/M4A: 9 SFX 64 kbps + эмбиент 48 kbps, четыре генеративных слоя музыки; хаптика через Capacitor Haptics;
-- Safe Area, адаптивный DPR, 30/60/90/120 Гц, пауза при сворачивании, клавиатура и reduced motion.
-
-Ещё не реализовано (следующие фазы): нативные мосты lifecycle/clipboard, облачные таблицы рекордов (не планируются — сохранения строго локальные).
+- Safe Area, адаптивный DPR, 30/60/90/120 Гц, пауза при сворачивании, клавиатура и reduced motion;
+- тонкие мосты Capacitor: Lifecycle, Clipboard, Haptics, Safe Area; облачных сервисов нет.
 
 ## Управление
 
@@ -43,7 +42,7 @@ src/
   render/     Renderer (планета, звёзды, grain), EntityRenderer (инстансы),
               shaders/*.glsl
   audio/      AudioManager (WebAudio + AAC/M4A)
-  platform/   Haptics (Capacitor)
+  platform/   Haptics, Bridge (Capacitor lifecycle/clipboard/safe area)
   save/       Save (JSON v2), TransferCode (Base64 + CRC32)
   ui/         UI (все экраны)
   theme/      theme.css — единственный источник цветов, шрифтов, размеров,
@@ -53,8 +52,9 @@ assets/
   audio/      готовые M4A
   fonts/      WOFF2 с кириллицей: Unbounded, Golos Text, JetBrains Mono
 android/ ios/ сгенерированные Capacitor-оболочки (в репозитории)
-tools/      resource_checksum.py, size_budget.py, parity_report.py
+tools/      resource_checksum.py, size_budget.py, parity_report.py, qa_logic.mjs, build_manifest.py
 .github/workflows/build.yml  сборка обеих платформ + TARGET_SIZE_MB
+docs/       QA-протокол и инструкция по сборке/релизу
 ```
 
 ## Сборка и проверка

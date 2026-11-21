@@ -9,6 +9,7 @@ import { AudioManager, type SfxName } from './audio/Audio';
 import { haptic, type HapticPreset } from './platform/Haptics';
 import { Save, SKINS, TRAILS } from './save/Save';
 import { UI } from './ui/UI';
+import { copyText, initLifecycle, readSafeArea } from './platform/Bridge';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement | null;
 const uiRoot = document.getElementById('ui') as HTMLDivElement | null;
@@ -54,14 +55,8 @@ ui.syncSettings(save.get());
   ui.refreshProgress(save.get());
 }
 
-function insets(): { top: number; right: number; bottom: number; left: number } {
-  const cs = getComputedStyle(document.documentElement);
-  const n = (name: string): number => parseFloat(cs.getPropertyValue(name)) || 0;
-  return { top: n('--safe-top'), right: n('--safe-right'), bottom: n('--safe-bottom'), left: n('--safe-left') };
-}
-
 function resize(): void {
-  const i = insets();
+  const i = readSafeArea();
   renderer.resize(window.innerWidth, window.innerHeight, i);
   game.resize(window.innerWidth, window.innerHeight, i.top, i.bottom);
 }
@@ -169,12 +164,7 @@ ui.onClaim((kind, index) => {
 ui.on('export-code', () => {
   const code = save.exportCode();
   ui.setTransferCode(code);
-  const clip = navigator.clipboard;
-  if (!clip) { ui.toast('КОД В ПОЛЕ ВВОДА'); return; }
-  void clip.writeText(code).then(
-    () => ui.toast('КОД СКОПИРОВАН'),
-    () => ui.toast('КОД В ПОЛЕ ВВОДА'),
-  ).catch(() => ui.toast('КОД В ПОЛЕ ВВОДА'));
+  void copyText(code).then((ok) => ui.toast(ok ? 'КОД СКОПИРОВАН' : 'КОД В ПОЛЕ ВВОДА'));
 });
 ui.on('import-code', () => {
   if (save.importCode(ui.getTransferCode())) {
@@ -298,16 +288,31 @@ renderer.attach(loop);
 if (save.get().settings.lowFps) loop.setFpsCap(30);
 loop.start();
 
+function pauseEngine(): void {
+  loop.stop();
+  audio.suspend();
+  if (game.getScreen() === 'playing') game.pause();
+}
+
+function resumeEngine(): void {
+  loop.start();
+  void ensureAudio().then(() => audio.resume());
+}
+
+function onBack(): void {
+  const screen = game.getScreen();
+  if (screen === 'playing') { game.pause(); ui.show('paused'); }
+  else if (screen === 'paused' || screen === 'gameover') toMenu();
+  else if (screen !== 'menu') toMenu();
+}
+
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) {
-    loop.stop();
-    audio.suspend();
-    if (game.getScreen() === 'playing') game.pause();
-  } else {
-    loop.start();
-    void ensureAudio().then(() => audio.resume());
-  }
+  if (document.hidden) pauseEngine();
+  else resumeEngine();
 });
+window.addEventListener('pagehide', pauseEngine);
+window.addEventListener('pageshow', resumeEngine);
+void initLifecycle({ onPause: pauseEngine, onResume: resumeEngine, onBack });
 
 (window as unknown as { __orbita: unknown }).__orbita = {
   export: (): string => save.exportCode(),
