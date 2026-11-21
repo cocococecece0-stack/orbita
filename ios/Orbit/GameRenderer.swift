@@ -502,7 +502,7 @@ extension GameArt {
         context.fill(full, with: .linearGradient(
             Gradient(colors: [Color(hex: 0xFF8A3D), Color(hex: 0xD3457E),
                               Color(hex: 0x5B2E86), Color(hex: 0x12162C)]),
-            startPoint: UnitPoint(x: 0.5, y: 0), endPoint: UnitPoint(x: 0.5, y: 1)))
+            startPoint: CGPoint(x: w / 2, y: 0), endPoint: CGPoint(x: w / 2, y: h)))
 
         let sunX = w * 0.78
         let sunY = h * 0.19
@@ -568,7 +568,7 @@ extension GameArt {
         context.fill(Path(CGRect(x: 0, y: h * 0.52, width: w, height: h * 0.48)),
                      with: .linearGradient(
                         Gradient(colors: [Color.clear, Color(hex: 0x101528).opacity(0.90)]),
-                        startPoint: UnitPoint(x: 0.5, y: 0), endPoint: UnitPoint(x: 0.5, y: 1)))
+                        startPoint: CGPoint(x: w / 2, y: h * 0.52), endPoint: CGPoint(x: w / 2, y: h)))
     }
 
     func drawPlanetPreview(in context: inout GraphicsContext, index: Int, center: CGPoint,
