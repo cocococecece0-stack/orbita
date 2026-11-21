@@ -1,0 +1,348 @@
+/* OBSERVATORY_CASSETTE — единый пульт управления дизайном.
+   Все значения задаются ТОЛЬКО здесь; движок не содержит захардкоженных чисел. */
+
+@font-face {
+  font-family: 'Unbounded';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url('../../assets/fonts/unbounded-cyr.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Unbounded';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url('../../assets/fonts/unbounded-lat.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Golos Text';
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url('../../assets/fonts/golos-text-cyr.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Golos Text';
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url('../../assets/fonts/golos-text-lat.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('../../assets/fonts/jetbrains-mono-cyr.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('../../assets/fonts/jetbrains-mono-lat.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  /* ---- Смысловая палитра: тёплый фосфор на выжженном чёрном ---- */
+  --c-void:        #0A0908;
+  --c-panel:       #14110D;
+  --c-ink:         #EDE3D2;
+  --c-muted:       #8A7C68;
+  --c-accent:      #FFB454;
+  --c-accent-soft: #FFD9A0;
+  --c-reward:      #F2E2B8;
+  --c-danger:      #FF5C5C;
+  --c-danger-soft: #FF9A8A;
+
+  /* Те же цвета в 0..1 для GLSL — шейдер и DOM не разъезжаются */
+  --gl-acc:  1.000, 0.706, 0.329;
+  --gl-dang: 1.000, 0.361, 0.361;
+  --gl-void: 0.039, 0.035, 0.031;
+
+  /* ---- Типографика ---- */
+  --font-ui:   'Unbounded';
+  --font-text: 'Golos Text';
+  --font-mono: 'JetBrains Mono';
+  --fw-ui:     800;
+  --fw-text:   400;
+  --fw-text-b: 600;
+  --fw-mono:   400;
+  --fw-mono-b: 700;
+  --fs-display: clamp(38px, 11vw, 64px);
+  --fs-title:   clamp(22px, 6vw, 34px);
+  --fs-score:   clamp(28px, 8vw, 44px);
+  --fs-body:    14px;
+  --fs-label:   9px;
+  --fs-mono:    12px;
+  --fs-tiny:    10px;
+  --lh-body:    1.45;
+  --ls-ui:      0.06em;
+  --ls-label:   0.14em;
+  --ls-mono:    0.04em;
+
+  /* ---- Сетка 8 / 24 + safe-area ---- */
+  --u:            8px;
+  --grid:         24px;
+  --sp-1:         calc(var(--u) * 0.5);
+  --sp-2:         var(--u);
+  --sp-3:         calc(var(--u) * 2);
+  --sp-4:         var(--grid);
+  --sp-5:         calc(var(--grid) * 2);
+  --safe-top:     env(safe-area-inset-top, 0px);
+  --safe-bottom:  env(safe-area-inset-bottom, 0px);
+  --safe-left:    env(safe-area-inset-left, 0px);
+  --safe-right:   env(safe-area-inset-right, 0px);
+  --hud-pad-x:    calc(var(--sp-4) + var(--safe-left));
+  --hud-pad-y:    calc(var(--sp-3) + var(--safe-top));
+
+  /* ---- Геометрия HUD ---- */
+  --icon-size:       24px;
+  --icon-stroke:     2px;
+  --tap-target:      44px;
+  --mult-ring-r:     34px;
+  --mult-seg-w:      3px;
+  --level-dots:      5;
+  --level-dot-gap:   10px;
+  --panel-notch:     10px;
+  --timer-seg-h:     6px;
+  --target-radius:   0.18;
+  --target-offset-x: 0.02;
+  --target-offset-y: 0.04;
+
+  /* ---- Эффекты: один рычаг связывает CSS и шейдеры ---- */
+  --fx-intensity:    1;
+  --grain:           0.04;
+  --scanline-alpha:  0.035;
+  --scanline-on:     1;
+  --vignette:        0.55;
+  --glow-budget:     2;
+  --glow-limb:       0 0 14px rgba(255, 180, 84, 0.28);
+  --glow-ring:       0 0 10px rgba(255, 180, 84, 0.22);
+  --glow-danger:     0 0 12px rgba(255, 92, 92, 0.30);
+
+  /* ---- Анимация ---- */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.30, 1);
+  --ease-in-quint: cubic-bezier(0.64, 0, 0.78, 0);
+  --ease-in-out:   cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-tap:      90ms;
+  --dur-hitstop:  75ms;
+  --dur-nearmiss: 120ms;
+  --dur-level:    420ms;
+  --dur-shield:   260ms;
+  --dur-death:    640ms;
+  --dur-restart:  280ms;
+  --dur-hud:      220ms;
+  --shake-max:    4px;
+  --zoom-punch:   1.05;
+  --chroma-offset:1.5px;
+  --trail-len:    34;
+
+  --lang: ru;
+}
+
+/* ---- Темы B/C: меняют сцену, палитру опасности и свечение ---- */
+[data-scene='neon'] {
+  --c-void: #05060C;
+  --c-panel: #0D1220;
+  --c-ink: #E6F4FF;
+  --c-muted: #6C86A6;
+  --c-reward: #D8F7FF;
+  --c-danger: #FF4D8D;
+  --c-danger-soft: #FF9BC3;
+  --gl-dang: 1.000, 0.302, 0.553;
+  --gl-void: 0.020, 0.024, 0.047;
+  --scanline-alpha: 0.018;
+  --vignette: 0.42;
+  --glow-limb: 0 0 18px rgba(76, 240, 208, 0.34);
+  --glow-ring: 0 0 12px rgba(76, 240, 208, 0.28);
+  --glow-danger: 0 0 14px rgba(255, 77, 141, 0.36);
+}
+[data-scene='sunset'] {
+  --c-void: #120B0A;
+  --c-panel: #241510;
+  --c-ink: #FFF0DE;
+  --c-muted: #A4816A;
+  --c-reward: #FFE3B8;
+  --c-danger: #FF6B4A;
+  --c-danger-soft: #FFA184;
+  --gl-dang: 1.000, 0.420, 0.290;
+  --gl-void: 0.071, 0.043, 0.039;
+  --scanline-alpha: 0.045;
+  --vignette: 0.62;
+  --glow-limb: 0 0 16px rgba(255, 154, 90, 0.32);
+  --glow-ring: 0 0 11px rgba(255, 180, 84, 0.25);
+  --glow-danger: 0 0 13px rgba(255, 107, 74, 0.34);
+}
+
+/* ---- Дальтоник-палитры ---- */
+[data-palette='protan'] {
+  --c-accent: #FFD166;
+  --c-danger: #4C9AFF;
+  --gl-acc:  1.000, 0.820, 0.400;
+  --gl-dang: 0.298, 0.604, 1.000;
+  --glow-danger: 0 0 12px rgba(76, 154, 255, 0.30);
+}
+[data-palette='deutan'] {
+  --c-accent: #FFC857;
+  --c-danger: #E56A8C;
+  --gl-acc:  1.000, 0.784, 0.341;
+  --gl-dang: 0.898, 0.416, 0.549;
+  --glow-danger: 0 0 12px rgba(229, 106, 140, 0.30);
+}
+[data-palette='tritan'] {
+  --c-accent: #FFB454;
+  --c-danger: #C2E812;
+  --gl-acc:  1.000, 0.706, 0.329;
+  --gl-dang: 0.761, 0.910, 0.071;
+  --glow-danger: 0 0 12px rgba(194, 232, 18, 0.30);
+}
+
+/* ---- Базовый сброс ---- */
+*, *::before, *::after { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--c-void);
+  color: var(--c-ink);
+  font-family: var(--font-text);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none;
+  overscroll-behavior: none;
+}
+#game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+#ui   { position: fixed; inset: 0; pointer-events: none; }
+
+/* ---- Уважение к reduced motion ---- */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-tap:      1ms;
+    --dur-hitstop:  1ms;
+    --dur-nearmiss: 1ms;
+    --dur-level:    1ms;
+    --dur-shield:   1ms;
+    --dur-death:    1ms;
+    --dur-restart:  1ms;
+    --dur-hud:      1ms;
+    --shake-max:    0px;
+    --zoom-punch:   1;
+    --chroma-offset:0px;
+    --fx-intensity: 0.35;
+    --grain:        0.02;
+    --glow-limb:    none;
+    --glow-ring:    none;
+    --glow-danger:  none;
+  }
+}
+
+/* ---- Экраны и HUD (Observatory Cassette) ---- */
+.screen { position: absolute; inset: 0; pointer-events: none; }
+.screen.hidden { display: none; }
+.screen button { pointer-events: auto; }
+
+.menu { padding: calc(var(--safe-top) + 24px) var(--hud-pad-x) calc(var(--safe-bottom) + 24px); display: flex; flex-direction: column; }
+.meta { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: var(--fs-tiny); letter-spacing: var(--ls-mono); color: var(--c-muted); }
+.blink { color: var(--c-danger); animation: blink 1.6s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0.25; } }
+.menu-body { margin-top: auto; margin-bottom: 24px; }
+.title-wrap h1 { font-family: var(--font-ui); font-weight: var(--fw-ui); font-size: var(--fs-display); letter-spacing: var(--ls-ui); margin: 0; color: var(--c-ink); }
+.subtitle { font-family: var(--font-mono); font-size: var(--fs-mono); color: var(--c-accent); margin-top: 8px; letter-spacing: var(--ls-mono); }
+.modes { margin-top: 24px; display: flex; flex-direction: column; gap: 8px; }
+.mode { font-family: var(--font-mono); font-size: var(--fs-label); letter-spacing: var(--ls-label); color: var(--c-muted); padding: 8px 0; border-left: 2px solid transparent; }
+.mode.active { color: var(--c-ink); border-left-color: var(--c-accent); padding-left: 12px; }
+.mode b { color: var(--c-accent); }
+.menu-best { margin-top: 16px; font-family: var(--font-mono); font-size: var(--fs-mono); color: var(--c-reward); }
+.cta { font-family: var(--font-ui); font-weight: var(--fw-ui); font-size: 12px; letter-spacing: var(--ls-ui); color: var(--c-void); background: var(--c-accent); border: 0; padding: 18px 24px; cursor: pointer; text-align: left; transition: transform var(--dur-tap) var(--ease-out-expo); }
+.cta:active { transform: scale(0.97); }
+.cta.small { padding: 14px 20px; font-size: 11px; }
+.ghost { font-family: var(--font-mono); font-size: var(--fs-label); letter-spacing: var(--ls-label); color: var(--c-muted); background: transparent; border: 1px solid var(--c-muted); padding: 13px 20px; cursor: pointer; }
+.footer { margin-top: 16px; display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: var(--fs-tiny); color: var(--c-muted); }
+
+.hud { padding: calc(var(--safe-top) + 16px) var(--hud-pad-x) calc(var(--safe-bottom) + 16px); }
+.hud-score { position: absolute; left: var(--hud-pad-x); top: calc(var(--safe-top) + 16px); font-family: var(--font-ui); font-weight: var(--fw-ui); font-size: var(--fs-score); font-variant-numeric: tabular-nums; color: var(--c-ink); }
+.hud-best { position: absolute; right: var(--hud-pad-x); top: calc(var(--safe-top) + 20px); font-family: var(--font-mono); font-size: var(--fs-tiny); color: var(--c-muted); }
+.hud-level { position: absolute; left: var(--hud-pad-x); bottom: calc(var(--safe-bottom) + 20px); font-family: var(--font-mono); font-size: var(--fs-label); letter-spacing: var(--ls-label); color: var(--c-accent); }
+.hud-combo { position: absolute; right: var(--hud-pad-x); top: calc(var(--safe-top) + 56px); font-family: var(--font-ui); font-weight: var(--fw-ui); font-size: var(--fs-title); color: var(--c-accent); transform-origin: right center; transition: transform var(--dur-tap) var(--ease-out-expo); }
+.hud-chip { position: absolute; right: var(--hud-pad-x); bottom: calc(var(--safe-bottom) + 20px); font-family: var(--font-mono); font-size: var(--fs-label); color: var(--c-reward); border: 1px solid var(--c-reward); padding: 4px 8px; margin-left: 8px; }
+.hud-fever { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(var(--safe-bottom) + 56px); font-family: var(--font-ui); font-size: var(--fs-label); color: var(--c-danger); }
+.hud-controls { position: absolute; right: var(--hud-pad-x); top: calc(var(--safe-top) + 88px); display: flex; gap: 8px; }
+.icon-btn { width: var(--tap-target); height: var(--tap-target); border: var(--icon-stroke) solid var(--c-muted); background: transparent; color: var(--c-ink); font-family: var(--font-mono); font-size: 12px; cursor: pointer; }
+
+.modal { display: grid; place-items: center; background: rgba(10, 9, 8, 0.72); }
+.panel { pointer-events: auto; border: 1px solid var(--c-muted); padding: 24px; display: flex; flex-direction: column; gap: 16px; min-width: 220px; }
+.kicker { font-family: var(--font-mono); font-size: var(--fs-label); letter-spacing: var(--ls-label); color: var(--c-muted); }
+
+.over { padding: calc(var(--safe-top) + 24px) var(--hud-pad-x) calc(var(--safe-bottom) + 24px); display: flex; flex-direction: column; }
+.over-head { display: flex; align-items: center; gap: 16px; margin-top: 8px; }
+.over-score { font-family: var(--font-ui); font-weight: var(--fw-ui); font-size: var(--fs-display); font-variant-numeric: tabular-nums; color: var(--c-ink); }
+.stamp { border: 2px solid var(--c-accent); color: var(--c-accent); font-family: var(--font-ui); font-size: 11px; padding: 6px 10px; transform: rotate(-7deg); }
+.stamp.hidden { display: none; }
+.over-stats-host { margin-top: 24px; border-top: 1px solid var(--c-muted); padding-top: 16px; }
+.over-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px; }
+.over-stats div { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: var(--fs-mono); color: var(--c-muted); }
+.over-stats b { color: var(--c-ink); font-weight: var(--fw-mono-b); }
+.over-actions { margin-top: auto; display: flex; gap: 12px; }
+
+/* ---- Мета-экраны ---- */
+.nav { display: flex; gap: 8px; margin-top: 12px; }
+.nav button { flex: 1; font-family: var(--font-mono); font-size: var(--fs-tiny); color: var(--c-muted); background: transparent; border: 1px solid var(--c-muted); padding: 10px 4px; cursor: pointer; }
+.sub { padding: calc(var(--safe-top) + 24px) var(--hud-pad-x) calc(var(--safe-bottom) + 24px); overflow-y: auto; pointer-events: auto; }
+.grid-stats, .grid-ach { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 20px; margin: 20px 0; }
+.grid-stats div, .grid-ach div { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: var(--fs-mono); color: var(--c-muted); }
+.grid-stats b { color: var(--c-ink); }
+.grid-ach { grid-template-columns: 1fr; }
+.ach { display: grid !important; grid-template-columns: 28px 1fr; gap: 2px 10px; opacity: 0.4; }
+.ach.done { opacity: 1; }
+.ach span { grid-row: span 2; color: var(--c-accent); font-size: 18px; }
+.ach small { color: var(--c-muted); font-size: var(--fs-tiny); }
+.wallet { font-family: var(--font-mono); color: var(--c-accent); margin: 12px 0; }
+.shop-label { font-family: var(--font-mono); font-size: var(--fs-label); color: var(--c-muted); margin: 16px 0 8px; }
+.shop-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.shop-item { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 96px; padding: 10px; background: transparent; border: 1px solid var(--c-muted); color: var(--c-ink); cursor: pointer; font-family: var(--font-mono); }
+.shop-item.active { border-color: var(--c-accent); }
+.shop-item small { color: var(--c-muted); font-size: var(--fs-tiny); }
+.swatch { width: 24px; height: 4px; }
+.settings-list { display: flex; flex-direction: column; gap: 14px; margin: 20px 0; }
+.settings-list label { display: flex; justify-content: space-between; align-items: center; font-family: var(--font-mono); font-size: var(--fs-mono); color: var(--c-ink); }
+.settings-list select, .settings-list input[type='range'] { accent-color: var(--c-accent); background: var(--c-panel); color: var(--c-ink); }
+.toast-host { position: absolute; left: 50%; top: 12%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.toast { font-family: var(--font-mono); font-size: var(--fs-label); color: var(--c-void); background: var(--c-accent); padding: 8px 14px; animation: toast-in 220ms var(--ease-out-expo); }
+@keyframes toast-in { from { transform: translateY(-12px); opacity: 0; } }
+
+/* ---- Мета-экраны: исправления нативных контролов ---- */
+.mode { background: transparent; border: 0; border-left: 2px solid transparent; text-align: left; width: 100%; cursor: pointer; font-family: var(--font-mono); font-size: var(--fs-label); letter-spacing: var(--ls-label); color: var(--c-muted); padding: 8px 0; }
+.mode.active { color: var(--c-ink); border-left-color: var(--c-accent); padding-left: 12px; }
+.transfer-code { width: 100%; box-sizing: border-box; margin-top: 8px; background: var(--c-panel); border: 1px solid var(--c-muted); color: var(--c-ink); font-family: var(--font-mono); font-size: var(--fs-tiny); padding: 8px; resize: vertical; }
+
+/* ---- Фаза 5: эффекты, босс, шторм ---- */
+.hud-effects { position: absolute; left: var(--hud-pad-x); bottom: calc(var(--safe-bottom) + 48px); font-family: var(--font-mono); font-size: var(--fs-tiny); color: var(--c-accent); max-width: 60vw; }
+.hud-boss { position: absolute; left: 50%; transform: translateX(-50%); top: calc(var(--safe-top) + 18px); font-family: var(--font-ui); font-size: var(--fs-label); color: var(--c-danger); white-space: nowrap; }
+.hud-storm { position: absolute; left: 50%; transform: translateX(-50%); top: calc(var(--safe-top) + 44px); font-family: var(--font-mono); font-size: var(--fs-tiny); color: var(--c-danger); animation: blink 0.5s steps(1) infinite; }
+
+/* ---- Фаза 6: задания и сезоны ---- */
+.strip-title { display: block; margin-top: 12px; font-family: var(--font-mono); font-size: var(--fs-tiny); letter-spacing: var(--ls-label); color: var(--c-accent); }
+.strip-item { display: block; font-family: var(--font-mono); font-size: var(--fs-tiny); color: var(--c-muted); margin-top: 4px; }
+.strip-item button { pointer-events: auto; margin-left: 8px; padding: 4px 8px; min-height: var(--tap-target); background: var(--c-accent); color: var(--c-void); border: 0; font-family: var(--font-mono); font-size: var(--fs-tiny); cursor: pointer; }
+.season-panel { margin: 20px 0; border-top: 1px solid var(--c-muted); padding-top: 12px; }
+.season-title { font-family: var(--font-ui); font-size: var(--fs-label); color: var(--c-accent); margin-bottom: 10px; }
+.season-tier { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: var(--fs-tiny); color: var(--c-muted); padding: 6px 0; }
+.season-tier b { color: var(--c-ink); font-weight: var(--fw-mono-b); }
+.season-tier button { pointer-events: auto; padding: 6px 10px; min-height: var(--tap-target); background: var(--c-accent); color: var(--c-void); border: 0; font-family: var(--font-mono); font-size: var(--fs-tiny); cursor: pointer; }
+
+/* ---- Фаза 7: доступность ---- */
+:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 3px; }
+.mode, .nav button, .icon-btn { min-height: var(--tap-target); }
