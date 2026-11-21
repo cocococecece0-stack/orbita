@@ -1,6 +1,9 @@
 export type GameEvent =
   | 'orb' | 'nearMiss' | 'shieldOn' | 'shieldBreak' | 'slowOn'
-  | 'levelUp' | 'feverOn' | 'feverOff' | 'death' | 'newBest' | 'comboUp';
+  | 'levelUp' | 'feverOn' | 'feverOff' | 'death' | 'newBest' | 'comboUp'
+  | 'magnet' | 'double' | 'phase' | 'freeze' | 'secondChance'
+  | 'bossSpawn' | 'bossHit' | 'bossDown' | 'bossEscape'
+  | 'stormWarn' | 'storm' | 'wormholeWarn' | 'wormhole';
 
 type Handler = (payload: number) => void;
 

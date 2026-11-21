@@ -6,10 +6,18 @@ export const KIND = {
   SHIELD: 4,
   SLOW: 5,
   TRAIL: 6,
+  MAGNET: 7,
+  DOUBLE: 8,
+  PHASE: 9,
+  FREEZE: 10,
+  SECOND: 11,
+  WORMHOLE: 12,
 } as const;
 
 export interface Entity {
   active: boolean;
+  /** 0 — обычный, 1 — босс, 2 — червоточина. */
+  kind: number;
   x: number;
   y: number;
   vx: number;
@@ -27,7 +35,7 @@ export interface Entity {
 
 export function makeEntity(): Entity {
   return {
-    active: false, x: 0, y: 0, vx: 0, vy: 0, rot: 0, spin: 0,
+    active: false, kind: 0, x: 0, y: 0, vx: 0, vy: 0, rot: 0, spin: 0,
     size: 0, timer: 0, life: 0, seed: 0, r: 1, g: 1, b: 1,
   };
 }

@@ -52,13 +52,45 @@ void main() {
     float ring = (1.0 - smoothstep(0.70, 0.80, d)) * smoothstep(0.56, 0.65, d);
     col *= 1.0 + glow * 0.7;
     a *= ring;
-  } else {
+  } else if (type < 6.5) {
     // Замедление: ромб с внутренней перегородкой.
     float dia = abs(p.x) + abs(p.y);
     float body = 1.0 - smoothstep(0.60, 0.70, dia);
     float bar = 1.0 - smoothstep(0.05, 0.09, abs(p.x));
     col = mix(col * 0.8, col * 1.4, bar);
     a *= body;
+  } else if (type < 7.5) {
+    // Магнит: две дуги.
+    float ang = atan(p.y, p.x);
+    float arc = step(0.35, abs(sin(ang * 2.0)));
+    float ring = (1.0 - smoothstep(0.68, 0.78, d)) * smoothstep(0.52, 0.62, d) * arc;
+    a *= ring;
+  } else if (type < 8.5) {
+    // Двойные очки: двойной ромб.
+    float d1 = abs(p.x - 0.16) + abs(p.y);
+    float d2 = abs(p.x + 0.16) + abs(p.y);
+    a *= max(1.0 - smoothstep(0.34, 0.42, d1), 1.0 - smoothstep(0.34, 0.42, d2));
+  } else if (type < 9.5) {
+    // Фаза: пустой контур с трещиной.
+    float ring = smoothstep(0.52, 0.60, d) * (1.0 - smoothstep(0.70, 0.78, d));
+    float cut = smoothstep(0.04, 0.10, abs(p.y - p.x * 0.4));
+    a *= ring * cut;
+  } else if (type < 10.5) {
+    // Заморозка: шестилучевая звезда.
+    float ang = atan(p.y, p.x);
+    float star = pow(abs(cos(ang * 3.0)), 8.0);
+    a *= (1.0 - smoothstep(0.30, 0.72, d)) * star;
+  } else if (type < 11.5) {
+    // Второй шанс: крест.
+    float cross = 1.0 - smoothstep(0.10, 0.16, min(abs(p.x), abs(p.y)));
+    a *= cross * (1.0 - smoothstep(0.55, 0.65, d));
+  } else {
+    // Червоточина: спираль.
+    float ang = atan(p.y, p.x);
+    float spiral = abs(sin(ang * 2.0 + d * 14.0));
+    float ring = (1.0 - smoothstep(0.70, 0.80, d)) * smoothstep(0.16, 0.24, d);
+    a *= ring * spiral;
+    col *= 1.0 + glow * 0.6;
   }
 
   if (a <= 0.003) discard;

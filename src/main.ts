@@ -38,7 +38,9 @@ function applyTheme(): void {
     document.documentElement.style.setProperty('--gl-acc', `${gl[0]}, ${gl[1]}, ${gl[2]}`);
   }
   renderer.refreshTheme();
-  game.setAccent?.(gl[0] ?? 1, gl[1] ?? 0.706, gl[2] ?? 0.329);
+  game.setAccent(gl[0] ?? 1, gl[1] ?? 0.706, gl[2] ?? 0.329);
+  game.setReducedMotion(s.reducedMotion);
+  game.setFxScale(s.fx);
 }
 applyTheme();
 ui.setMenuBest(data.best);
@@ -90,6 +92,17 @@ game.events.on('levelUp', (level) => { sfx('level', 0.95 + level * 0.01); haptic
 game.events.on('feverOn', () => { sfx('powerup', 1.25); hapticSafe('pulse'); });
 game.events.on('newBest', () => { sfx('level', 1.3); hapticSafe('record'); });
 game.events.on('death', () => { sfx('crash'); audio.duck(); hapticSafe('heavy'); });
+game.events.on('magnet', () => { sfx('powerup', 1.1); hapticSafe('medium'); ui.toast('МАГНИТ'); });
+game.events.on('double', () => { sfx('powerup', 1.35); hapticSafe('success'); ui.toast('ДВОЙНЫЕ ОЧКИ'); });
+game.events.on('phase', () => { sfx('shield', 1.2); hapticSafe('medium'); ui.toast('ФАЗА'); });
+game.events.on('freeze', () => { sfx('powerup', 0.7); hapticSafe('medium'); ui.toast('ЗАМОРОЗКА'); });
+game.events.on('secondChance', () => { sfx('shield', 1.4); hapticSafe('record'); ui.toast('ВТОРОЙ ШАНС'); });
+game.events.on('bossSpawn', () => { sfx('storm', 0.85); hapticSafe('heavy'); ui.toast('БОСС'); });
+game.events.on('bossHit', (hp) => { sfx('orb', 1.5); hapticSafe('medium'); ui.toast(`ЯДРО ${hp}`); });
+game.events.on('bossDown', () => { sfx('level', 1.5); hapticSafe('record'); ui.toast('БОСС УНИЧТОЖЕН'); });
+game.events.on('stormWarn', () => { sfx('storm'); hapticSafe('medium'); ui.toast('МЕТЕОРИТНЫЙ ДОЖДЬ'); });
+game.events.on('wormholeWarn', () => { sfx('shield', 0.8); hapticSafe('light'); ui.toast('ЧЕРВОТОЧИНЫ ОТКРЫТЫ'); });
+game.events.on('wormhole', () => { sfx('powerup', 0.7); hapticSafe('pulse'); ui.toast('ЧЕРВОТОЧИНА'); });
 
 function seedFor(mode: Mode): number {
   return mode === 'daily' ? Rng.dailySeedUTC() : Rng.runSeed();

@@ -51,6 +51,9 @@ export class UI {
       <div class="hud-chip hidden" id="hud-shield">ЩИТ</div>
       <div class="hud-chip hidden" id="hud-slow">ЗАМЕДЛЕНИЕ</div>
       <div class="hud-fever hidden" id="hud-fever">ПЕРЕГРУЗ</div>
+      <div class="hud-effects hidden" id="hud-effects"></div>
+      <div class="hud-boss hidden" id="hud-boss">БОСС</div>
+      <div class="hud-storm hidden" id="hud-storm">МЕТЕОРИТНЫЙ ДОЖДЬ</div>
       <div class="hud-controls"><button class="icon-btn" id="sound">♪</button><button class="icon-btn" id="pause">II</button></div>`;
 
     this.screens.paused = this.div('screen modal hidden');
@@ -173,6 +176,22 @@ export class UI {
       fever.classList.toggle('hidden', s.feverLeft <= 0);
       if (s.feverLeft > 0) fever.textContent = `${T.fever} ${s.feverLeft.toFixed(1)}`;
     }
+    const names: Array<[number, string]> = [
+      [1, 'ЩИТ'], [2, 'ЗАМЕДЛЕНИЕ'], [4, 'МАГНИТ'], [8, 'x2'],
+      [16, 'ФАЗА'], [32, 'ЗАМОРОЗКА'], [64, '2-Й ШАНС'],
+    ];
+    const active = names.filter(([bit]) => (s.effects & bit) !== 0).map(([, name]) => name);
+    const effects = this.q('hud-effects');
+    if (effects) {
+      effects.classList.toggle('hidden', active.length === 0);
+      effects.textContent = active.join(' · ');
+    }
+    const boss = this.q('hud-boss');
+    if (boss) {
+      boss.classList.toggle('hidden', s.bossHp <= 0);
+      if (s.bossHp > 0) boss.textContent = `БОСС ${'◆'.repeat(s.bossHp)}  ЗАРЯД ${Math.min(3, s.bossCharge)}/3`;
+    }
+    this.q('hud-storm')?.classList.toggle('hidden', s.stormWarn <= 0);
   }
 
   showGameOver(s: GameSnapshot, save: SaveDataV2): void {
