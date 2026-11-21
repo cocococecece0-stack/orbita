@@ -61,7 +61,7 @@ class Asteroid(
     var pulse = 0f
 }
 
-class Orb(val angle: Float, val kind: OrbKind, val sprite: Int) {
+class Orb(var angle: Float, val kind: OrbKind, val sprite: Int) {
     var pulse = 0f
     var dead = false
     var drift = 0f

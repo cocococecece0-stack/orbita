@@ -202,7 +202,8 @@ final class SaveStore: ObservableObject {
         return out
     }
 
-    func encode(_ d: SaveData = data) -> Data {
+    func encode(_ value: SaveData? = nil) -> Data {
+        let d = value ?? data
         var hist: [[String: Any]] = []
         for r in Array(d.history.prefix(25)) {
             hist.append([

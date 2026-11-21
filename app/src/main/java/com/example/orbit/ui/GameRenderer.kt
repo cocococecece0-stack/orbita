@@ -1,6 +1,7 @@
 package com.example.orbit.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -47,49 +48,51 @@ class GameArt(
 )
 
 @Composable
-fun rememberGameArt(): GameArt = GameArt(
+fun rememberGameArt(): GameArt = remember {
+    GameArt(
     backgrounds = listOf(
-        imageResource(R.drawable.bg_0), imageResource(R.drawable.bg_1),
-        imageResource(R.drawable.bg_2), imageResource(R.drawable.bg_3),
-        imageResource(R.drawable.bg_4), imageResource(R.drawable.bg_5),
-        imageResource(R.drawable.bg_6), imageResource(R.drawable.bg_7),
+        ImageBitmap.imageResource(R.drawable.bg_0), ImageBitmap.imageResource(R.drawable.bg_1),
+        ImageBitmap.imageResource(R.drawable.bg_2), ImageBitmap.imageResource(R.drawable.bg_3),
+        ImageBitmap.imageResource(R.drawable.bg_4), ImageBitmap.imageResource(R.drawable.bg_5),
+        ImageBitmap.imageResource(R.drawable.bg_6), ImageBitmap.imageResource(R.drawable.bg_7),
     ),
     planets = listOf(
-        imageResource(R.drawable.planet_0), imageResource(R.drawable.planet_1),
-        imageResource(R.drawable.planet_2), imageResource(R.drawable.planet_3),
-        imageResource(R.drawable.planet_4), imageResource(R.drawable.planet_5),
-        imageResource(R.drawable.planet_6), imageResource(R.drawable.planet_7),
+        ImageBitmap.imageResource(R.drawable.planet_0), ImageBitmap.imageResource(R.drawable.planet_1),
+        ImageBitmap.imageResource(R.drawable.planet_2), ImageBitmap.imageResource(R.drawable.planet_3),
+        ImageBitmap.imageResource(R.drawable.planet_4), ImageBitmap.imageResource(R.drawable.planet_5),
+        ImageBitmap.imageResource(R.drawable.planet_6), ImageBitmap.imageResource(R.drawable.planet_7),
     ),
     ships = listOf(
-        imageResource(R.drawable.ship_0), imageResource(R.drawable.ship_1),
-        imageResource(R.drawable.ship_2), imageResource(R.drawable.ship_3),
-        imageResource(R.drawable.ship_4), imageResource(R.drawable.ship_5),
-        imageResource(R.drawable.ship_6), imageResource(R.drawable.ship_7),
+        ImageBitmap.imageResource(R.drawable.ship_0), ImageBitmap.imageResource(R.drawable.ship_1),
+        ImageBitmap.imageResource(R.drawable.ship_2), ImageBitmap.imageResource(R.drawable.ship_3),
+        ImageBitmap.imageResource(R.drawable.ship_4), ImageBitmap.imageResource(R.drawable.ship_5),
+        ImageBitmap.imageResource(R.drawable.ship_6), ImageBitmap.imageResource(R.drawable.ship_7),
     ),
     asteroids = listOf(
-        imageResource(R.drawable.ast_0), imageResource(R.drawable.ast_1),
-        imageResource(R.drawable.ast_2), imageResource(R.drawable.ast_3),
-        imageResource(R.drawable.ast_4), imageResource(R.drawable.ast_5),
-        imageResource(R.drawable.ast_6), imageResource(R.drawable.ast_7),
+        ImageBitmap.imageResource(R.drawable.ast_0), ImageBitmap.imageResource(R.drawable.ast_1),
+        ImageBitmap.imageResource(R.drawable.ast_2), ImageBitmap.imageResource(R.drawable.ast_3),
+        ImageBitmap.imageResource(R.drawable.ast_4), ImageBitmap.imageResource(R.drawable.ast_5),
+        ImageBitmap.imageResource(R.drawable.ast_6), ImageBitmap.imageResource(R.drawable.ast_7),
     ),
     comets = listOf(
-        imageResource(R.drawable.comet_0), imageResource(R.drawable.comet_1),
-        imageResource(R.drawable.comet_2),
+        ImageBitmap.imageResource(R.drawable.comet_0), ImageBitmap.imageResource(R.drawable.comet_1),
+        ImageBitmap.imageResource(R.drawable.comet_2),
     ),
     powers = listOf(
-        imageResource(R.drawable.power_0), imageResource(R.drawable.power_1),
-        imageResource(R.drawable.power_2), imageResource(R.drawable.power_3),
-        imageResource(R.drawable.power_4), imageResource(R.drawable.power_5),
-        imageResource(R.drawable.power_6),
+        ImageBitmap.imageResource(R.drawable.power_0), ImageBitmap.imageResource(R.drawable.power_1),
+        ImageBitmap.imageResource(R.drawable.power_2), ImageBitmap.imageResource(R.drawable.power_3),
+        ImageBitmap.imageResource(R.drawable.power_4), ImageBitmap.imageResource(R.drawable.power_5),
+        ImageBitmap.imageResource(R.drawable.power_6),
     ),
     orbs = listOf(
-        imageResource(R.drawable.orb_0), imageResource(R.drawable.orb_1),
-        imageResource(R.drawable.orb_2),
+        ImageBitmap.imageResource(R.drawable.orb_0), ImageBitmap.imageResource(R.drawable.orb_1),
+        ImageBitmap.imageResource(R.drawable.orb_2),
     ),
-    glow = imageResource(R.drawable.fx_glow),
-    ring = imageResource(R.drawable.fx_ring),
-    burst = imageResource(R.drawable.fx_burst),
-)
+    glow = ImageBitmap.imageResource(R.drawable.fx_glow),
+    ring = ImageBitmap.imageResource(R.drawable.fx_ring),
+    burst = ImageBitmap.imageResource(R.drawable.fx_burst),
+    )
+}
 
 /** Рисует сцену. [frameTick] инвалидирует фазу анимации каждый кадр. */
 fun DrawScope.drawGame(

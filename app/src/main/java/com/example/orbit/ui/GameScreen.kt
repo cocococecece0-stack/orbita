@@ -470,7 +470,7 @@ private fun HubScreen(
         modifier = Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 18.dp),
     ) {
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Center) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Canvas(modifier = Modifier.size(56.dp)) {
                 drawPreviewPlanet(art, save.equippedPlanet, androidx.compose.ui.geometry.Offset(size.width / 2, size.height / 2), 26.dp.toPx(), frame)
             }
@@ -861,7 +861,7 @@ private fun ScrollScreen(title: String, viewModel: GameViewModel, onBack: () -> 
 
 @Composable
 private fun ScreenHeader(title: String, viewModel: GameViewModel, onBack: () -> Unit) {
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Center) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(title, color = Neon, fontSize = 26.sp, fontWeight = FontWeight.Black, letterSpacing = 4.sp)
             Text("◆ ${viewModel.store.data.credits}", color = Amber, fontSize = 12.sp)

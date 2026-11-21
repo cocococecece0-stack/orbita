@@ -357,7 +357,7 @@ class GameEngine {
                 b.charge = 0f
                 for (k in -1..1) {
                     val a = norm(b.angle + k * 0.16f)
-                    spawnBolt(a)
+                    asteroids += makeBolt(a)
                 }
                 onEvent(GameEvent.BossHit)
             }

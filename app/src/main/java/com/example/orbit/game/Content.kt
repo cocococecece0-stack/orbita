@@ -181,8 +181,8 @@ object Content {
 
     /** Детерминированный сид для daily-забега и заданий. Одинаков на обеих платформах. */
     fun seedFor(text: String): Int {
-        var h = 2166136261
-        for (ch in text) h = (h xor ch.code) * 16777619
-        return h and 0x7fffffff
+        var h = 2166136261L
+        for (ch in text) h = ((h xor ch.code.toLong()) * 16777619L) and 0xffffffffL
+        return (h and 0x7fffffffL).toInt()
     }
 }

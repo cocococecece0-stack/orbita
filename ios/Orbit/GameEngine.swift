@@ -289,7 +289,7 @@ final class GameEngine: ObservableObject {
             b.charge += step
             if b.charge >= 2.4 {
                 b.charge = 0
-                for k in -1...1 { spawnBolt(norm(b.angle + CGFloat(k) * 0.16)) }
+                for k in -1...1 { asteroids.append(makeBolt(norm(b.angle + CGFloat(k) * 0.16))) }
                 onEvent?(.bossHit)
             }
             if b.time >= b.duration { b.dead = true }

@@ -1,7 +1,7 @@
 import AVFoundation
 
 /// Низколатентные SFX и восемь отдельных музыкальных треков (реальные WAV из tools/generate_assets.py).
-final class SoundEngine: ObservableObject, AVAudioPlayerDelegate {
+final class SoundEngine: NSObject, ObservableObject, AVAudioPlayerDelegate {
 
     private var players: [String: AVAudioPlayer] = [:]
     private var music: AVAudioPlayer?
@@ -18,6 +18,7 @@ final class SoundEngine: ObservableObject, AVAudioPlayerDelegate {
     ]
 
     init() {
+        super.init()
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.ambient, mode: .default, options: [.mixWithOthers])
         try? session.setActive(true)
