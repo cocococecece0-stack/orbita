@@ -8,6 +8,9 @@ export interface RunContext {
   mode: string;
   runs: number;
   isNewBest: boolean;
+  bossKills: number;
+  powerupsTaken: number;
+  wormholesUsed: number;
 }
 
 export interface Achievement {

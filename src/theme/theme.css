@@ -148,6 +148,40 @@
   --lang: ru;
 }
 
+/* ---- Темы B/C: меняют сцену, палитру опасности и свечение ---- */
+[data-scene='neon'] {
+  --c-void: #05060C;
+  --c-panel: #0D1220;
+  --c-ink: #E6F4FF;
+  --c-muted: #6C86A6;
+  --c-reward: #D8F7FF;
+  --c-danger: #FF4D8D;
+  --c-danger-soft: #FF9BC3;
+  --gl-dang: 1.000, 0.302, 0.553;
+  --gl-void: 0.020, 0.024, 0.047;
+  --scanline-alpha: 0.018;
+  --vignette: 0.42;
+  --glow-limb: 0 0 18px rgba(76, 240, 208, 0.34);
+  --glow-ring: 0 0 12px rgba(76, 240, 208, 0.28);
+  --glow-danger: 0 0 14px rgba(255, 77, 141, 0.36);
+}
+[data-scene='sunset'] {
+  --c-void: #120B0A;
+  --c-panel: #241510;
+  --c-ink: #FFF0DE;
+  --c-muted: #A4816A;
+  --c-reward: #FFE3B8;
+  --c-danger: #FF6B4A;
+  --c-danger-soft: #FFA184;
+  --gl-dang: 1.000, 0.420, 0.290;
+  --gl-void: 0.071, 0.043, 0.039;
+  --scanline-alpha: 0.045;
+  --vignette: 0.62;
+  --glow-limb: 0 0 16px rgba(255, 154, 90, 0.32);
+  --glow-ring: 0 0 11px rgba(255, 180, 84, 0.25);
+  --glow-danger: 0 0 13px rgba(255, 107, 74, 0.34);
+}
+
 /* ---- Дальтоник-палитры ---- */
 [data-palette='protan'] {
   --c-accent: #FFD166;
@@ -298,3 +332,13 @@ html, body {
 .hud-effects { position: absolute; left: var(--hud-pad-x); bottom: calc(var(--safe-bottom) + 48px); font-family: var(--font-mono); font-size: var(--fs-tiny); color: var(--c-accent); max-width: 60vw; }
 .hud-boss { position: absolute; left: 50%; transform: translateX(-50%); top: calc(var(--safe-top) + 18px); font-family: var(--font-ui); font-size: var(--fs-label); color: var(--c-danger); white-space: nowrap; }
 .hud-storm { position: absolute; left: 50%; transform: translateX(-50%); top: calc(var(--safe-top) + 44px); font-family: var(--font-mono); font-size: var(--fs-tiny); color: var(--c-danger); animation: blink 0.5s steps(1) infinite; }
+
+/* ---- Фаза 6: задания и сезоны ---- */
+.strip-title { display: block; margin-top: 12px; font-family: var(--font-mono); font-size: var(--fs-tiny); letter-spacing: var(--ls-label); color: var(--c-accent); }
+.strip-item { display: block; font-family: var(--font-mono); font-size: var(--fs-tiny); color: var(--c-muted); margin-top: 4px; }
+.strip-item button { pointer-events: auto; margin-left: 8px; padding: 4px 8px; min-height: var(--tap-target); background: var(--c-accent); color: var(--c-void); border: 0; font-family: var(--font-mono); font-size: var(--fs-tiny); cursor: pointer; }
+.season-panel { margin: 20px 0; border-top: 1px solid var(--c-muted); padding-top: 12px; }
+.season-title { font-family: var(--font-ui); font-size: var(--fs-label); color: var(--c-accent); margin-bottom: 10px; }
+.season-tier { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: var(--fs-tiny); color: var(--c-muted); padding: 6px 0; }
+.season-tier b { color: var(--c-ink); font-weight: var(--fw-mono-b); }
+.season-tier button { pointer-events: auto; padding: 6px 10px; min-height: var(--tap-target); background: var(--c-accent); color: var(--c-void); border: 0; font-family: var(--font-mono); font-size: var(--fs-tiny); cursor: pointer; }

@@ -1,6 +1,34 @@
 import { decodeTransfer, encodeTransfer } from './TransferCode';
 import type { Locale, Mode } from '../core/Config';
 import { ACHIEVEMENTS, type RunContext } from '../game/Achievements';
+import { applyRun, dailyKey, freshDailyState, missionsFor, type DailyMission, type DailyState } from '../game/Daily';
+import { claimSeasonTier, currentSeason, freshSeasonState, SEASON_TIERS, syncSeason, type SeasonState } from '../game/Seasons';
+
+export type ThemeId = 'observatory' | 'neon' | 'sunset';
+
+export const THEMES: ReadonlyArray<{ id: ThemeId; name: string }> = [
+  { id: 'observatory', name: 'ОБСЕРВАТОРИЯ' },
+  { id: 'neon', name: 'НЕОН' },
+  { id: 'sunset', name: 'ЗАКАТ' },
+];
+
+export interface RunResult {
+  score: number;
+  orbs: number;
+  sec: number;
+  combo: number;
+  mode: Mode;
+  isNewBest: boolean;
+  seed: number;
+  context: RunContext;
+  ghost: { data: Float32Array; count: number };
+}
+
+export interface RunOutcome {
+  achievements: string[];
+  missions: DailyMission[];
+  seasonTiers: number[];
+}
 
 export interface SaveDataV2 {
   version: 2;
@@ -19,6 +47,10 @@ export interface SaveDataV2 {
   unlockedTrails: string[];
   selectedTrail: string;
   dailyDate: string;
+  ghost: number[];
+  ghostScore: number;
+  daily: DailyState;
+  season: SeasonState;
   settings: {
     sound: boolean;
     music: boolean;
@@ -27,6 +59,7 @@ export interface SaveDataV2 {
     palette: 'default' | 'protan' | 'deutan' | 'tritan';
     reducedMotion: boolean;
     locale: Locale;
+    theme: ThemeId;
     lowFps: boolean;
   };
 }
@@ -66,9 +99,13 @@ function defaults(): SaveDataV2 {
     unlockedTrails: ['dither'],
     selectedTrail: 'dither',
     dailyDate: '',
+    ghost: [],
+    ghostScore: 0,
+    daily: freshDailyState(dailyKey()),
+    season: freshSeasonState(currentSeason()),
     settings: {
       sound: true, music: true, haptics: true, fx: 1,
-      palette: 'default', reducedMotion: false, locale: 'ru', lowFps: false,
+      palette: 'default', reducedMotion: false, locale: 'ru', lowFps: false, theme: 'observatory',
     },
   };
 }
@@ -77,20 +114,36 @@ function defaults(): SaveDataV2 {
 export class Save {
   private data: SaveDataV2 = defaults();
 
+  private normalize(p: Partial<SaveDataV2>): SaveDataV2 {
+    const d = defaults();
+    const day = dailyKey();
+    const season = currentSeason();
+    const daily = p.daily && p.daily.date === day && Array.isArray(p.daily.progress)
+      ? { ...freshDailyState(day), ...p.daily,
+          progress: p.daily.progress.slice(0, 3),
+          claimed: Array.isArray(p.daily.claimed) ? p.daily.claimed.slice(0, 3) : [false, false, false] }
+      : freshDailyState(day);
+    return {
+      ...d, ...p,
+      version: 2,
+      bestByMode: { ...p.bestByMode },
+      unlockedSkins: p.unlockedSkins?.length ? p.unlockedSkins : d.unlockedSkins,
+      unlockedTrails: p.unlockedTrails?.length ? p.unlockedTrails : d.unlockedTrails,
+      achievements: Array.isArray(p.achievements) ? p.achievements : [],
+      ghost: Array.isArray(p.ghost) ? p.ghost.filter((v): v is number => typeof v === 'number' && Number.isFinite(v)) : [],
+      daily,
+      season: syncSeason(p.season ?? d.season, season),
+      settings: { ...d.settings, ...p.settings },
+    };
+  }
+
   load(): SaveDataV2 {
     try {
       const raw = localStorage.getItem(KEY);
       if (raw) {
         const p = JSON.parse(raw) as Partial<SaveDataV2>;
         if (p.version === 2) {
-          const d = defaults();
-          this.data = {
-            ...d, ...p,
-            bestByMode: { ...p.bestByMode },
-            unlockedSkins: p.unlockedSkins?.length ? p.unlockedSkins : d.unlockedSkins,
-            unlockedTrails: p.unlockedTrails?.length ? p.unlockedTrails : d.unlockedTrails,
-            settings: { ...d.settings, ...p.settings },
-          };
+          this.data = this.normalize(p);
           return this.data;
         }
       }
@@ -118,34 +171,84 @@ export class Save {
 
   setLocale(locale: Locale): void { this.data.settings.locale = locale; this.save(); }
 
-  recordRun(
-    score: number, orbs: number, sec: number, combo: number,
-    mode: Mode, isNewBest: boolean, seed: number, context: RunContext,
-  ): string[] {
+  recordRun(run: RunResult): RunOutcome {
     const d = this.data;
-    if (isNewBest) {
-      d.best = score;
-      d.bestSeed = seed;
+    const day = dailyKey();
+    if (d.daily.date !== day) d.daily = freshDailyState(day);
+    d.season = syncSeason(d.season, currentSeason());
+
+    if (run.isNewBest) {
+      d.best = run.score;
+      d.bestSeed = run.seed;
+      const n = Math.min(run.ghost.count, run.ghost.data.length);
+      const ghost: number[] = [];
+      for (let i = 0; i < n; i++) ghost.push(Math.round((run.ghost.data[i] ?? 0) * 1000) / 1000);
+      d.ghost = ghost;
+      d.ghostScore = run.score;
     }
-    d.bestByMode[mode] = Math.max(d.bestByMode[mode] ?? 0, score);
+    d.bestByMode[run.mode] = Math.max(d.bestByMode[run.mode] ?? 0, run.score);
     d.runs++;
-    d.totalScore += score;
-    d.totalOrbs += orbs;
-    d.totalPlaySec += Math.round(sec);
-    d.maxCombo = Math.max(d.maxCombo, combo);
-    d.currency += Math.floor(score / 10) + orbs;
+    d.totalScore += run.score;
+    d.totalOrbs += run.orbs;
+    d.totalPlaySec += Math.round(run.sec);
+    d.maxCombo = Math.max(d.maxCombo, run.combo);
+    d.currency += Math.floor(run.score / 10) + run.orbs;
 
     const earned: string[] = [];
     for (const a of ACHIEVEMENTS) {
-      if (!d.achievements.includes(a.id) && a.check(context)) {
+      if (!d.achievements.includes(a.id) && a.check(run.context)) {
         d.achievements.push(a.id);
         earned.push(a.title);
         d.currency += 50;
       }
     }
+
+    const completed = applyRun(d.daily, {
+      orbs: run.orbs, combo: run.combo, seconds: run.sec,
+      nearMisses: run.context.nearMisses, level: run.context.level,
+      bossKills: run.context.bossKills,
+    });
+    const missions = missionsFor(day);
+    const missionList: DailyMission[] = [];
+    for (const i of completed) {
+      const m = missions[i];
+      if (!m) continue;
+      missionList.push(m);
+      d.currency += m.reward;
+    }
+
+    d.season.xp += Math.floor(run.score / 10);
+    const seasonTiers: number[] = [];
+    for (let i = 0; i < SEASON_TIERS.length; i++) {
+      const tier = SEASON_TIERS[i];
+      if (!tier || d.season.claimed[i] || d.season.xp < tier.xp) continue;
+      d.season.claimed[i] = true;
+      d.currency += tier.reward;
+      seasonTiers.push(i);
+    }
+
     this.save();
-    return earned;
+    return { achievements: earned, missions: missionList, seasonTiers };
   }
+
+  claimDaily(index: number): boolean {
+    const m = missionsFor(this.data.daily.date)[index];
+    if (!m || this.data.daily.claimed[index] || (this.data.daily.progress[index] ?? 0) < m.goal) return false;
+    this.data.daily.claimed[index] = true;
+    this.data.currency += m.reward;
+    this.save();
+    return true;
+  }
+
+  claimSeason(index: number): boolean {
+    const reward = claimSeasonTier(this.data.season, index);
+    if (reward === 0) return false;
+    this.data.currency += reward;
+    this.save();
+    return true;
+  }
+
+  setTheme(theme: ThemeId): void { this.data.settings.theme = theme; this.save(); }
 
   buySkin(id: string, cost: number): boolean {
     if (this.data.unlockedSkins.includes(id) || this.data.currency < cost) return false;
@@ -180,7 +283,7 @@ export class Save {
   importCode(code: string): boolean {
     const parsed = decodeTransfer<SaveDataV2>(code);
     if (!parsed || parsed.version !== 2) return false;
-    this.data = parsed;
+    this.data = this.normalize(parsed);
     this.save();
     return true;
   }

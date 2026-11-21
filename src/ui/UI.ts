@@ -2,7 +2,9 @@ import type { GameSnapshot } from '../game/Game';
 import type { Mode } from '../core/Config';
 import type { SaveDataV2 } from '../save/Save';
 import { ACHIEVEMENTS } from '../game/Achievements';
-import { SKINS, TRAILS } from '../save/Save';
+import { SKINS, THEMES, TRAILS } from '../save/Save';
+import { missionsFor } from '../game/Daily';
+import { currentSeason, SEASON_TIERS } from '../game/Seasons';
 
 const T = {
   play: 'НАЖМИ, ЧТОБЫ НАЧАТЬ', title: 'ОРБИТА', cassette: 'КАССЕТА 01',
@@ -38,6 +40,8 @@ export class UI {
           <button class="mode" data-mode="daily">04&nbsp;&nbsp;${T.daily}</button>
         </div>
         <div class="menu-best" id="menu-best">BEST 0000</div>
+        <div class="meta-strip" id="daily-strip"></div>
+        <div class="meta-strip" id="season-strip"></div>
       </div>
       <button class="cta" id="play">${T.play}</button>
       <div class="nav"><button id="to-stats">${T.stats}</button><button id="to-custom">${T.custom}</button><button id="to-settings">${T.settings}</button></div>`;
@@ -70,7 +74,7 @@ export class UI {
 
     this.screens.stats = this.div('screen sub hidden');
     this.screens.stats.innerHTML = `<div class="kicker">${T.stats}</div><div class="grid-stats" id="stats-grid"></div>
-      <div class="grid-ach" id="ach-grid"></div><button class="ghost" id="stats-back">${T.menu}</button>`;
+      <div class="grid-ach" id="ach-grid"></div><div class="season-panel" id="season-panel"></div><button class="ghost" id="stats-back">${T.menu}</button>`;
 
     this.screens.custom = this.div('screen sub hidden');
     this.screens.custom.innerHTML = `<div class="kicker">${T.custom}</div><div class="wallet" id="wallet">ЖЕТОНЫ 0</div>
@@ -85,6 +89,7 @@ export class UI {
         <label>МУЗЫКА <input type="checkbox" id="set-music" checked></label>
         <label>ХАПТИКА <input type="checkbox" id="set-haptics" checked></label>
         <label>ЭФФЕКТЫ <input type="range" id="set-fx" min="0" max="1" step="0.05" value="1"></label>
+        <label> ТЕМА <select id="set-theme"></select></label>
         <label>ПАЛИТРА <select id="set-palette"><option value="default">ОСНОВНАЯ</option><option value="protan">ПРОТАН</option><option value="deutan">ДЕЙТАН</option><option value="tritan">ТРИТАН</option></select></label>
         <label>ЯЗЫК <select id="set-locale"><option value="ru">RU</option><option value="en">EN</option></select></label>
         <label>ЭКОНОМИЯ БАТАРЕИ <input type="checkbox" id="set-lowfps"></label>
@@ -97,6 +102,8 @@ export class UI {
     for (const [name, el] of Object.entries(this.screens)) this.root.appendChild(el);
     this.root.appendChild(this.toastHost);
     this.bindModes();
+    this.bindClaims();
+    this.populateThemes();
   }
 
   private div(cls: string): HTMLDivElement {
@@ -130,6 +137,33 @@ export class UI {
 
   getMode(): Mode { return this.mode; }
 
+  private bindClaims(): void {
+    this.root.addEventListener('click', (event) => {
+      const target = event.target as HTMLElement | null;
+      const button = target?.closest<HTMLButtonElement>('[data-claim]');
+      if (!button) return;
+      const raw = button.dataset['claim'] ?? '';
+      const [kind, index] = raw.split(':');
+      if (!kind || index === undefined) return;
+      this.root.dispatchEvent(new CustomEvent('claim', {
+        detail: { kind, index: Number(index) }, bubbles: true,
+      }));
+    });
+  }
+
+  private populateThemes(): void {
+    const el = this.q<HTMLSelectElement>('set-theme');
+    if (!el) return;
+    el.innerHTML = THEMES.map((t) => `<option value="${t.id}">${t.name}</option>`).join('');
+  }
+
+  onClaim(handler: (kind: 'daily' | 'season', index: number) => void): void {
+    this.root.addEventListener('claim', (event) => {
+      const detail = (event as CustomEvent<{ kind: string; index: number }>).detail;
+      if (detail.kind === 'daily' || detail.kind === 'season') handler(detail.kind, detail.index);
+    });
+  }
+
   private bindModes(): void {
     const buttons = this.root.querySelectorAll<HTMLButtonElement>('.mode[data-mode]');
     buttons.forEach((b) => {
@@ -151,6 +185,39 @@ export class UI {
   setMenuBest(best: number): void {
     const el = this.q('menu-best');
     if (el) el.textContent = `BEST ${String(best).padStart(4, '0')}`;
+  }
+
+  /** Перерисовка заданий и сезона без смены экрана. */
+  refreshProgress(save: SaveDataV2): void {
+    this.setMenuBest(save.best);
+    const daily = this.q('daily-strip');
+    if (daily) {
+      const missions = missionsFor(save.daily.date);
+      daily.innerHTML = `<span class="strip-title">ЗАДАНИЯ ${save.daily.date}</span>` + missions.map((m, i) => {
+        const value = Math.min(m.goal, save.daily.progress[i] ?? 0);
+        const done = value >= m.goal;
+        const claimed = save.daily.claimed[i] === true;
+        return `<span class="strip-item">${m.title} ${value}/${m.goal} · ${m.reward} жет.${done && !claimed ? `<button data-claim="daily:${i}">ЗАБРАТЬ</button>` : ''}</span>`;
+      }).join('');
+    }
+    const season = this.q('season-strip');
+    if (season) {
+      const info = currentSeason();
+      const next = SEASON_TIERS.find((t) => save.season.xp < t.xp);
+      season.innerHTML = `<span class="strip-title">${info.name}</span><span class="strip-item">XP ${save.season.xp}${next ? ` · ДО ${next.title}: ${next.xp - save.season.xp}` : ' · ВСЕ УРОВНИ ОТКРЫТЫ'}</span>`;
+    }
+    this.drawSeasonPanel(save);
+  }
+
+  private drawSeasonPanel(save: SaveDataV2): void {
+    const host = this.q('season-panel');
+    if (!host) return;
+    const info = currentSeason();
+    host.innerHTML = `<div class="season-title">${info.name} · XP ${save.season.xp}</div>` + SEASON_TIERS.map((t, i) => {
+      const done = save.season.xp >= t.xp;
+      const claimed = save.season.claimed[i] === true;
+      return `<div class="season-tier"><span>${t.title} · ${t.xp} XP · ${t.reward} жет.</span>${done && !claimed ? `<button data-claim="season:${i}">ЗАБРАТЬ</button>` : `<b>${claimed ? 'ПОЛУЧЕНО' : done ? 'ДОСТУПНО' : 'ЗАКРЫТО'}</b>`}</div>`;
+    }).join('');
   }
 
   update(s: GameSnapshot): void {
@@ -237,6 +304,7 @@ export class UI {
         return `<div class="ach ${done ? 'done' : ''}"><span>${a.icon}</span><b>${a.title}</b><small>${a.desc}</small></div>`;
       }).join('');
     }
+    this.drawSeasonPanel(save);
     this.show('stats');
   }
 
@@ -294,6 +362,8 @@ export class UI {
     if (pal) pal.value = s.palette;
     const loc = this.q<HTMLSelectElement>('set-locale');
     if (loc) loc.value = s.locale;
+    const theme = this.q<HTMLSelectElement>('set-theme');
+    if (theme) theme.value = s.theme;
   }
 
   setTransferCode(code: string): void {

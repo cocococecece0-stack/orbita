@@ -26,6 +26,9 @@ export interface GameSnapshot {
   bossHp: number;
   bossCharge: number;
   stormWarn: number;
+  bossKills: number;
+  powerupsTaken: number;
+  wormholesUsed: number;
 }
 
 const FX = {
@@ -102,6 +105,9 @@ export class Game {
   private stormTimer = 0;
   private stormPending = false;
   private wormTimer = 12;
+  private bossKills = 0;
+  private powerupsTaken = 0;
+  private wormholesUsed = 0;
 
   private ghost = new Float32Array(GHOST_LEN);
   private ghostCount = 0;
@@ -121,6 +127,7 @@ export class Game {
     orbs: 0, shields: 0, mode: 'classic', slowLeft: 0, feverLeft: 0,
     nearMisses: 0, elapsed: 0, isNewBest: false, effects: 0,
     bossHp: 0, bossCharge: 0, stormWarn: 0,
+    bossKills: 0, powerupsTaken: 0, wormholesUsed: 0,
   };
 
   constructor(best: number) {
@@ -202,6 +209,9 @@ export class Game {
     this.stormTimer = 0;
     this.stormPending = false;
     this.wormTimer = 12;
+    this.bossKills = 0;
+    this.powerupsTaken = 0;
+    this.wormholesUsed = 0;
     this.ghostCount = 0;
     this.ghostTick = 0;
     this.screen = 'playing';
@@ -228,6 +238,18 @@ export class Game {
   setDiving(active: boolean): void {
     if (this.screen !== 'playing' || this.mode === 'hardcore') return;
     this.orbitIndex = active ? 0 : 1;
+  }
+
+  /** Явная установка орбиты для клавиатуры. */
+  setOrbit(index: 0 | 1): void {
+    if (this.screen !== 'playing' || this.mode === 'hardcore') return;
+    this.orbitIndex = index;
+    if (!this.reducedMotion) this.zoom = Math.max(this.zoom, 0.02);
+  }
+
+  /** Траектория текущего забега (только для сохранения рекорда). */
+  getCurrentGhost(): { data: Float32Array; count: number } {
+    return { data: this.ghost, count: this.ghostCount };
   }
 
   update(dt: number): void {
@@ -462,6 +484,7 @@ export class Game {
         b.active = false;
         this.boss = null;
         this.score += 500 * this.level;
+        this.bossKills++;
         this.pulse = 1;
         this.events.emit('bossDown', this.level);
       } else {
@@ -535,6 +558,7 @@ export class Game {
       const dy = p.y - this.py;
       if (dx * dx + dy * dy >= (p.size + 14) * (p.size + 14)) continue;
       p.active = false;
+      this.powerupsTaken++;
 
       if (p.kind === 2) {
         this.teleportWormhole(list, p);
@@ -594,6 +618,7 @@ export class Game {
       const other = list[i];
       if (!other || other === from || !other.active || other.kind !== 2) continue;
       this.angle = Math.atan2(other.y - this.centerY, other.x - this.centerX);
+      this.wormholesUsed++;
       other.active = false;
       this.burst(from.x, from.y, 16, PHASE_C, 120);
       this.burst(other.x, other.y, 16, PHASE_C, 120);
@@ -824,6 +849,9 @@ export class Game {
     s.bossHp = this.boss ? this.boss.life : 0;
     s.bossCharge = this.bossCharge;
     s.stormWarn = this.stormPending ? 1 - this.stormTimer / 0.4 : 0;
+    s.bossKills = this.bossKills;
+    s.powerupsTaken = this.powerupsTaken;
+    s.wormholesUsed = this.wormholesUsed;
     return s;
   }
 

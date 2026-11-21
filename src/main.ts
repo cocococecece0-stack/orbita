@@ -28,6 +28,7 @@ let diveTimer = 0;
 function applyTheme(): void {
   const s = save.get().settings;
   document.documentElement.dataset['palette'] = s.palette;
+  document.documentElement.dataset['scene'] = s.theme;
   document.documentElement.lang = s.locale;
   document.documentElement.style.setProperty('--fx-intensity', String(s.fx));
   document.documentElement.style.setProperty('--grain', s.reducedMotion ? '0.01' : '0.04');
@@ -45,6 +46,11 @@ function applyTheme(): void {
 applyTheme();
 ui.setMenuBest(data.best);
 ui.syncSettings(save.get());
+{
+  const ghost = save.get().ghost;
+  if (ghost.length > 1) game.setBestGhost(Float32Array.from(ghost), ghost.length);
+  ui.refreshProgress(save.get());
+}
 
 function insets(): { top: number; right: number; bottom: number; left: number } {
   const cs = getComputedStyle(document.documentElement);
@@ -145,11 +151,18 @@ ui.onInput('set-music', (v) => { save.get().settings.music = v === 'true'; audio
 ui.onInput('set-haptics', (v) => { save.get().settings.haptics = v === 'true'; save.save(); });
 ui.onInput('set-lowfps', (v) => { save.get().settings.lowFps = v === 'true'; loop.setFpsCap(v === 'true' ? 30 : 0); save.save(); });
 ui.onInput('set-fx', (v) => { save.get().settings.fx = Number(v); applyTheme(); save.save(); });
+ui.onInput('set-theme', (v) => { save.setTheme(v as 'observatory' | 'neon' | 'sunset'); applyTheme(); });
 ui.onInput('set-palette', (v) => {
   save.get().settings.palette = v as 'default' | 'protan' | 'deutan' | 'tritan';
   applyTheme(); save.save();
 });
 ui.onInput('set-locale', (v) => { save.setLocale(v as 'ru' | 'en'); applyTheme(); });
+ui.onClaim((kind, index) => {
+  const ok = kind === 'daily' ? save.claimDaily(index) : save.claimSeason(index);
+  ui.toast(ok ? 'НАГРАДА ПОЛУЧЕНА' : 'НАГРАДА НЕДОСТУПНА');
+  ui.refreshProgress(save.get());
+});
+
 ui.on('export-code', () => {
   const code = save.exportCode();
   ui.setTransferCode(code);
@@ -227,16 +240,21 @@ const loop = new GameLoop({
     if (s.screen === 'gameover' && wasPlaying) {
       wasPlaying = false;
       const before = save.get().runs;
-      const earned = save.recordRun(
-        s.score, s.orbs, s.elapsed, s.combo, s.mode, s.isNewBest,
-        seedFor(s.mode),
-        { score: s.score, orbs: s.orbs, combo: s.combo, elapsed: s.elapsed,
+      const outcome = save.recordRun({
+        score: s.score, orbs: s.orbs, sec: s.elapsed, combo: s.combo,
+        mode: s.mode, isNewBest: s.isNewBest, seed: seedFor(s.mode),
+        context: { score: s.score, orbs: s.orbs, combo: s.combo, elapsed: s.elapsed,
           nearMisses: s.nearMisses, level: s.level, mode: s.mode, runs: before + 1,
-          isNewBest: s.isNewBest },
-      );
+          isNewBest: s.isNewBest, bossKills: s.bossKills, powerupsTaken: s.powerupsTaken,
+          wormholesUsed: s.wormholesUsed },
+        ghost: game.getCurrentGhost(),
+      });
       game.setBest(save.get().best);
       ui.showGameOver(s, save.get());
-      for (const a of earned) ui.toast(`ДОСТИЖЕНИЕ: ${a}`);
+      ui.refreshProgress(save.get());
+      for (const a of outcome.achievements) ui.toast(`ДОСТИЖЕНИЕ: ${a}`);
+      for (const m of outcome.missions) ui.toast(`ЗАДАНИЕ: ${m.title} · +${m.reward}`);
+      for (const i of outcome.seasonTiers) ui.toast(`СЕЗОННЫЙ УРОВЕНЬ ${i + 1}`);
     }
   },
   render: (_alpha: number, elapsed: number): void => {
