@@ -873,7 +873,8 @@ namespace Orbit.Galaxy.Unity
             GalaxyUiTheme.Label(row.transform, hint, 16, GalaxyUiTheme.Muted, TextAnchor.MiddleLeft,
                 new GBox(0f, 0f, 1f, 1f, 22f, 10f, -620f, -48f));
             GSlider slider = GalaxyUiTheme.Slider(row.transform, "Ползунок", value, GalaxyUiTheme.AccentA,
-                new GBox(0f, 0f, 1f, 1f, 940f, 36f, -120f, -36f), changed);
+                new GBox(0f, 0f, 1f, 1f, 940f, 36f, -120f, -36f),
+                delegate(float v) { changed(v); });
             Text percent = GalaxyUiTheme.Label(row.transform, Mathf.RoundToInt(value * 100f) + "%", 20, GalaxyUiTheme.AccentA,
                 TextAnchor.MiddleRight, new GBox(0f, 0f, 1f, 1f, 1180f, 14f, -22f, -14f), FontStyle.Bold);
             if (slider != null && slider.Slider != null)
@@ -894,7 +895,8 @@ namespace Orbit.Galaxy.Unity
             GalaxyUiTheme.Label(row.transform, hint, 16, GalaxyUiTheme.Muted, TextAnchor.MiddleLeft,
                 new GBox(0f, 0f, 1f, 1f, 22f, 10f, -620f, -48f));
             GalaxyUiTheme.Toggle(row.transform, "Переключатель", value, GalaxyUiTheme.AccentA,
-                new GBox(0f, 0.5f, 0f, 0.5f, 1040f, -20f, 1090f, 20f), changed);
+                new GBox(0f, 0.5f, 0f, 0.5f, 1040f, -20f, 1090f, 20f),
+                delegate(bool v) { changed(v); });
             return y + h + 10f;
         }
 
