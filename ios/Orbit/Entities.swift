@@ -2,6 +2,12 @@ import SwiftUI
 
 enum GameStatus { case ready, playing, gameOver }
 
+/// Одно предложение мутации: индексы из Content.perks.
+struct PerkDraft {
+    let options: [Int]
+    let round: Int
+}
+
 enum Palette {
     static let player = Color(hex: 0x22D3EE)
     static let orb = Color(hex: 0xFBBF24)

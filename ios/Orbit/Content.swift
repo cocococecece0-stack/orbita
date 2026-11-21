@@ -91,6 +91,21 @@ struct AchievementDef {
     let xp: Int
 }
 
+/// Мутации забега: игрок выбирает одну из трёх каждые ~18 секунд.
+struct Perk {
+    let id: String
+    let title: String
+    let detail: String
+    let glyph: String
+}
+
+/// Цель забега: видна в брифинге и в HUD, даёт смысл каждому полёту.
+struct Objective {
+    let title: String
+    let target: Int
+    let field: String
+}
+
 struct ShopItem {
     let id: String
     let title: String
@@ -131,6 +146,26 @@ enum Content {
 
     /// Типы боссов: ядро, рой и импульс. Индекс хранится в Boss.kind.
     static let bossNames = ["ЯДРО", "РОЙ", "ИМПУЛЬС"]
+
+    static let perks = [
+        Perk(id: "overclock", title: "ПЕРЕГРУЗ", detail: "+25% очков до конца забега", glyph: "✦"),
+        Perk(id: "barrier", title: "БАРЬЕР", detail: "Щит на 14 секунд", glyph: "◆"),
+        Perk(id: "magnet", title: "МАГНИТ", detail: "Сферы притягиваются 10 секунд", glyph: "◎"),
+        Perk(id: "slowmo", title: "ЗАМЕДЛЕНИЕ", detail: "Угрозы летят медленнее 10 секунд", glyph: "◐"),
+        Perk(id: "pulse", title: "ИМПУЛЬС", detail: "Волна резонанса очищает орбиту", glyph: "✺"),
+        Perk(id: "ghost", title: "ФАНТОМ", detail: "Неуязвимость на 8 секунд", glyph: "◇"),
+        Perk(id: "harvest", title: "УРОЖАЙ", detail: "Сферы дают двойной опыт", glyph: "●"),
+        Perk(id: "chronos", title: "ХРОНОС", detail: "+12 секунд, если есть таймер", glyph: "◷"),
+    ]
+
+    static func objective(_ mode: Mode, sectorId: Int) -> Objective {
+        let tier = sector(sectorId).id
+        switch mode {
+        case .zen: return Objective(title: "СОБРАТЬ СФЕР", target: 18 + tier * 4, field: "orbs")
+        case .sprint: return Objective(title: "НАБРАТЬ ОЧКОВ", target: 1200 + tier * 300, field: "score")
+        default: return Objective(title: "НАБРАТЬ ОЧКОВ", target: 600 + tier * 200, field: "score")
+        }
+    }
 
     /// Сезонные модификаторы: выбираются детерминированно по номеру сезона.
     static let seasonModifiers: [(String, CGFloat)] = [

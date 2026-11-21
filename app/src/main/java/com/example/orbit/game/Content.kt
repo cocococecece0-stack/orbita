@@ -58,6 +58,32 @@ object Content {
     /** Типы боссов: ядро, рой и импульс. Индекс хранится в [Boss.kind]. */
     val bossNames = listOf("ЯДРО", "РОЙ", "ИМПУЛЬС")
 
+    /** Мутации забега: игрок выбирает одну из трёх каждые ~20 секунд. */
+    data class Perk(val id: String, val title: String, val detail: String, val glyph: String)
+
+    val perks = listOf(
+        Perk("overclock", "ПЕРЕГРУЗ", "+25% очков до конца забега", "✦"),
+        Perk("barrier", "БАРЬЕР", "Щит на 14 секунд", "◆"),
+        Perk("magnet", "МАГНИТ", "Сферы притягиваются 10 секунд", "◎"),
+        Perk("slowmo", "ЗАМЕДЛЕНИЕ", "Угрозы летят медленнее 10 секунд", "◐"),
+        Perk("pulse", "ИМПУЛЬС", "Волна резонанса очищает орбиту", "✺"),
+        Perk("ghost", "ФАНТОМ", "Неуязвимость на 8 секунд", "◇"),
+        Perk("harvest", "УРОЖАЙ", "Сферы дают двойной опыт", "●"),
+        Perk("chronos", "ХРОНОС", "+12 секунд, если есть таймер", "◷"),
+    )
+
+    /** Цель забега: видна в брифинге и в HUD, даёт смысл каждому полёту. */
+    data class Objective(val title: String, val target: Int, val field: String)
+
+    fun objective(mode: Mode, sectorId: Int): Objective {
+        val tier = sector(sectorId).id
+        return when (mode) {
+            Mode.Zen -> Objective("СОБРАТЬ СФЕР", 18 + tier * 4, "orbs")
+            Mode.Sprint -> Objective("НАБРАТЬ ОЧКОВ", 1200 + tier * 300, "score")
+            else -> Objective("НАБРАТЬ ОЧКОВ", 600 + tier * 200, "score")
+        }
+    }
+
     /** Сезонные модификаторы: выбираются детерминированно по номеру сезона. */
     val seasonModifiers = listOf(
         "СТАНДАРТ" to 1.00f,

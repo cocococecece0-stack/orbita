@@ -95,6 +95,7 @@ import com.example.orbit.game.GameStatus
 import com.example.orbit.game.Mode
 import com.example.orbit.game.Palette
 import kotlin.math.ceil
+import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
@@ -106,7 +107,7 @@ private val DangerRed = Color(0xFFFF6B6B)
 private val PanelColor = Color(0xE60A071C)
 private val MutedText = Color(0xFF9AA3B8)
 
-private enum class Screen { Hub, Missions, Hangar, Shop, Achievements, Stats, Settings }
+private enum class Screen { Hub, Guide, Missions, Hangar, Shop, Achievements, Stats, Settings }
 
 @Composable
 fun GameScreen(viewModel: GameViewModel = viewModel()) {
@@ -139,7 +140,8 @@ fun GameScreen(viewModel: GameViewModel = viewModel()) {
     val phaseSeconds by remember(frame) { derivedStateOf { ceil(engine.phaseTimer).toInt() } }
     val freezeSeconds by remember(frame) { derivedStateOf { ceil(engine.freezeTimer).toInt() } }
 
-    val hudVisible = screen == null && engine.status == GameStatus.Playing && !engine.paused && !confirmExit
+    val hudVisible = screen == null && engine.status == GameStatus.Playing && !engine.paused &&
+        engine.draft == null && !confirmExit
 
     fun haptic(type: HapticFeedbackType) {
         if (!viewModel.store.data.settings.haptics) return
@@ -266,7 +268,11 @@ fun GameScreen(viewModel: GameViewModel = viewModel()) {
     DisposableEffect(lifecycleOwner, engine, sound) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_PAUSE -> { engine.pause(); sound.pauseMusic() }
+                Lifecycle.Event.ON_PAUSE -> {
+                    // Выбор мутации уже замораживает симуляцию: не оставляем игру на паузе после выбора.
+                    if (engine.draft == null) engine.pause()
+                    sound.pauseMusic()
+                }
                 Lifecycle.Event.ON_RESUME -> {
                     if (screen == null && engine.status == GameStatus.Playing && !engine.paused) sound.resumeMusic()
                 }
@@ -291,7 +297,7 @@ fun GameScreen(viewModel: GameViewModel = viewModel()) {
                     .fillMaxSize()
                     .onSizeChanged { engine.resize(it.width, it.height) }
                     .then(
-                        if (engine.status == GameStatus.Playing && !engine.paused && !confirmExit) {
+                        if (engine.status == GameStatus.Playing && !engine.paused && engine.draft == null && !confirmExit) {
                             Modifier.pointerInput(engine) { detectTapGestures { engine.tap() } }
                         } else Modifier,
                     ),
@@ -321,6 +327,12 @@ fun GameScreen(viewModel: GameViewModel = viewModel()) {
                     onResume = { engine.resume(); sound.resumeMusic() },
                     onRestart = { startRun() },
                     onHome = { goHub() },
+                    onPickPerk = { index ->
+                        engine.choosePerk(index)
+                        sound.play("powerup")
+                        sound.resumeMusic()
+                        haptic(HapticFeedbackType.LongPress)
+                    },
                 )
             }
             if (confirmExit) {
@@ -342,6 +354,7 @@ fun GameScreen(viewModel: GameViewModel = viewModel()) {
             }
             when (screen) {
                 Screen.Hub -> HubScreen(viewModel, engine, art, frame, ::startRun, ::openScreen)
+                Screen.Guide -> GuideScreen(viewModel, ::goHub)
                 Screen.Missions -> MissionsScreen(viewModel, ::goHub)
                 Screen.Hangar -> HangarScreen(viewModel, art, ::goHub)
                 Screen.Shop -> ShopScreen(viewModel, ::goHub)
@@ -415,6 +428,16 @@ private fun InGameHud(
             }
         }
 
+        val objective = engine.objective()
+        val reached = min(engine.objectiveValue(), objective.target)
+        Spacer(Modifier.height(6.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+            EffectChip(
+                "${objective.title} $reached/${objective.target}",
+                if (engine.objectiveDone()) Palette.Shield else Amber,
+            )
+        }
+
         Spacer(Modifier.height(6.dp))
         Bar(engine.resonance.coerceIn(0f, 1f), Neon, "РЕЗОНАНС ${(engine.resonance * 100f).toInt()}%")
 
@@ -429,6 +452,15 @@ private fun InGameHud(
             Spacer(Modifier.height(10.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                 chips.forEach { (label, color) -> EffectChip(label, color); Spacer(Modifier.width(5.dp)) }
+            }
+        }
+        if (engine.perkIds.isNotEmpty()) {
+            Spacer(Modifier.height(6.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                engine.perkIds.forEach { index ->
+                    Content.perks.getOrNull(index)?.let { EffectChip("${it.glyph} ${it.title}", Violet) }
+                    Spacer(Modifier.width(5.dp))
+                }
             }
         }
 
@@ -509,8 +541,10 @@ private fun GameOverlays(
     onResume: () -> Unit,
     onRestart: () -> Unit,
     onHome: () -> Unit,
+    onPickPerk: (Int) -> Unit,
 ) {
     when {
+        engine.draft != null -> DraftOverlay(engine, onPickPerk)
         engine.paused -> ModalCard {
             Title("ПАУЗА", Neon)
             Body("Полёт приостановлен")
@@ -529,6 +563,18 @@ private fun GameOverlays(
             if (engine.isNewRecord) Text("НОВЫЙ РЕКОРД", color = Amber, fontSize = 12.sp, letterSpacing = 3.sp)
             else Text("Рекорд: $best", color = MutedText, fontSize = 12.sp)
             Spacer(Modifier.height(10.dp))
+            val objective = engine.objective()
+            val reached = min(engine.objectiveValue(), objective.target)
+            StatRow(
+                if (engine.objectiveDone()) "ЦЕЛЬ ВЫПОЛНЕНА: ${objective.title} $reached/${objective.target}"
+                else "ЦЕЛЬ: ${objective.title} $reached/${objective.target}",
+                if (engine.objectiveDone()) Palette.Shield else Amber,
+            )
+            if (engine.perkIds.isNotEmpty()) {
+                StatRow("Мутации: " + engine.perkIds.joinToString(" · ") {
+                    Content.perks.getOrNull(it)?.let { perk -> "${perk.glyph} ${perk.title}" } ?: "—"
+                }, Violet)
+            }
             StatRow(
                 "Уровень ${engine.level} · Сферы ${engine.orbsCollected} · Комбо x${engine.maxCombo} · " +
                     "Уклонения ${engine.stats.dodges} · Боссы ${engine.stats.bossKills}",
@@ -548,6 +594,41 @@ private fun GameOverlays(
             Spacer(Modifier.height(12.dp))
             SecondaryButton("В ХАБ", onHome, accent = MutedText)
         }
+    }
+}
+
+/** Рогалик-выбор: три мутации, полёт стоит до выбора. */
+@Composable
+private fun DraftOverlay(engine: GameEngine, onPick: (Int) -> Unit) {
+    val draft = engine.draft ?: return
+    ModalCard {
+        Title("ВЫБОР МУТАЦИИ", Neon)
+        Body("Раунд ${draft.round} · возьми одно преимущество на этот полёт")
+        Spacer(Modifier.height(16.dp))
+        draft.options.forEachIndexed { index, perkIndex ->
+            val perk = Content.perks.getOrNull(perkIndex) ?: return@forEachIndexed
+            Surface(
+                color = Color(0xF2121A38),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { onPick(index) },
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(perk.glyph, color = Amber, fontSize = 28.sp, modifier = Modifier.width(36.dp))
+                    Column {
+                        Text(perk.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Black,
+                            letterSpacing = 1.sp)
+                        Spacer(Modifier.height(3.dp))
+                        Text(perk.detail, color = MutedText, fontSize = 11.sp)
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+        Spacer(Modifier.height(4.dp))
+        Body("Следующий выбор — примерно через 18 секунд полёта.", Violet.copy(alpha = 0.85f))
     }
 }
 
@@ -641,6 +722,25 @@ private fun HubScreen(
             )
         }
 
+        Spacer(Modifier.height(12.dp))
+        val briefing = Content.objective(mode, sector.id)
+        Panel(color = Color(0xF2111730)) {
+            Text("БРИФИНГ ПОЛЁТА", color = Neon, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                letterSpacing = 3.sp)
+            Spacer(Modifier.height(6.dp))
+            Text("${briefing.title}: ${briefing.target}", color = Amber, fontSize = 16.sp,
+                fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+            Spacer(Modifier.height(4.dp))
+            Body("Сферы дают опыт и очки. Тап меняет направление, удар об угрозу ломает комбо.")
+            Spacer(Modifier.height(8.dp))
+            Text("МУТАЦИИ КАЖДЫЕ ~18 СЕК", color = Violet, fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                letterSpacing = 2.sp)
+            Spacer(Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Content.perks.take(3).forEach { EffectChip("${it.glyph} ${it.title}", Violet) }
+            }
+        }
+
         Spacer(Modifier.height(20.dp))
         SectionTitle("РЕЖИМ")
         FlowRow(
@@ -681,7 +781,7 @@ private fun HubScreen(
         Body("${sector.subtitle} · Рекорд ${save.bestByMode[mode.id] ?: 0}")
 
         Spacer(Modifier.height(22.dp))
-        WideButton("НАЧАТЬ ПОЛЁТ  ▸", onStart)
+        WideButton("НАЧАТЬ МИССИЮ  ▸", onStart)
         Spacer(Modifier.height(12.dp))
         val missionsDone = missions.indices.count { i ->
             save.dailyProgress.getOrNull(i)?.let { v -> v >= missions[i].goal } == true
@@ -690,10 +790,14 @@ private fun HubScreen(
         if (!save.tutorialSeen) {
             Spacer(Modifier.height(10.dp))
             Body("Подсказка: тап во время полёта меняет направление.", Neon.copy(alpha = 0.85f))
+        } else {
+            Spacer(Modifier.height(10.dp))
+            Body("Совет: мутации усиливают забег — бери те, что подходят под режим.", Neon.copy(alpha = 0.7f))
         }
         Spacer(Modifier.height(20.dp))
 
         val tiles = listOf(
+            Triple("СУТЬ ИГРЫ", "Правила и мутации", Screen.Guide),
             Triple("АНГАР", "Корабли и улучшения", Screen.Hangar),
             Triple("МАГАЗИН", "Предметы за жетоны", Screen.Shop),
             Triple("ДОСТИЖЕНИЯ", "Награды и секреты", Screen.Achievements),
@@ -714,6 +818,55 @@ private fun HubScreen(
 }
 
 // -------------------------------------------------------------- SCREENS ---
+
+@Composable
+private fun GuideScreen(viewModel: GameViewModel, onBack: () -> Unit) {
+    val save = viewModel.store.data
+    val mode = Mode.from(save.selectedMode)
+    val objective = Content.objective(mode, save.selectedSector)
+    ScrollScreen("СУТЬ ИГРЫ", viewModel, onBack,
+        "Орбита — это ритм: увернись вовремя, собирай сферы и усиливай забег мутациями.") {
+        Panel(color = Color(0xF2111730)) {
+            Text("ЦЕЛЬ ВЫЛЕТА", color = Neon, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                letterSpacing = 3.sp)
+            Spacer(Modifier.height(6.dp))
+            Text("${objective.title}: ${objective.target}", color = Amber, fontSize = 20.sp,
+                fontWeight = FontWeight.Black)
+            Spacer(Modifier.height(4.dp))
+            Body("Цель зависит от режима и сектора. Выполнение даёт +200 очков и засчитывается в итоге.")
+        }
+        Spacer(Modifier.height(16.dp))
+        SectionTitle("КАК ИГРАТЬ")
+        val steps = listOf(
+            "01  КОСНИСЬ СФЕРЫ" to "Жёлтые точки дают опыт, очки и заряд резонанса. Чем длиннее серия, тем выше множитель.",
+            "02  МЕНЯЙ НАПРАВЛЕНИЕ" to "Тап разворачивает корабль. Метеориты приходят со всех сторон — читай траекторию заранее.",
+            "03  ВЫБИРАЙ МУТАЦИЮ" to "Каждые ~18 секунд полёт останавливается: возьми одно из трёх улучшений на этот забег.",
+            "04  ВЫПОЛНИ ЦЕЛЬ" to "Держи комбо, не дай угрозам сомкнуться у орбиты и заверши миссию на рекорд.",
+        )
+        steps.forEach { (head, text) ->
+            Panel {
+                Text(head, color = Violet, fontSize = 12.sp, fontWeight = FontWeight.Black,
+                    letterSpacing = 1.sp)
+                Spacer(Modifier.height(4.dp))
+                Body(text)
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+        Spacer(Modifier.height(12.dp))
+        SectionTitle("МУТАЦИИ", Amber)
+        Content.perks.forEach { perk ->
+            Panel {
+                Text("${perk.glyph}  ${perk.title}", color = Amber, fontSize = 13.sp,
+                    fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                Spacer(Modifier.height(3.dp))
+                Body(perk.detail)
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+        Spacer(Modifier.height(8.dp))
+        Body("Мутации работают только внутри забега и не меняют сохранённый прогресс.")
+    }
+}
 
 @Composable
 private fun MissionsScreen(viewModel: GameViewModel, onBack: () -> Unit) {
@@ -1085,7 +1238,7 @@ private fun SettingsScreen(
             }
         }
         Spacer(Modifier.height(24.dp))
-        Body("Орбита 3.5 · Локальная игра без рекламы и сети")
+        Body("Орбита 3.6 · Локальная игра без рекламы и сети")
     }
 }
 

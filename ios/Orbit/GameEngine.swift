@@ -19,6 +19,9 @@ final class GameEngine: ObservableObject {
     @Published var timeLeft: CGFloat = -1
     @Published var completed = false
     @Published var fever = false
+    /// Открытый выбор мутации: пока он не null, симуляция на паузе.
+    @Published var draft: PerkDraft?
+    @Published var perkIds: [Int] = []
 
     var skinColor: Color = Palette.player
     var mode: Mode = .classic
@@ -92,6 +95,11 @@ final class GameEngine: ObservableObject {
     private var upgradeSlow = false
     private var upgradeDouble = false
     private var reducedMotion = false
+    private var scoreBoost: CGFloat = 1
+    private var orbBoost = 1
+    private var nextDraftAt: CGFloat = 16
+    private var draftRound = 0
+    private var objectiveRewarded = false
 
     private var ghostBuffer = [CGFloat](repeating: 0, count: 4096)
     private(set) var ghostCount = 0
@@ -151,6 +159,8 @@ final class GameEngine: ObservableObject {
         orbSpawnCursor = 0
         hazardSpawnCursor = rnd() * tau
         time = 0; shake = 0; reverseFlash = 0; speedLevel = 0
+        draft = nil; perkIds.removeAll(); scoreBoost = 1; orbBoost = 1; nextDraftAt = 16; draftRound = 0
+        objectiveRewarded = false
         fever = false; completed = false; reviveAvailable = false
         timeLeft = mode.seconds > 0 ? CGFloat(mode.seconds) + (upgradeTime ? 8 : 0) : -1
         stats = RunStats(level: level)
@@ -176,7 +186,7 @@ final class GameEngine: ObservableObject {
 
     func pause() { if status == .playing { paused = true } }
     func resume() { paused = false }
-    func toReady() { status = .ready; paused = false; shieldTime = 0 }
+    func toReady() { status = .ready; paused = false; shieldTime = 0; draft = nil }
 
     /// Выход из забега домой: результат фиксируется, а не теряется.
     func abandonRun() {
@@ -184,6 +194,7 @@ final class GameEngine: ObservableObject {
         status = .gameOver
         completed = false
         paused = false
+        draft = nil
         stats.seconds = Int(elapsed)
         onRunEnd?(stats)
     }
@@ -194,18 +205,20 @@ final class GameEngine: ObservableObject {
         let step = max(0, min(raw, 0.05))
         time += step
         elapsed += step
-        // Таймер тикает по реальному времени, даже во время hit-stop.
-        if status == .playing && !paused && timeLeft > 0 {
+        // Во время выбора мутации полёт заморожен: таймер и угрозы не двигаются.
+        let running = status == .playing && !paused && draft == nil
+        if running && timeLeft > 0 {
             timeLeft = max(0, timeLeft - step)
             stats.seconds = Int(elapsed)
             if timeLeft <= 0 { finishRun(); return }
-        } else if status == .playing && !paused {
+        } else if running {
             stats.seconds = Int(elapsed)
         }
         decayVisuals(step)
         updateParticles(step)
         updateTrail(step)
-        guard status == .playing, !paused else { return }
+        guard running else { return }
+        if draftRound < 6 && time >= nextDraftAt { openDraft(); return }
         if hitStop > 0 { hitStop = max(0, hitStop - step); return }
         eventCooldown = max(0, eventCooldown - step)
 
@@ -237,6 +250,11 @@ final class GameEngine: ObservableObject {
         updateSpawns(step)
         updateHazards(step)
         updateCollisions(step)
+        if status == .playing && !objectiveRewarded && objectiveDone() {
+            objectiveRewarded = true
+            resonanceFlash = 1
+            addPoints(200)
+        }
     }
 
     private func updateSpawns(_ step: CGFloat) {
@@ -432,13 +450,13 @@ final class GameEngine: ObservableObject {
         switch o.kind {
         case .normal:
             stats.orbs += 1; orbsCollected += 1
-            rewardSkill(2); onEvent?(.orb)
+            rewardSkill(2 * orbBoost); onEvent?(.orb)
         case .golden:
             stats.orbs += 1; stats.goldenOrbs += 1; orbsCollected += 1
-            rewardSkill(8); onEvent?(.goldenOrb(combo))
+            rewardSkill(8 * orbBoost); onEvent?(.goldenOrb(combo))
         case .artifact:
             stats.rareOrbs += 1
-            rewardSkill(25); onEvent?(.artifact)
+            rewardSkill(25 * orbBoost); onEvent?(.artifact)
         }
         let ox = centerX + cos(o.angle) * orbitRadius
         let oy = centerY + sin(o.angle) * orbitRadius
@@ -523,7 +541,8 @@ final class GameEngine: ObservableObject {
     }
 
     private func addPoints(_ base: Int) {
-        let gained = base * multiplier * (doubleTimer > 0 ? 2 : 1)
+        let boosted = max(1, Int(CGFloat(base) * scoreBoost + 0.5))
+        let gained = boosted * multiplier * (doubleTimer > 0 ? 2 : 1)
         let sum = score.addingReportingOverflow(gained)
         score = sum.overflow ? Int.max / 4 : min(Int.max / 4, sum.partialValue)
         stats.score = score
@@ -538,6 +557,47 @@ final class GameEngine: ObservableObject {
             best = score
             if !isNewRecord { isNewRecord = true; onNewRecord?(score) }
         }
+    }
+
+    /// Цель забега: та же формула на обеих платформах.
+    func objective() -> Objective { Content.objective(mode, sectorId: sectorId) }
+
+    func objectiveValue() -> Int { objective().field == "orbs" ? orbsCollected : score }
+
+    func objectiveDone() -> Bool { objectiveValue() >= objective().target }
+
+    /// Открыть выбор мутации: три разных предложения из общего пула.
+    private func openDraft() {
+        draftRound += 1
+        var pool = Content.perks.indices.map { $0 }
+        var options: [Int] = []
+        for _ in 0..<3 {
+            let at = Int(rnd() * CGFloat(pool.count))
+            options.append(pool.remove(at: min(max(at, 0), pool.count - 1)))
+        }
+        draft = PerkDraft(options: options, round: draftRound)
+    }
+
+    /// Применить выбранную мутацию и продолжить полёт.
+    func choosePerk(_ option: Int) {
+        guard let current = draft, current.options.indices.contains(option) else { return }
+        let index = current.options[option]
+        let perk = Content.perks[index]
+        perkIds.append(index)
+        switch perk.id {
+        case "overclock": scoreBoost += 0.25
+        case "barrier": shield = true; shieldTime = max(shieldTime, 14)
+        case "magnet": magnetTimer = max(magnetTimer, 10)
+        case "slowmo": slowTimer = max(slowTimer, 10)
+        case "pulse": triggerResonance()
+        case "ghost": phaseTimer = max(phaseTimer, 8); invulnerable = max(invulnerable, 8)
+        case "harvest": orbBoost = 2
+        case "chronos": if timeLeft > 0 { timeLeft += 12 } else { addPoints(150) }
+        default: break
+        }
+        nextDraftAt = time + 18
+        paused = false
+        draft = nil
     }
 
     private func handleHit(_ a: Asteroid) {
@@ -593,6 +653,7 @@ final class GameEngine: ObservableObject {
         status = .gameOver
         completed = true
         paused = false
+        draft = nil
         stats.seconds = max(1, Int(elapsed))
         onRunEnd?(stats)
         onEvent?(.finish)

@@ -4,6 +4,9 @@ import androidx.compose.ui.graphics.Color
 
 enum class GameStatus { Ready, Playing, GameOver }
 
+/** Одно предложение мутации: индексы из [Content.perks]. */
+data class PerkDraft(val options: List<Int>, val round: Int)
+
 object Palette {
     val Player = Color(0xFF22D3EE)
     val Orb = Color(0xFFFBBF24)

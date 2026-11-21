@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 private enum Screen: String {
-    case hub, missions, hangar, shop, achievements, stats, settings
+    case hub, guide, missions, hangar, shop, achievements, stats, settings
 }
 
 struct ContentView: View {
@@ -33,7 +33,7 @@ struct ContentView: View {
     private var save: SaveData { store.data }
     private var mode: Mode { Mode.from(save.selectedMode) }
     private var sector: SectorDef { Content.sector(save.selectedSector) }
-    private var isModalShown: Bool { engine.paused || engine.status == .gameOver }
+    private var isModalShown: Bool { engine.paused || engine.draft != nil || engine.status == .gameOver }
 
     var body: some View {
         GeometryReader { geo in
@@ -52,14 +52,14 @@ struct ContentView: View {
                         .ignoresSafeArea()
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            guard engine.status == .playing, !engine.paused else { return }
+                            guard engine.status == .playing, !engine.paused, engine.draft == nil else { return }
                             engine.tap()
                         }
                         .onAppear { engine.resize(geo.size) }
                         .onChange(of: geo.size) { engine.resize($0) }
 
                         // HUD скрыт на паузе и на экране результата, чтобы чипы не перекрывали затемнение.
-                        if engine.status == .playing && !engine.paused && !showAbandonConfirm {
+                        if engine.status == .playing && !engine.paused && engine.draft == nil && !showAbandonConfirm {
                             hud
                         }
                         gameOverlays
@@ -75,6 +75,7 @@ struct ContentView: View {
                         Group {
                             switch screen {
                             case .hub: hubScreen
+                            case .guide: guideScreen
                             case .missions: missionsScreen
                             case .hangar: hangarScreen
                             case .shop: shopScreen
@@ -102,7 +103,8 @@ struct ContentView: View {
         }
         .onChange(of: scenePhase) { phase in
             if phase != .active {
-                engine.pause()
+                // Выбор мутации уже замораживает симуляцию: не оставляем игру на паузе после выбора.
+                if engine.draft == nil { engine.pause() }
                 sound.pauseMusic()
             } else if screen == nil, engine.status == .playing, !engine.paused {
                 sound.resumeMusic()
@@ -269,6 +271,12 @@ struct ContentView: View {
                     .padding(.top, 8)
             }
 
+            let objective = engine.objective()
+            let reached = min(engine.objectiveValue(), objective.target)
+            chip("\(objective.title) \(reached)/\(objective.target)",
+                 engine.objectiveDone() ? Palette.shield : Palette.orb)
+                .padding(.top, 6)
+
             bar(Float(engine.resonance), Palette.player,
                 "РЕЗОНАНС \(Int(engine.resonance * 100))%")
                 .padding(.top, 6)
@@ -281,6 +289,15 @@ struct ContentView: View {
                     }
                 }
                 .padding(.top, 8)
+            }
+            if !engine.perkIds.isEmpty {
+                HStack(spacing: 5) {
+                    ForEach(engine.perkIds.indices, id: \.self) { i in
+                        let perk = Content.perks[engine.perkIds[i]]
+                        chip("\(perk.glyph) \(perk.title)", Palette.slow)
+                    }
+                }
+                .padding(.top, 6)
             }
             Spacer()
             if engine.stormWarning > 0 {
@@ -354,7 +371,41 @@ struct ContentView: View {
 
     @ViewBuilder
     private var gameOverlays: some View {
-        if engine.paused {
+        if let draft = engine.draft {
+            modal {
+                title("ВЫБОР МУТАЦИИ", Palette.player)
+                bodyText("Раунд \(draft.round) · возьми одно преимущество на этот полёт")
+                Spacer().frame(height: 14)
+                VStack(spacing: 10) {
+                    ForEach(draft.options.indices, id: \.self) { i in
+                        let perk = Content.perks[draft.options[i]]
+                        Button {
+                            engine.choosePerk(i)
+                            sound.play("powerup")
+                            sound.resumeMusic()
+                            haptic(.heavy)
+                        } label: {
+                            HStack(spacing: 12) {
+                                Text(perk.glyph).font(.system(size: 26, weight: .bold))
+                                    .foregroundColor(Palette.orb).frame(width: 32)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(perk.title).font(.system(size: 14, weight: .black))
+                                        .foregroundColor(.white)
+                                    Text(perk.detail).font(.system(size: 11)).foregroundColor(.gray)
+                                }
+                                Spacer(minLength: 0)
+                            }
+                            .padding(14)
+                            .background(RoundedRectangle(cornerRadius: 16)
+                                .fill(Color(hex: 0x121A38)))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                Spacer().frame(height: 10)
+                bodyText("Следующий выбор — примерно через 18 секунд полёта.", Palette.slow)
+            }
+        } else if engine.paused {
             modal {
                 title("ПАУЗА", Palette.player)
                 bodyText("Полёт приостановлен")
@@ -376,6 +427,16 @@ struct ContentView: View {
                     Text("Рекорд: \(save.bestByMode[mode.id] ?? 0)").font(.system(size: 12)).foregroundColor(.gray)
                 }
                 Spacer().frame(height: 8)
+                let objective = engine.objective()
+                let reached = min(engine.objectiveValue(), objective.target)
+                bodyText(engine.objectiveDone()
+                         ? "ЦЕЛЬ ВЫПОЛНЕНА: \(objective.title) \(reached)/\(objective.target)"
+                         : "ЦЕЛЬ: \(objective.title) \(reached)/\(objective.target)",
+                         engine.objectiveDone() ? Palette.shield : Palette.orb)
+                if !engine.perkIds.isEmpty {
+                    bodyText("Мутации: " + engine.perkIds.map { Content.perks[$0].title }.joined(separator: " · "),
+                             Palette.slow)
+                }
                 VStack(alignment: .leading, spacing: 3) {
                     bodyText("Уровень \(engine.level)")
                     bodyText("Сферы \(engine.orbsCollected)")
@@ -492,6 +553,24 @@ struct ContentView: View {
                             .lineLimit(1).minimumScaleFactor(0.8)
                     }
 
+                    let briefing = Content.objective(mode, sectorId: sector.id)
+                    panel {
+                        sectionTitle("БРИФИНГ ПОЛЁТА")
+                        Text("\(briefing.title): \(briefing.target)")
+                            .font(.system(size: 16, weight: .black)).foregroundColor(Palette.orb)
+                        bodyText("Сферы дают опыт и очки. Тап меняет направление, удар об угрозу ломает комбо.")
+                        Spacer().frame(height: 6)
+                        Text("МУТАЦИИ КАЖДЫЕ ~18 СЕК")
+                            .font(.system(size: 9, weight: .bold)).tracking(2)
+                            .foregroundColor(Palette.slow)
+                        HStack(spacing: 6) {
+                            ForEach(Content.perks.prefix(3), id: \.id) { perk in
+                                chip("\(perk.glyph) \(perk.title)", Palette.slow)
+                            }
+                        }
+                        .padding(.top, 4)
+                    }
+
                     sectionTitle("РЕЖИМ")
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 62), spacing: 6)], spacing: 6) {
                         ForEach(Content.modes, id: \.id) { m in
@@ -518,8 +597,8 @@ struct ContentView: View {
                     bodyText("\(sector.subtitle) · Рекорд \(save.bestByMode[mode.id] ?? 0)")
 
                     Spacer().frame(height: 6)
-                    wideButton("НАЧАТЬ ПОЛЁТ  ▸") { startRun() }
-                    bodyText("Тап во время полёта меняет направление.")
+                    wideButton("НАЧАТЬ МИССИЮ  ▸") { startRun() }
+                    bodyText("Тап во время полёта меняет направление. Каждые ~18 секунд ждёт выбор мутации.")
                     Spacer().frame(height: 12)
                     let defs = Content.missionsFor(save.dailyDate)
                     let done = defs.enumerated().filter { save.dailyProgress[$0.offset] >= $0.element.goal }.count
@@ -527,6 +606,7 @@ struct ContentView: View {
 
                     Spacer().frame(height: 16)
                     let tiles: [(String, String, Screen)] = [
+                        ("СУТЬ ИГРЫ", "Правила и мутации", .guide),
                         ("АНГАР", "Корабли и улучшения", .hangar),
                         ("МАГАЗИН", "Предметы за жетоны", .shop),
                         ("ДОСТИЖЕНИЯ", "Награды и секреты", .achievements),
@@ -539,10 +619,6 @@ struct ContentView: View {
                             navTile(tiles[i*2+1].0, tiles[i*2+1].1) { open(tiles[i*2+1].2) }
                         }
                     }
-                    HStack(spacing: 10) {
-                        navTile(tiles[4].0, tiles[4].1) { open(tiles[4].2) }
-                        Spacer()
-                    }
                     Spacer().frame(height: 20)
                 }
                 .padding(.horizontal, 20)
@@ -550,6 +626,46 @@ struct ContentView: View {
                 .padding(.bottom, geo.safeAreaInsets.bottom + 16)
             }
             .scrollDismissesKeyboard(.interactively)
+        }
+    }
+
+    // MARK: - Guide
+
+    private var guideScreen: some View {
+        let objective = Content.objective(mode, sectorId: save.selectedSector)
+        return scrollScreen("СУТЬ ИГРЫ",
+                            "Орбита — это ритм: увернись вовремя, собирай сферы и усиливай забег мутациями.") {
+            panel {
+                sectionTitle("ЦЕЛЬ ВЫЛЕТА")
+                Text("\(objective.title): \(objective.target)")
+                    .font(.system(size: 20, weight: .black)).foregroundColor(Palette.orb)
+                bodyText("Цель зависит от режима и сектора. Выполнение даёт +200 очков и засчитывается в итоге.")
+            }
+            sectionTitle("КАК ИГРАТЬ")
+            let steps: [(String, String)] = [
+                ("01  КОСНИСЬ СФЕРЫ", "Жёлтые точки дают опыт, очки и заряд резонанса. Чем длиннее серия, тем выше множитель."),
+                ("02  МЕНЯЙ НАПРАВЛЕНИЕ", "Тап разворачивает корабль. Метеориты приходят со всех сторон — читай траекторию заранее."),
+                ("03  ВЫБИРАЙ МУТАЦИЮ", "Каждые ~18 секунд полёт останавливается: возьми одно из трёх улучшений на этот забег."),
+                ("04  ВЫПОЛНИ ЦЕЛЬ", "Держи комбо, не дай угрозам сомкнуться у орбиты и заверши миссию на рекорд."),
+            ]
+            ForEach(steps.indices, id: \.self) { i in
+                panel {
+                    Text(steps[i].0).font(.system(size: 12, weight: .black)).tracking(1)
+                        .foregroundColor(Palette.slow)
+                    Spacer().frame(height: 4)
+                    bodyText(steps[i].1)
+                }
+            }
+            sectionTitle("МУТАЦИИ")
+            ForEach(Content.perks, id: \.id) { perk in
+                panel {
+                    Text("\(perk.glyph)  \(perk.title)").font(.system(size: 13, weight: .black))
+                        .tracking(1).foregroundColor(Palette.orb)
+                    Spacer().frame(height: 3)
+                    bodyText(perk.detail)
+                }
+            }
+            bodyText("Мутации работают только внутри забега и не меняют сохранённый прогресс.")
         }
     }
 
@@ -905,7 +1021,7 @@ struct ContentView: View {
             .padding(14)
             .background(RoundedRectangle(cornerRadius: 16).fill(Color(hex: 0x2A0A18).opacity(0.98)))
             .overlay(RoundedRectangle(cornerRadius: 16).stroke(Palette.danger.opacity(0.4), lineWidth: 1))
-            bodyText("Орбита 3.5 · Локальная игра без рекламы и сети")
+            bodyText("Орбита 3.6 · Локальная игра без рекламы и сети")
         }
     }
 

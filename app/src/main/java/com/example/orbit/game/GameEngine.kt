@@ -54,6 +54,9 @@ class GameEngine {
         private set
     var fever by androidx.compose.runtime.mutableStateOf(false)
         private set
+    /** Открытый выбор мутации: пока он не null, симуляция на паузе. */
+    var draft by androidx.compose.runtime.mutableStateOf<PerkDraft?>(null)
+        private set
 
     var onEvent: (GameEvent) -> Unit = {}
     var onNewRecord: (Int) -> Unit = {}
@@ -128,6 +131,8 @@ class GameEngine {
     val stars = mutableListOf<Star>()
     val trail = ArrayDeque<TrailPoint>()
     val stats = RunStats()
+    /** Индексы мутаций, выбранных в текущем забеге. */
+    val perkIds = mutableListOf<Int>()
 
     private var lastWidth = -1
     private var lastHeight = -1
@@ -154,6 +159,11 @@ class GameEngine {
     private var upgradeSlow = false
     private var upgradeDouble = false
     private var reducedMotion = false
+    private var scoreBoost = 1f
+    private var orbBoost = 1
+    private var nextDraftAt = 16f
+    private var draftRound = 0
+    private var objectiveRewarded = false
 
     private val ghostBuffer = FloatArray(4096)
     var ghostCount = 0
@@ -190,7 +200,7 @@ class GameEngine {
         asteroids.clear(); orbs.clear(); powerUps.clear(); wormholes.clear()
         wells.clear(); boss.clear(); particles.clear(); trail.clear()
         ghostCount = 0; ghostTimer = 0f
-        score = 0; isNewRecord = false; paused = false
+        score = 0; isNewRecord = false; paused = false; perkIds.clear()
         combo = 0; multiplier = 1; level = if (mode == Mode.Survival) 3 else 1
         shield = upgradeShield
         shieldTime = if (shield) if (upgradeShield) 14f else 10f else 0f
@@ -208,6 +218,8 @@ class GameEngine {
         orbSpawnCursor = 0f
         hazardSpawnCursor = rnd() * TAU
         time = 0f; shake = 0f; reverseFlash = 0f; speedLevel = 0f
+        draft = null; scoreBoost = 1f; orbBoost = 1; nextDraftAt = 16f; draftRound = 0
+        objectiveRewarded = false
         fever = false; completed = false; reviveAvailable = false
         timeLeft = if (mode.seconds > 0) mode.seconds.toFloat() + if (upgradeTime) 8f else 0f else -1f
         stats.score = 0; stats.level = level; stats.orbs = 0; stats.goldenOrbs = 0
@@ -242,7 +254,7 @@ class GameEngine {
 
     fun pause() { if (status == GameStatus.Playing) paused = true }
     fun resume() { paused = false }
-    fun toReady() { status = GameStatus.Ready; paused = false; shieldTime = 0f }
+    fun toReady() { status = GameStatus.Ready; paused = false; shieldTime = 0f; draft = null }
 
     /** Выход из забега домой: результат фиксируется, а не теряется. */
     fun abandonRun() {
@@ -250,6 +262,7 @@ class GameEngine {
         status = GameStatus.GameOver
         completed = false
         paused = false
+        draft = null
         stats.seconds = elapsed.toInt()
         onRunEnd(stats)
     }
@@ -258,18 +271,20 @@ class GameEngine {
         val step = dtRaw.coerceIn(0f, 0.05f)
         time += step
         elapsed += step
-        // Таймер тикает по реальному времени, даже во время hit-stop.
-        if (status == GameStatus.Playing && !paused && timeLeft > 0f) {
+        // Во время выбора мутации полёт заморожен: таймер и угрозы не двигаются.
+        val running = status == GameStatus.Playing && !paused && draft == null
+        if (running && timeLeft > 0f) {
             timeLeft = max(0f, timeLeft - step)
             stats.seconds = elapsed.toInt()
             if (timeLeft <= 0f) { finishRun(); return }
-        } else if (status == GameStatus.Playing && !paused) {
+        } else if (running) {
             stats.seconds = elapsed.toInt()
         }
         decayVisuals(step)
         updateParticles(step)
         updateTrail(step)
-        if (status != GameStatus.Playing || paused) return
+        if (!running) return
+        if (draftRound < 6 && time >= nextDraftAt) { openDraft(); return }
         if (hitStop > 0f) { hitStop = max(0f, hitStop - step); return }
         eventCooldown = max(0f, eventCooldown - step)
 
@@ -300,6 +315,11 @@ class GameEngine {
         updateSpawns(step)
         updateHazards(step)
         updateCollisions(step)
+        if (status == GameStatus.Playing && !objectiveRewarded && objectiveDone()) {
+            objectiveRewarded = true
+            resonanceFlash = 1f
+            addPoints(200)
+        }
     }
 
     private fun updateSpawns(step: Float) {
@@ -505,19 +525,19 @@ class GameEngine {
             OrbKind.Normal -> {
                 stats.orbs++
                 orbsCollected++
-                rewardSkill(2)
+                rewardSkill(2 * orbBoost)
                 onEvent(GameEvent.Orb)
             }
             OrbKind.Golden -> {
                 stats.orbs++
                 stats.goldenOrbs++
                 orbsCollected++
-                rewardSkill(8)
+                rewardSkill(8 * orbBoost)
                 onEvent(GameEvent.GoldenOrb(combo))
             }
             OrbKind.Artifact -> {
                 stats.rareOrbs++
-                rewardSkill(25)
+                rewardSkill(25 * orbBoost)
                 onEvent(GameEvent.Artifact)
             }
         }
@@ -609,7 +629,8 @@ class GameEngine {
 
     private fun addPoints(base: Int) {
         val factor = if (doubleTimer > 0f) 2 else 1
-        val gained = base * multiplier * factor
+        val boosted = (base * scoreBoost + 0.5f).toInt().coerceAtLeast(1)
+        val gained = boosted * multiplier * factor
         score = min(Int.MAX_VALUE / 4, score + gained)
         stats.score = score
         val next = 1 + score / 150
@@ -623,6 +644,46 @@ class GameEngine {
             bestScore = score
             if (!isNewRecord) { isNewRecord = true; onNewRecord(score) }
         }
+    }
+
+    /** Цель забега: та же формула на обеих платформах. */
+    fun objective(): Content.Objective = Content.objective(mode, sectorId)
+
+    fun objectiveValue(): Int = if (objective().field == "orbs") orbsCollected else score
+
+    fun objectiveDone(): Boolean = objectiveValue() >= objective().target
+
+    /** Открыть выбор мутации: три разных предложения из общего пула. */
+    private fun openDraft() {
+        draftRound += 1
+        val pool = Content.perks.indices.toMutableList()
+        val options = mutableListOf<Int>()
+        repeat(3) {
+            val at = (rnd() * pool.size).toInt().coerceIn(0, pool.lastIndex)
+            options += pool.removeAt(at)
+        }
+        draft = PerkDraft(options, draftRound)
+    }
+
+    /** Применить выбранную мутацию и продолжить полёт. */
+    fun choosePerk(option: Int) {
+        val current = draft ?: return
+        val index = current.options.getOrNull(option) ?: return
+        val perk = Content.perks[index]
+        perkIds += index
+        when (perk.id) {
+            "overclock" -> scoreBoost += 0.25f
+            "barrier" -> { shield = true; shieldTime = max(shieldTime, 14f) }
+            "magnet" -> magnetTimer = max(magnetTimer, 10f)
+            "slowmo" -> slowTimer = max(slowTimer, 10f)
+            "pulse" -> triggerResonance()
+            "ghost" -> { phaseTimer = max(phaseTimer, 8f); invulnerable = max(invulnerable, 8f) }
+            "harvest" -> orbBoost = 2
+            "chronos" -> if (timeLeft > 0f) timeLeft += 12f else addPoints(150)
+        }
+        nextDraftAt = time + 18f
+        paused = false
+        draft = null
     }
 
     private fun handleHit(a: Asteroid) {
@@ -681,6 +742,7 @@ class GameEngine {
         status = GameStatus.GameOver
         completed = true
         paused = false
+        draft = null
         stats.seconds = elapsed.toInt().coerceAtLeast(1)
         onRunEnd(stats)
         onEvent(GameEvent.Finish)
