@@ -17,7 +17,7 @@ final class SoundEngine: NSObject, ObservableObject, AVAudioPlayerDelegate {
         "tick", "gameover",
     ]
 
-    init() {
+    override init() {
         super.init()
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.ambient, mode: .default, options: [.mixWithOthers])
