@@ -24,8 +24,6 @@ const ui = new UI(uiRoot);
 
 let audioReady = false;
 let diveTimer = 0;
-let lastScore = 0;
-let lastMode: Mode = 'classic';
 
 function applyTheme(): void {
   const s = save.get().settings;
@@ -98,8 +96,6 @@ function seedFor(mode: Mode): number {
 
 function startRun(): void {
   const mode = ui.getMode();
-  lastMode = mode;
-  lastScore = 0;
   void ensureAudio();
   game.startRun(seedFor(mode), mode);
   ui.show('playing');
@@ -212,10 +208,7 @@ const loop = new GameLoop({
   update: (dt: number): void => {
     game.update(dt);
     const s = game.getSnapshot();
-    if (s.screen === 'playing') {
-      wasPlaying = true;
-      lastScore = s.score;
-    }
+    if (s.screen === 'playing') wasPlaying = true;
     if (s.screen === 'gameover' && wasPlaying) {
       wasPlaying = false;
       const before = save.get().runs;

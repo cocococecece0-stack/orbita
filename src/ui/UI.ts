@@ -114,7 +114,12 @@ export class UI {
   onInput(id: string, handler: (value: string) => void): void {
     const el = this.q<HTMLInputElement | HTMLSelectElement>(id);
     if (!el) return;
-    el.addEventListener('change', () => handler(el.value));
+    el.addEventListener('change', () => {
+      const value = el instanceof HTMLInputElement && el.type === 'checkbox'
+        ? String(el.checked)
+        : el.value;
+      handler(value);
+    });
     if (el instanceof HTMLInputElement && el.type === 'range') {
       el.addEventListener('input', () => handler(el.value));
     }

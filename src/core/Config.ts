@@ -9,7 +9,7 @@ export const CONFIG = {
   nearMissMs: 120,
   nearMissScale: 0.35,
   comboDecaySec: 4,
-  comboMax: 5,
+  comboMax: 8,
   feverCombo: 8,
   feverSec: 6,
   telegraphSec: 0.4,
