@@ -921,7 +921,8 @@ namespace Orbit.Galaxy.Core.Tests
             Assert.Equal(1, profile.WinStreak);
             Assert.Equal(3, profile.Stat(ProgressionSystem.StatKills));
             Assert.True(profile.IsUnlocked(AccountProfile.DefaultShip));
-            Assert.Contains("first_blood", rewards.Achievements);
+            Assert.Contains("first_blood", profile.Achievements);
+            Assert.Contains("ПЕРВАЯ КРОВЬ", rewards.Achievements);
             Assert.Equal(ProgressionSystem.DayKey(now), profile.DailyDate);
 
             profile.DailyProgress["q_kills"] = 5;
