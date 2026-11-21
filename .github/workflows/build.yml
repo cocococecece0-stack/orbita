@@ -153,7 +153,8 @@ jobs:
         run: |
           python3 - <<'PY'
           import os, re
-          ver = os.environ['GITHUB_REF_NAME'].lstrip('v')
+          parts = os.environ['GITHUB_REF_NAME'].lstrip('v').split('.')
+          ver = '.'.join((parts + ['0', '0'])[:3])
           text = open('CHANGELOG.md', encoding='utf-8').read()
           m = re.search(r'^## \[' + re.escape(ver) + r'\][^\n]*\n(.*?)(?=^## \[|\Z)', text, re.M | re.S)
           open('release-notes.md', 'w', encoding='utf-8').write(
