@@ -845,7 +845,7 @@ struct ContentView: View {
     // MARK: - Reusable UI
 
     private func scrollScreen<Content: View>(_ title: String, _ subtitle: String,
-                                             @ViewBuilder content: () -> Content) -> some View {
+                                             @ViewBuilder content: @escaping () -> Content) -> some View {
         GeometryReader { geo in
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
@@ -892,7 +892,7 @@ struct ContentView: View {
         Text(text).font(.system(size: 12)).foregroundColor(color).lineSpacing(4)
     }
 
-    private func panel<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+    private func panel<Content: View>(@ViewBuilder content: @escaping () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             content()
         }
@@ -901,7 +901,7 @@ struct ContentView: View {
         .background(RoundedRectangle(cornerRadius: 16).fill(Color(hex: 0x0A071C).opacity(0.98)))
     }
 
-    private func modal<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+    private func modal<Content: View>(@ViewBuilder content: @escaping () -> Content) -> some View {
         GeometryReader { geo in
             ZStack {
                 Color.black.opacity(0.88).ignoresSafeArea()

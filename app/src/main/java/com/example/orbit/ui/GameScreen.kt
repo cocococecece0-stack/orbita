@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -28,6 +30,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -66,6 +69,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontFeatureSettings
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -98,6 +102,7 @@ private val Violet = Color(0xFFA78BFA)
 private val DangerRed = Color(0xFFFF6B6B)
 private val PanelColor = Color(0xE60A071C)
 private val MutedText = Color(0xFF9AA3B8)
+private val TabularNumbers = TextStyle(fontFeatureSettings = FontFeatureSettings("tnum"))
 
 private enum class Screen { Hub, Missions, Hangar, Shop, Achievements, Stats, Settings }
 
@@ -423,7 +428,7 @@ private fun StatBlock(label: String, value: String, extra: String?, color: Color
     Column(horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start) {
         Text(label, color = MutedText, fontSize = 10.sp, letterSpacing = 3.sp, maxLines = 1, softWrap = false)
         Text(value, color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Black,
-            fontFeatureSettings = "tnum", maxLines = 1, softWrap = false)
+            style = TabularNumbers, maxLines = 1, softWrap = false)
         if (extra != null) Text(extra, color = color, fontSize = 12.sp, fontWeight = FontWeight.Bold,
             maxLines = 1, softWrap = false)
     }
@@ -466,7 +471,7 @@ private fun TimerChip(seconds: Int) {
             "$seconds" + "с",
             modifier = Modifier.widthIn(min = 56.dp).padding(horizontal = 10.dp, vertical = 4.dp),
             color = Violet, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp,
-            fontFeatureSettings = "tnum", textAlign = TextAlign.Center,
+            style = TabularNumbers, textAlign = TextAlign.Center,
             maxLines = 1, softWrap = false,
         )
     }
@@ -496,7 +501,7 @@ private fun GameOverlays(
         engine.status == GameStatus.GameOver -> ModalCard {
             Title(if (engine.completed) "МАРШРУТ ЗАВЕРШЁН" else "ПОТЕРЯН СИГНАЛ", if (engine.completed) Neon else Pink)
             Text("${engine.score}", color = Color.White, fontSize = 56.sp, fontWeight = FontWeight.Black,
-                fontFeatureSettings = "tnum", maxLines = 1, softWrap = false)
+                style = TabularNumbers, maxLines = 1, softWrap = false)
             if (engine.isNewRecord) Text("НОВЫЙ РЕКОРД", color = Amber, fontSize = 12.sp, letterSpacing = 3.sp)
             else Text("Рекорд: $best", color = MutedText, fontSize = 12.sp)
             Spacer(Modifier.height(10.dp))
@@ -524,6 +529,7 @@ private fun GameOverlays(
 
 // ------------------------------------------------------------------ HUB ---
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun HubScreen(
     viewModel: GameViewModel,
@@ -595,10 +601,7 @@ private fun HubScreen(
         Spacer(Modifier.height(16.dp))
         SectionTitle("СЕКТОР")
         Row(
-            modifier = Modifier.fillMaxWidth().horizontalScroll(
-                rememberScrollState(),
-                contentPadding = PaddingValues(end = 20.dp),
-            ),
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(end = 20.dp),
         ) {
             Content.sectors.forEach { s ->
                 val unlocked = save.playerLevel >= s.unlockLevel || save.visitedSectors.contains(s.id)
@@ -854,10 +857,7 @@ private fun StatsScreen(viewModel: GameViewModel, onBack: () -> Unit) {
         Spacer(Modifier.height(18.dp))
         SectionTitle("ТАБЛИЦА РЕКОРДОВ")
         Row(
-            modifier = Modifier.fillMaxWidth().horizontalScroll(
-                rememberScrollState(),
-                contentPadding = PaddingValues(end = 20.dp),
-            ),
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(end = 20.dp),
         ) {
             Content.modes.forEach { m ->
                 ChoiceChip(m.short, modeTab == m.id) {
@@ -1168,7 +1168,7 @@ private fun Metric(label: String, value: String, modifier: Modifier = Modifier) 
         Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(label, color = MutedText, fontSize = 9.sp, letterSpacing = 2.sp)
             Text(value, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Black,
-                fontFeatureSettings = "tnum", maxLines = 1)
+                style = TabularNumbers, maxLines = 1)
         }
     }
 }
