@@ -472,7 +472,7 @@ namespace Orbit.Galaxy
         {
             for (int i = 0; i < items.Length; i++)
                 if (string.Equals(selector(items[i]), id, StringComparison.OrdinalIgnoreCase)) return items[i];
-            return null;
+            return default(T);
         }
 
         /// <summary>Deterministic daily quest selection based on the UTC date.</summary>

@@ -91,6 +91,7 @@ namespace Orbit.Galaxy
             ship.AddMass(mass, log, time);
             ship.AddXp(xp, log, time);
 
+            int amount = Math.Max(1, (int)Math.Round(value, MidpointRounding.AwayFromZero));
             int count = 0;
             switch (kind)
             {
@@ -100,19 +101,19 @@ namespace Orbit.Galaxy
                     count = 1;
                     break;
                 case ResourceKind.Crystal:
-                    ship.Crystals += value;
-                    count = value;
+                    ship.Crystals += amount;
+                    count = amount;
                     break;
                 case ResourceKind.DarkMatter:
-                    ship.DarkMatter += value;
+                    ship.DarkMatter += amount;
                     ship.Shield = Math.Min(ship.MaxShield, ship.Shield + 8f * value);
-                    count = value;
+                    count = amount;
                     break;
                 case ResourceKind.Artifact:
-                    ship.Artifacts += value;
+                    ship.Artifacts += amount;
                     ship.AddPassiveShield(20f * value, profile);
                     ship.Lifesteal += 0.02f * value;
-                    count = value;
+                    count = amount;
                     break;
                 default:
                     count = 1;
