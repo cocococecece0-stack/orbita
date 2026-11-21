@@ -492,20 +492,83 @@ extension GameEngine {
 // MARK: - Menu backgrounds
 
 extension GameArt {
+    /// Фон меню: тёплый «уличный» постер вместо однотонного неонового космоса.
     func drawMenuBackground(in context: inout GraphicsContext, size: CGSize, style: Int,
                             tick: Int, reducedMotion: Bool) {
-        guard !backgrounds.isEmpty else { return }
-        let image = backgrounds[style % backgrounds.count]
-        let scale = max(size.width / CGFloat(image.size.width), size.height / CGFloat(image.size.height)) * 1.05
-        let dw = CGFloat(image.size.width) * scale
-        let dh = CGFloat(image.size.height) * scale
-        context.drawUI(image, in: CGRect(x: (size.width - dw) / 2, y: (size.height - dh) / 2,
-                                        width: dw, height: dh))
+        let w = size.width
+        let h = size.height
+        let paper = Color(hex: 0xFFF6E8)
         let full = Path(CGRect(origin: .zero, size: size))
-        context.fill(full, with: .radialGradient(
-            Gradient(colors: [Color.clear, Color(hex: 0x05030F).opacity(0.86)]),
-            center: CGPoint(x: size.width / 2, y: size.height / 2),
-            startRadius: 0, endRadius: max(size.width, size.height) * 0.72))
+        context.fill(full, with: .linearGradient(
+            Gradient(colors: [Color(hex: 0xFF8A3D), Color(hex: 0xD3457E),
+                              Color(hex: 0x5B2E86), Color(hex: 0x12162C)]),
+            startPoint: UnitPoint(x: 0.5, y: 0), endPoint: UnitPoint(x: 0.5, y: 1)))
+
+        let sunX = w * 0.78
+        let sunY = h * 0.19
+        let sunR = min(w, h) * 0.155
+        context.fill(Path(ellipseIn: CGRect(x: sunX - sunR, y: sunY - sunR,
+                                            width: sunR * 2, height: sunR * 2)),
+                     with: .color(Color(hex: 0xFFD34A)))
+        let stripR = sunR * 0.66
+        context.fill(Path(ellipseIn: CGRect(x: sunX - stripR, y: sunY + sunR * 0.28 - stripR,
+                                            width: stripR * 2, height: stripR * 2)),
+                     with: .color(Color(hex: 0xFF5B3D).opacity(0.55)))
+        let ringR = sunR * 1.32
+        context.stroke(Path(ellipseIn: CGRect(x: sunX - ringR, y: sunY - ringR,
+                                              width: ringR * 2, height: ringR * 2)),
+                       with: .color(paper.opacity(0.35)), lineWidth: 2)
+
+        for row in 0..<15 {
+            for col in 0..<10 {
+                let x = w * 0.55 + CGFloat(col) * w * 0.052
+                let y = h * 0.06 + CGFloat(row) * h * 0.052
+                context.fill(Path(ellipseIn: CGRect(x: x - 1.6, y: y - 1.6, width: 3.2, height: 3.2)),
+                             with: .color(paper.opacity(0.10)))
+            }
+        }
+
+        context.drawLayer { layer in
+            layer.rotate(by: .degrees(-18))
+            for i in 0..<8 {
+                let color = i % 2 == 0 ? Color(hex: 0xD8FF3E).opacity(0.14)
+                                       : Color(hex: 0xFF5B3D).opacity(0.16)
+                let rect = CGRect(x: -w * 0.2 + CGFloat(i) * 58, y: h * 0.62, width: 20, height: h * 0.7)
+                layer.fill(Path(rect), with: .color(color))
+            }
+        }
+        for i in 0..<12 {
+            let y = h * (0.09 + CGFloat(i) * 0.061)
+            let line = Path { path in
+                path.move(to: CGPoint(x: w * 0.04, y: y))
+                path.addLine(to: CGPoint(x: w * (0.20 + CGFloat(i % 4) * 0.09), y: y - 10))
+            }
+            context.stroke(line, with: .color(paper.opacity(0.13)), lineWidth: 2)
+        }
+
+        let blocks: [CGFloat] = [0.10, 0.07, 0.13, 0.09, 0.16, 0.08, 0.12, 0.10, 0.15, 0.09]
+        var x = w * 0.03
+        let baseY = h * 0.94
+        for (i, rel) in blocks.enumerated() {
+            let bw = w * rel
+            let bh = h * (0.055 + CGFloat(i % 3) * 0.022)
+            context.fill(Path(CGRect(x: x, y: baseY - bh, width: bw, height: bh)),
+                         with: .color(Color(hex: 0x0A0E1E).opacity(0.62)))
+            for row in 0..<2 {
+                for col in 0..<3 {
+                    context.fill(Path(CGRect(x: x + bw * (0.16 + CGFloat(col) * 0.26),
+                                             y: baseY - bh + bh * (0.25 + CGFloat(row) * 0.35),
+                                             width: 3, height: 5)),
+                                 with: .color(paper.opacity(0.18)))
+                }
+            }
+            x += bw + w * 0.012
+        }
+
+        context.fill(Path(CGRect(x: 0, y: h * 0.52, width: w, height: h * 0.48)),
+                     with: .linearGradient(
+                        Gradient(colors: [Color.clear, Color(hex: 0x101528).opacity(0.90)]),
+                        startPoint: UnitPoint(x: 0.5, y: 0), endPoint: UnitPoint(x: 0.5, y: 1)))
     }
 
     func drawPlanetPreview(in context: inout GraphicsContext, index: Int, center: CGPoint,

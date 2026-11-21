@@ -444,6 +444,12 @@ class SaveStore(context: Context) {
             newAchievements += a.title
         }
 
+        // Цель забега — главная причина играть: за выполнение платим отдельный бонус.
+        if (achieved.contains("objective_done")) {
+            credits = satAdd(credits, 120)
+            xp = satAdd(xp, 30)
+        }
+
         val missions = mutableListOf<String>()
         val defs = Content.missionsFor(day)
         val values = mapOf(
@@ -461,6 +467,7 @@ class SaveStore(context: Context) {
                 missions += "${m.title} +${m.reward}"
             }
         }
+        if (achieved.contains("objective_done")) missions += "ЦЕЛЬ ВЫПОЛНЕНА +120"
 
         val newSecrets = mutableListOf<String>()
         for (id in foundSecrets) {

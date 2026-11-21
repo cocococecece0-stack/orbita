@@ -2,7 +2,20 @@ import SwiftUI
 import UIKit
 
 private enum Screen: String {
-    case hub, guide, missions, hangar, shop, achievements, stats, settings
+    case hub, league, missions, hangar, shop, achievements, stats, settings
+}
+
+/// Новый визуальный язык меню: уличная аркада, а не неоновый космос.
+private enum UI {
+    static let night = Color(hex: 0x101528)
+    static let ink = Color(hex: 0x111526)
+    static let paper = Color(hex: 0xFFF6E8)
+    static let lime = Color(hex: 0xD8FF3E)
+    static let sun = Color(hex: 0xFFC23D)
+    static let coral = Color(hex: 0xFF5B3D)
+    static let grape = Color(hex: 0x8B5CF6)
+    static let mint = Color(hex: 0x4ADE80)
+    static let muted = Color(hex: 0x5D6478)
 }
 
 struct ContentView: View {
@@ -39,7 +52,7 @@ struct ContentView: View {
         GeometryReader { geo in
             TimelineView(.animation) { timeline in
                 ZStack {
-                    Color(hex: 0x05030F).ignoresSafeArea()
+                    UI.night.ignoresSafeArea()
 
                     if screen == nil {
                         Canvas { context, size in
@@ -75,7 +88,7 @@ struct ContentView: View {
                         Group {
                             switch screen {
                             case .hub: hubScreen
-                            case .guide: guideScreen
+                            case .league: leagueScreen
                             case .missions: missionsScreen
                             case .hangar: hangarScreen
                             case .shop: shopScreen
@@ -247,7 +260,7 @@ struct ContentView: View {
     private var hud: some View {
         VStack(spacing: 0) {
             HStack(alignment: .top) {
-                statBlock("СЧЁТ", "\(engine.score)", engine.multiplier > 1 ? "x\(engine.multiplier)" : nil, Palette.player)
+                statBlock("СЧЁТ", "\(engine.score)", engine.multiplier > 1 ? "x\(engine.multiplier)" : nil, UI.lime)
                 Spacer(minLength: 6)
                 HStack(spacing: 8) {
                     roundButton(save.settings.muted ? "×" : "♪") {
@@ -259,7 +272,7 @@ struct ContentView: View {
                 Spacer(minLength: 6)
                 let savedBest = save.bestByMode[mode.id] ?? 0
                 let liveBest = engine.status == .playing ? engine.best : 0
-                statBlock("РЕКОРД", "\(max(savedBest, liveBest))", nil, Palette.orb, end: true)
+                statBlock("РЕКОРД", "\(max(savedBest, liveBest))", nil, UI.sun, end: true)
             }
 
             if engine.timeLeft > 0 {
@@ -267,17 +280,17 @@ struct ContentView: View {
                     .padding(.top, 8)
             }
             if engine.combo > 0 {
-                chip("КОМБО \(engine.combo)", Palette.player)
+                chip("КОМБО \(engine.combo)", UI.lime)
                     .padding(.top, 8)
             }
 
             let objective = engine.objective()
             let reached = min(engine.objectiveValue(), objective.target)
             chip("\(objective.title) \(reached)/\(objective.target)",
-                 engine.objectiveDone() ? Palette.shield : Palette.orb)
+                 engine.objectiveDone() ? UI.mint : UI.sun)
                 .padding(.top, 6)
 
-            bar(Float(engine.resonance), Palette.player,
+            bar(Float(engine.resonance), UI.lime,
                 "РЕЗОНАНС \(Int(engine.resonance * 100))%")
                 .padding(.top, 6)
 
@@ -294,20 +307,20 @@ struct ContentView: View {
                 HStack(spacing: 5) {
                     ForEach(engine.perkIds.indices, id: \.self) { i in
                         let perk = Content.perks[engine.perkIds[i]]
-                        chip("\(perk.glyph) \(perk.title)", Palette.slow)
+                        chip("\(perk.glyph) \(perk.title)", UI.grape)
                     }
                 }
                 .padding(.top, 6)
             }
             Spacer()
             if engine.stormWarning > 0 {
-                banner("МЕТЕОРНЫЙ ДОЖДЬ", Palette.danger)
+                banner("МЕТЕОРНЫЙ ДОЖДЬ", UI.coral)
             } else if engine.flareWarning > 0 {
-                banner("СОЛНЕЧНАЯ ВСПЫШКА", Palette.orb)
+                banner("СОЛНЕЧНАЯ ВСПЫШКА", UI.sun)
             } else if engine.resonanceFlash > 0 {
-                banner("РЕЗОНАНС!", Palette.player, Double(engine.resonanceFlash))
+                banner("РЕЗОНАНС!", UI.lime, Double(engine.resonanceFlash))
             } else if engine.levelUpFlash > 0 {
-                banner("УРОВЕНЬ \(engine.level)", Palette.orb, Double(engine.levelUpFlash))
+                banner("УРОВЕНЬ \(engine.level)", UI.sun, Double(engine.levelUpFlash))
             }
             Spacer().frame(height: 60)
         }
@@ -317,8 +330,8 @@ struct ContentView: View {
 
     private func activeChips() -> [(String, Color)] {
         var out: [(String, Color)] = []
-        if engine.shield { out.append(("ЩИТ", Palette.shield)) }
-        if engine.slowTimer > 0 { out.append(("ЗАМЕДЛЕНИЕ \(Int(ceil(engine.slowTimer)))с", Palette.slow)) }
+        if engine.shield { out.append(("ЩИТ", UI.mint)) }
+        if engine.slowTimer > 0 { out.append(("ЗАМЕДЛЕНИЕ \(Int(ceil(engine.slowTimer)))с", UI.grape)) }
         if engine.doubleTimer > 0 { out.append(("x2 \(Int(ceil(engine.doubleTimer)))с", Palette.double)) }
         if engine.magnetTimer > 0 { out.append(("МАГНИТ \(Int(ceil(engine.magnetTimer)))с", Palette.magnet)) }
         if engine.phaseTimer > 0 { out.append(("ФАЗА \(Int(ceil(engine.phaseTimer)))с", Palette.phase)) }
@@ -328,9 +341,9 @@ struct ContentView: View {
 
     private func statBlock(_ label: String, _ value: String, _ extra: String?, _ color: Color, end: Bool = false) -> some View {
         VStack(alignment: end ? .trailing : .leading, spacing: 2) {
-            Text(label).font(.system(size: 10)).tracking(3).foregroundColor(.white.opacity(0.5))
+            Text(label).font(.system(size: 10)).tracking(3).foregroundColor(UI.paper.opacity(0.75))
                 .lineLimit(1).minimumScaleFactor(0.8)
-            Text(value).font(.system(size: 30, weight: .black)).foregroundColor(.white)
+            Text(value).font(.system(size: 30, weight: .black)).foregroundColor(UI.paper)
                 .lineLimit(1).minimumScaleFactor(0.8)
             if let extra { Text(extra).font(.system(size: 12, weight: .bold)).foregroundColor(color) }
         }
@@ -338,28 +351,32 @@ struct ContentView: View {
 
     private func roundButton(_ label: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(label).font(.system(size: 15, weight: .bold)).foregroundColor(.white.opacity(0.9))
+            Text(label).font(.system(size: 15, weight: .bold)).foregroundColor(UI.ink)
                 .frame(width: 38, height: 38)
-                .background(Circle().fill(Color.white.opacity(0.09)))
-                .overlay(Circle().stroke(Color.white.opacity(0.12), lineWidth: 1))
+                .background(Circle().fill(UI.paper))
+                .overlay(Circle().stroke(UI.ink, lineWidth: 2))
         }
         .buttonStyle(.plain)
     }
 
     private func chip(_ text: String, _ color: Color) -> some View {
-        Text(text).font(.system(size: 10, weight: .semibold)).tracking(1)
-            .padding(.horizontal, 10).padding(.vertical, 4)
-            .background(Capsule().fill(color.opacity(0.18))).foregroundColor(color)
+        Text(text).font(.system(size: 10, weight: .black)).tracking(0.5)
+            .lineLimit(1).minimumScaleFactor(0.8)
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            .background(Capsule().fill(color))
+            .foregroundColor(UI.ink)
+            .overlay(Capsule().stroke(UI.ink, lineWidth: 1.5))
     }
 
     private func timerChip(_ seconds: Int) -> some View {
         Text("\(seconds)с")
-            .font(.system(size: 10, weight: .semibold))
+            .font(.system(size: 10, weight: .black))
             .monospacedDigit()
             .frame(minWidth: 56)
-            .padding(.horizontal, 10).padding(.vertical, 4)
-            .background(Capsule().fill(Palette.slow.opacity(0.18)))
-            .foregroundColor(Palette.slow)
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            .background(Capsule().fill(UI.sun))
+            .foregroundColor(UI.ink)
+            .overlay(Capsule().stroke(UI.ink, lineWidth: 1.5))
     }
 
     private func banner(_ text: String, _ color: Color, _ alpha: Double = 1) -> some View {
@@ -373,10 +390,10 @@ struct ContentView: View {
     private var gameOverlays: some View {
         if let draft = engine.draft {
             modal {
-                title("ВЫБОР МУТАЦИИ", Palette.player)
-                bodyText("Раунд \(draft.round) · возьми одно преимущество на этот полёт")
-                Spacer().frame(height: 14)
-                VStack(spacing: 10) {
+                title("ВЫБЕРИ СВОЙ РИСК", UI.ink)
+                bodyText("Раунд \(draft.round) · преимущество всегда имеет цену")
+                Spacer().frame(height: 12)
+                VStack(spacing: 9) {
                     ForEach(draft.options.indices, id: \.self) { i in
                         let perk = Content.perks[draft.options[i]]
                         Button {
@@ -385,44 +402,51 @@ struct ContentView: View {
                             sound.resumeMusic()
                             haptic(.heavy)
                         } label: {
-                            HStack(spacing: 12) {
-                                Text(perk.glyph).font(.system(size: 26, weight: .bold))
-                                    .foregroundColor(Palette.orb).frame(width: 32)
-                                VStack(alignment: .leading, spacing: 3) {
+                            HStack(spacing: 11) {
+                                Text(perk.glyph).font(.system(size: 24, weight: .black))
+                                    .foregroundColor(UI.ink).frame(width: 42, height: 42)
+                                    .background(RoundedRectangle(cornerRadius: 12).fill(UI.sun))
+                                    .overlay(RoundedRectangle(cornerRadius: 12)
+                                        .stroke(UI.ink, lineWidth: 1.5))
+                                VStack(alignment: .leading, spacing: 2) {
                                     Text(perk.title).font(.system(size: 14, weight: .black))
-                                        .foregroundColor(.white)
-                                    Text(perk.detail).font(.system(size: 11)).foregroundColor(.gray)
+                                        .foregroundColor(UI.ink)
+                                    Text(perk.detail).font(.system(size: 11)).foregroundColor(UI.ink)
+                                    Text("ЦЕНА: \(perk.risk)").font(.system(size: 10, weight: .bold))
+                                        .foregroundColor(UI.coral)
                                 }
                                 Spacer(minLength: 0)
+                                Text("▸").font(.system(size: 20, weight: .black)).foregroundColor(UI.ink)
                             }
-                            .padding(14)
-                            .background(RoundedRectangle(cornerRadius: 16)
-                                .fill(Color(hex: 0x121A38)))
+                            .padding(13)
+                            .background(RoundedRectangle(cornerRadius: 18).fill(UI.paper))
+                            .overlay(RoundedRectangle(cornerRadius: 18)
+                                .stroke(UI.ink, lineWidth: 2))
                         }
                         .buttonStyle(.plain)
                     }
                 }
-                Spacer().frame(height: 10)
-                bodyText("Следующий выбор — примерно через 18 секунд полёта.", Palette.slow)
+                Spacer().frame(height: 8)
+                bodyText("Следующий выбор — примерно через 18 секунд полёта.", UI.muted)
             }
         } else if engine.paused {
             modal {
-                title("ПАУЗА", Palette.player)
+                title("ПАУЗА", UI.lime)
                 bodyText("Полёт приостановлен")
                 Spacer().frame(height: 16)
                 VStack(spacing: 12) {
                     wideButton("ПРОДОЛЖИТЬ") { engine.resume(); sound.resumeMusic() }
-                    outlineButton("ЗАНОВО", accent: Palette.slow) { startRun() }
+                    outlineButton("ЗАНОВО", accent: UI.grape) { startRun() }
                     outlineButton("В ХАБ") { goHub() }
                 }
             }
         } else if engine.status == .gameOver {
             modal {
                 title(engine.completed ? "МАРШРУТ ЗАВЕРШЁН" : "ПОТЕРЯН СИГНАЛ",
-                      engine.completed ? Palette.player : Palette.danger)
-                Text("\(engine.score)").font(.system(size: 56, weight: .black)).foregroundColor(.white)
+                      engine.completed ? UI.lime : UI.coral)
+                Text("\(engine.score)").font(.system(size: 56, weight: .black)).foregroundColor(UI.ink)
                 if engine.isNewRecord {
-                    Text("НОВЫЙ РЕКОРД").font(.system(size: 12, weight: .bold)).tracking(3).foregroundColor(Palette.orb)
+                    Text("НОВЫЙ РЕКОРД").font(.system(size: 12, weight: .bold)).tracking(3).foregroundColor(UI.sun)
                 } else {
                     Text("Рекорд: \(save.bestByMode[mode.id] ?? 0)").font(.system(size: 12)).foregroundColor(.gray)
                 }
@@ -430,12 +454,12 @@ struct ContentView: View {
                 let objective = engine.objective()
                 let reached = min(engine.objectiveValue(), objective.target)
                 bodyText(engine.objectiveDone()
-                         ? "ЦЕЛЬ ВЫПОЛНЕНА: \(objective.title) \(reached)/\(objective.target)"
+                         ? "ЦЕЛЬ ВЫПОЛНЕНА: \(objective.title) \(reached)/\(objective.target) · +120 ◈"
                          : "ЦЕЛЬ: \(objective.title) \(reached)/\(objective.target)",
-                         engine.objectiveDone() ? Palette.shield : Palette.orb)
+                         engine.objectiveDone() ? UI.mint : UI.sun)
                 if !engine.perkIds.isEmpty {
                     bodyText("Мутации: " + engine.perkIds.map { Content.perks[$0].title }.joined(separator: " · "),
-                             Palette.slow)
+                             UI.grape)
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     bodyText("Уровень \(engine.level)")
@@ -460,13 +484,13 @@ struct ContentView: View {
             sectionTitle("НАГРАДА")
             let parts = rewardParts(summary ?? RewardSummary())
             if parts.isEmpty {
-                bodyText("Награда не начислена", Palette.orb)
+                bodyText("Награда не начислена", UI.sun)
             } else {
                 VStack(alignment: .leading, spacing: 5) {
                     ForEach(parts, id: \.self) { part in
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            Text("•").foregroundColor(Palette.orb)
-                            bodyText(part, Palette.orb)
+                            Text("•").foregroundColor(UI.sun)
+                            bodyText(part, UI.sun)
                         }
                     }
                 }
@@ -493,6 +517,22 @@ struct ContentView: View {
         GeometryReader { geo in
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 8) {
+                        Text("ORBITA").font(.system(size: 28, weight: .black)).tracking(-1)
+                            .foregroundColor(UI.ink).lineLimit(1).minimumScaleFactor(0.8)
+                        Text("3.7").font(.system(size: 10, weight: .black)).foregroundColor(UI.paper)
+                            .padding(.horizontal, 7).padding(.vertical, 3)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(UI.coral))
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(UI.ink, lineWidth: 1.5))
+                        Spacer(minLength: 4)
+                        creditsChip
+                        Text("LV \(save.playerLevel)").font(.system(size: 11, weight: .black))
+                            .foregroundColor(UI.lime).padding(.horizontal, 11).padding(.vertical, 6)
+                            .background(Capsule().fill(UI.ink)).lineLimit(1)
+                    }
+
+                    let briefing = Content.objective(mode, sectorId: sector.id)
+                    let seasonMod = Content.seasonModifier(save.seasonId)
                     ZStack(alignment: .topLeading) {
                         Canvas { context, size in
                             art.drawHubHero(in: &context, size: size, planetIndex: save.equippedPlanet,
@@ -501,171 +541,220 @@ struct ContentView: View {
                                             tick: Int(frame), colorblind: save.settings.colorblind,
                                             reducedMotion: save.settings.reducedMotion)
                         }
-                        .frame(height: 196)
-                        .background(Color.white.opacity(0.035))
-                        .clipShape(RoundedRectangle(cornerRadius: 22))
-                        .overlay(RoundedRectangle(cornerRadius: 22)
-                            .stroke(Color.white.opacity(0.08), lineWidth: 1))
+                        .frame(height: 206)
+                        .background(UI.ink)
+                        .clipShape(RoundedRectangle(cornerRadius: 24))
+                        .overlay(RoundedRectangle(cornerRadius: 24).stroke(UI.lime, lineWidth: 3))
 
-                        Text("ОРБИТА").font(.system(size: 27, weight: .black)).tracking(4)
-                            .foregroundColor(Palette.player).padding(14)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(Content.planetSkins[max(0, min(save.equippedPlanet,
-                                                              Content.planetSkins.count - 1))])
-                                .font(.system(size: 18, weight: .black)).tracking(2)
-                                .foregroundColor(.white).lineLimit(1).minimumScaleFactor(0.8)
-                            Text("УРОВЕНЬ \(save.playerLevel) · \(sector.name)")
-                                .font(.system(size: 10)).tracking(1).foregroundColor(.gray)
-                                .lineLimit(1).minimumScaleFactor(0.8)
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-                        .padding(14)
-
-                        VStack(alignment: .trailing, spacing: 3) {
-                            creditsChip
-                            Text("СЕЗОН \(save.seasonId)")
-                                .font(.system(size: 10, weight: .bold)).foregroundColor(Palette.danger)
-                            if save.dailyStreak > 0 {
-                                Text("\(save.dailyStreak) \(daysWord(save.dailyStreak))")
-                                    .font(.system(size: 9, weight: .bold)).foregroundColor(Palette.danger)
+                        VStack(spacing: 0) {
+                            HStack(alignment: .top) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("НОВЫЙ РЕЙД").font(.system(size: 11, weight: .black)).tracking(2)
+                                        .foregroundColor(UI.lime)
+                                    Text(seasonMod.0).font(.system(size: 10)).foregroundColor(UI.paper.opacity(0.8))
+                                }
+                                Spacer(minLength: 8)
+                                Text("СЕЗОН \(save.seasonId)").font(.system(size: 10, weight: .black))
+                                    .foregroundColor(UI.paper).padding(.horizontal, 12).padding(.vertical, 6)
+                                    .background(RoundedRectangle(cornerRadius: 12).fill(UI.coral))
                             }
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                        .padding(14)
-                    }
-
-                    let levelXp = xpInLevel(save.xp)
-                    bar(clamped(Float(levelXp) / Float(Content.xpPerLevel)), Palette.player,
-                        "УРОВЕНЬ \(save.playerLevel) · XP \(levelXp) / \(Content.xpPerLevel)")
-                    bar(clamped(Float(save.seasonXp) / Float(Content.seasonTiers.last!.xp)), Palette.slow,
-                        "СЕЗОН \(save.seasonXp) / \(Content.seasonTiers.last!.xp)")
-                    let seasonMod = Content.seasonModifier(save.seasonId)
-                    let top = Array((save.topByMode[mode.id] ?? []).prefix(3))
-                    panel {
-                        Text("СЕЗОН: \(seasonMod.0)")
-                            .font(.system(size: 10, weight: .bold)).tracking(2)
-                            .foregroundColor(Palette.orb)
-                        Text(top.isEmpty
-                             ? "Локальная таблица рекордов пуста — первый забег станет рекордом."
-                             : "ТОП-3: \(top.map(String.init).joined(separator: " · "))")
-                            .font(.system(size: 10)).foregroundColor(.gray)
-                            .lineLimit(1).minimumScaleFactor(0.8)
-                    }
-
-                    let briefing = Content.objective(mode, sectorId: sector.id)
-                    panel {
-                        sectionTitle("БРИФИНГ ПОЛЁТА")
-                        Text("\(briefing.title): \(briefing.target)")
-                            .font(.system(size: 16, weight: .black)).foregroundColor(Palette.orb)
-                        bodyText("Сферы дают опыт и очки. Тап меняет направление, удар об угрозу ломает комбо.")
-                        Spacer().frame(height: 6)
-                        Text("МУТАЦИИ КАЖДЫЕ ~18 СЕК")
-                            .font(.system(size: 9, weight: .bold)).tracking(2)
-                            .foregroundColor(Palette.slow)
-                        HStack(spacing: 6) {
-                            ForEach(Content.perks.prefix(3), id: \.id) { perk in
-                                chip("\(perk.glyph) \(perk.title)", Palette.slow)
-                            }
-                        }
-                        .padding(.top, 4)
-                    }
-
-                    sectionTitle("РЕЖИМ")
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 62), spacing: 6)], spacing: 6) {
-                        ForEach(Content.modes, id: \.id) { m in
-                            choiceChip(m.shortTitle, m.id == mode.id) { store.selectMode(m.id) }
-                                .frame(maxWidth: .infinity)
-                        }
-                    }
-                    bodyText(mode.detail)
-
-                    sectionTitle("СЕКТОР")
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(Content.sectors, id: \.id) { s in
-                                let unlocked = save.playerLevel >= s.unlockLevel || save.visitedSectors.contains(s.id)
-                                choiceChip(unlocked ? s.name : "🔒 \(s.name)", s.id == sector.id, disabled: !unlocked) {
-                                    store.selectSector(s.id)
+                            Spacer(minLength: 0)
+                            HStack(alignment: .bottom) {
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text("ЦЕЛЬ ВЫЛЕТА").font(.system(size: 9, weight: .bold)).tracking(2)
+                                        .foregroundColor(UI.paper.opacity(0.7))
+                                    Text(briefing.title).font(.system(size: 14, weight: .black))
+                                        .foregroundColor(UI.paper)
+                                    Text("\(briefing.target)").font(.system(size: 30, weight: .black))
+                                        .foregroundColor(UI.lime).lineLimit(1).minimumScaleFactor(0.7)
+                                }
+                                Spacer(minLength: 8)
+                                VStack(alignment: .trailing, spacing: 2) {
+                                    Text("+120 ◈").font(.system(size: 18, weight: .black)).foregroundColor(UI.sun)
+                                    Text("за выполнение цели").font(.system(size: 9))
+                                        .foregroundColor(UI.paper.opacity(0.7))
+                                    if save.dailyStreak > 0 {
+                                        Text("🔥 \(save.dailyStreak) \(daysWord(save.dailyStreak).lowercased())")
+                                            .font(.system(size: 10, weight: .bold)).foregroundColor(UI.coral)
+                                    }
                                 }
                             }
                         }
-                        // Внутренние отступы возвращают первый чип в поле зрения и не обрезают последний.
-                        .padding(.horizontal, 20)
+                        .padding(14)
                     }
-                    .padding(.horizontal, -20)
-                    bodyText("\(sector.subtitle) · Рекорд \(save.bestByMode[mode.id] ?? 0)")
 
-                    Spacer().frame(height: 6)
-                    wideButton("НАЧАТЬ МИССИЮ  ▸") { startRun() }
-                    bodyText("Тап во время полёта меняет направление. Каждые ~18 секунд ждёт выбор мутации.")
-                    Spacer().frame(height: 12)
+                    Text("КОНТРАКТЫ ДНЯ").font(.system(size: 13, weight: .black)).tracking(1)
+                        .foregroundColor(UI.ink)
                     let defs = Content.missionsFor(save.dailyDate)
-                    let done = defs.enumerated().filter { save.dailyProgress[$0.offset] >= $0.element.goal }.count
-                    outlineButton("ЗАДАНИЯ ДНЯ  \(done)/3", accent: Palette.slow) { open(.missions) }
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(0..<defs.count, id: \.self) { i in
+                                let mission = defs[i]
+                                let value = min(save.dailyProgress[i], mission.goal)
+                                let done = value >= mission.goal
+                                Button { open(.missions) } label: {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("КОНТРАКТ \(i + 1)").font(.system(size: 9, weight: .bold))
+                                            .tracking(1).foregroundColor(UI.ink.opacity(0.6))
+                                        Text(mission.title).font(.system(size: 12, weight: .black))
+                                            .foregroundColor(UI.ink).lineLimit(1).minimumScaleFactor(0.8)
+                                        Spacer().frame(height: 6)
+                                        ZStack(alignment: .leading) {
+                                            Capsule().fill(UI.ink.opacity(0.12))
+                                            Capsule().fill(done ? UI.ink : UI.coral)
+                                                .frame(width: 136 * CGFloat(value) / CGFloat(max(1, mission.goal)))
+                                        }
+                                        .frame(height: 7)
+                                        Text("\(value) / \(mission.goal)   +\(mission.reward) ◈")
+                                            .font(.system(size: 10, weight: .bold)).foregroundColor(UI.ink)
+                                            .lineLimit(1).minimumScaleFactor(0.8)
+                                    }
+                                    .frame(width: 158, height: 96, alignment: .leading)
+                                    .padding(11)
+                                    .background(RoundedRectangle(cornerRadius: 16).fill(done ? UI.lime : UI.paper))
+                                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(UI.ink, lineWidth: 2))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
 
-                    Spacer().frame(height: 16)
-                    let tiles: [(String, String, Screen)] = [
-                        ("СУТЬ ИГРЫ", "Правила и мутации", .guide),
-                        ("АНГАР", "Корабли и улучшения", .hangar),
-                        ("МАГАЗИН", "Предметы за жетоны", .shop),
-                        ("ДОСТИЖЕНИЯ", "Награды и секреты", .achievements),
-                        ("СТАТИСТИКА", "Рекорды и история", .stats),
-                        ("НАСТРОЙКИ", "Звук и сохранение", .settings),
+                    let nextTier = Content.seasonTiers.first { save.seasonXp < $0.xp }
+                    panel {
+                        Text("ЗАЧЕМ ИГРАТЬ").font(.system(size: 12, weight: .black)).tracking(1)
+                            .foregroundColor(UI.ink)
+                        Spacer().frame(height: 4)
+                        bodyText("Выполни цель забега — +120 жетонов. Закрывай контракты, качай сезон и открывай новые планеты.", UI.ink)
+                        if let tier = nextTier {
+                            Spacer().frame(height: 7)
+                            bar(Float(save.seasonXp) / Float(tier.xp), UI.coral,
+                                "ДО СЛЕДУЮЩЕГО УРОВНЯ СЕЗОНА: \(tier.xp - save.seasonXp) XP")
+                        }
+                    }
+
+                    Text("ВЫЛЕТ").font(.system(size: 12, weight: .black)).tracking(1)
+                        .foregroundColor(UI.ink)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(Content.modes, id: \.id) { m in
+                                choiceChip(m.shortTitle, m.id == mode.id) { store.selectMode(m.id) }
+                            }
+                        }
+                    }
+                    bodyText(mode.detail, UI.ink)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(Content.sectors, id: \.id) { s in
+                                let unlocked = save.playerLevel >= s.unlockLevel || save.visitedSectors.contains(s.id)
+                                choiceChip(unlocked ? s.name : "🔒 \(s.name)", s.id == sector.id,
+                                           disabled: !unlocked) { store.selectSector(s.id) }
+                            }
+                        }
+                    }
+                    bodyText("\(sector.subtitle) · Рекорд \(save.bestByMode[mode.id] ?? 0)", UI.ink)
+
+                    wideButton("ПОЕХАЛИ  ▸") { startRun() }
+
+                    let docks: [(String, String, Screen)] = [
+                        ("★", "ЛИГА", .league), ("◇", "ГАРАЖ", .hangar),
+                        ("◈", "МАГАЗИН", .shop), ("✓", "ДОСТИЖ.", .achievements),
+                        ("▤", "РЕКОРДЫ", .stats), ("⚙", "НАСТР.", .settings),
                     ]
-                    ForEach(0..<tiles.count/2, id: \.self) { i in
-                        HStack(spacing: 10) {
-                            navTile(tiles[i*2].0, tiles[i*2].1) { open(tiles[i*2].2) }
-                            navTile(tiles[i*2+1].0, tiles[i*2+1].1) { open(tiles[i*2+1].2) }
+                    HStack(spacing: 6) {
+                        ForEach(0..<docks.count, id: \.self) { i in
+                            Button { open(docks[i].2) } label: {
+                                VStack(spacing: 3) {
+                                    Text(docks[i].0).font(.system(size: 17, weight: .black))
+                                        .foregroundColor(UI.coral)
+                                    Text(docks[i].1).font(.system(size: 8, weight: .bold))
+                                        .foregroundColor(UI.ink).lineLimit(1).minimumScaleFactor(0.7)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 9)
+                                .background(RoundedRectangle(cornerRadius: 14).fill(UI.paper))
+                                .overlay(RoundedRectangle(cornerRadius: 14).stroke(UI.ink, lineWidth: 1.5))
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                     Spacer().frame(height: 20)
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 18)
+                .padding(.horizontal, 16)
+                .padding(.top, 14)
                 .padding(.bottom, geo.safeAreaInsets.bottom + 16)
             }
             .scrollDismissesKeyboard(.interactively)
         }
     }
 
-    // MARK: - Guide
+    // MARK: - League
 
-    private var guideScreen: some View {
+    private var leagueScreen: some View {
         let objective = Content.objective(mode, sectorId: save.selectedSector)
-        return scrollScreen("СУТЬ ИГРЫ",
-                            "Орбита — это ритм: увернись вовремя, собирай сферы и усиливай забег мутациями.") {
-            panel {
-                sectionTitle("ЦЕЛЬ ВЫЛЕТА")
-                Text("\(objective.title): \(objective.target)")
-                    .font(.system(size: 20, weight: .black)).foregroundColor(Palette.orb)
-                bodyText("Цель зависит от режима и сектора. Выполнение даёт +200 очков и засчитывается в итоге.")
+        let defs = Content.missionsFor(save.dailyDate)
+        let missionsDone = defs.enumerated().filter { save.dailyProgress[$0.offset] >= $0.element.goal }.count
+        let nextTier = Content.seasonTiers.first { save.seasonXp < $0.xp }
+        let shipsOwned = Content.shop.filter { $0.category == "ship" && save.inventory.contains($0.id) }.count
+        let planetsOwned = Content.shop.filter { $0.category == "planet" && save.inventory.contains($0.id) }.count
+        let trophies = (save.achievements.contains("boss_1") ? 1 : 0) +
+                       (save.achievements.contains("boss_5") ? 1 : 0)
+        let reasons: [(String, String, String)] = [
+            ("01", "СЕЗОННАЯ ГОНКА", nextTier == nil
+                ? "Все уровни сезона пройдены"
+                : "\(save.seasonXp) / \(nextTier!.xp) XP · награда +\(nextTier!.reward) ◈"),
+            ("02", "КОНТРАКТЫ ДНЯ", "\(missionsDone) / 3 выполнено · обновляются в 00:00 UTC"),
+            ("03", "КОЛЛЕКЦИЯ", "\(shipsOwned) / 8 кораблей · \(planetsOwned) / 8 планет открыто"),
+            ("04", "ОХОТА НА БОССОВ", trophies == 0
+                ? "Первое ядро ещё ждёт"
+                : "\(trophies) трофея в копилке"),
+        ]
+
+        return scrollScreen("ЛИГА", "Здесь собрано всё, ради чего стоит возвращаться в орбиту.") {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("ГЛАВНАЯ ЦЕЛЬ ВЫЛЕТА").font(.system(size: 10, weight: .black)).tracking(2)
+                    .foregroundColor(UI.lime)
+                Text("\(objective.title): \(objective.target)").font(.system(size: 22, weight: .black))
+                    .foregroundColor(UI.paper)
+                bodyText("Выполнение даёт +200 очков и +120 жетонов.", UI.paper.opacity(0.85))
             }
-            sectionTitle("КАК ИГРАТЬ")
-            let steps: [(String, String)] = [
-                ("01  КОСНИСЬ СФЕРЫ", "Жёлтые точки дают опыт, очки и заряд резонанса. Чем длиннее серия, тем выше множитель."),
-                ("02  МЕНЯЙ НАПРАВЛЕНИЕ", "Тап разворачивает корабль. Метеориты приходят со всех сторон — читай траекторию заранее."),
-                ("03  ВЫБИРАЙ МУТАЦИЮ", "Каждые ~18 секунд полёт останавливается: возьми одно из трёх улучшений на этот забег."),
-                ("04  ВЫПОЛНИ ЦЕЛЬ", "Держи комбо, не дай угрозам сомкнуться у орбиты и заверши миссию на рекорд."),
-            ]
-            ForEach(steps.indices, id: \.self) { i in
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: 18).fill(UI.ink))
+            .overlay(RoundedRectangle(cornerRadius: 18).stroke(UI.lime, lineWidth: 2))
+
+            Spacer().frame(height: 4)
+            Text("ЧЕТЫРЕ ПРИЧИНЫ ВОЗВРАЩАТЬСЯ").font(.system(size: 11, weight: .bold)).tracking(3)
+                .foregroundColor(UI.ink)
+            ForEach(0..<reasons.count, id: \.self) { i in
+                let reason = reasons[i]
                 panel {
-                    Text(steps[i].0).font(.system(size: 12, weight: .black)).tracking(1)
-                        .foregroundColor(Palette.slow)
-                    Spacer().frame(height: 4)
-                    bodyText(steps[i].1)
+                    HStack(spacing: 10) {
+                        Text(reason.0).font(.system(size: 13, weight: .black)).foregroundColor(UI.ink)
+                            .padding(.horizontal, 8).padding(.vertical, 5)
+                            .background(RoundedRectangle(cornerRadius: 10).fill(i == 0 ? UI.lime : UI.sun))
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(UI.ink, lineWidth: 1.5))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(reason.1).font(.system(size: 13, weight: .black)).foregroundColor(UI.ink)
+                            Text(reason.2).font(.system(size: 11)).foregroundColor(UI.muted)
+                        }
+                        Spacer(minLength: 0)
+                    }
                 }
             }
-            sectionTitle("МУТАЦИИ")
+
+            Spacer().frame(height: 4)
+            Text("МУТАЦИИ: ВЫБОР С ЦЕНОЙ").font(.system(size: 11, weight: .bold)).tracking(3)
+                .foregroundColor(UI.ink)
             ForEach(Content.perks, id: \.id) { perk in
                 panel {
                     Text("\(perk.glyph)  \(perk.title)").font(.system(size: 13, weight: .black))
-                        .tracking(1).foregroundColor(Palette.orb)
-                    Spacer().frame(height: 3)
-                    bodyText(perk.detail)
+                        .foregroundColor(UI.ink)
+                    Text(perk.detail).font(.system(size: 11)).foregroundColor(UI.ink)
+                    Text("ЦЕНА: \(perk.risk)").font(.system(size: 10, weight: .bold))
+                        .foregroundColor(UI.coral)
                 }
             }
-            bodyText("Мутации работают только внутри забега и не меняют сохранённый прогресс.")
+            wideButton("ВСЕ ДОСТИЖЕНИЯ  ▸", accent: UI.sun) { open(.achievements) }
         }
     }
 
@@ -679,13 +768,13 @@ struct ContentView: View {
                 let value = save.dailyProgress[i]
                 let done = value >= m.goal
                 panel {
-                    Text(m.title).font(.system(size: 15, weight: .bold)).foregroundColor(done ? Palette.player : .white)
+                    Text(m.title).font(.system(size: 15, weight: .bold)).foregroundColor(done ? UI.lime : UI.ink)
                     Spacer().frame(height: 4)
-                    bar(clamped(Float(value) / Float(m.goal)), done ? Palette.player : Palette.slow,
+                    bar(clamped(Float(value) / Float(m.goal)), done ? UI.lime : UI.grape,
                         "\(value) / \(m.goal)")
                     Spacer().frame(height: 8)
                     HStack {
-                        Text("+\(m.reward) жетонов").font(.system(size: 12)).foregroundColor(Palette.orb)
+                        Text("+\(m.reward) жетонов").font(.system(size: 12)).foregroundColor(UI.sun)
                         Spacer()
                         if save.dailyClaimed[i] {
                             Text("ПОЛУЧЕНО").font(.system(size: 11)).foregroundColor(.gray)
@@ -700,11 +789,11 @@ struct ContentView: View {
                 let tier = Content.seasonTiers[i]
                 panel {
                     HStack {
-                        Text("Уровень \(i + 1) · \(tier.xp) XP").font(.system(size: 13)).foregroundColor(.white)
+                        Text("Уровень \(i + 1) · \(tier.xp) XP").font(.system(size: 13)).foregroundColor(UI.ink)
                         Spacer()
-                        Text("+\(tier.reward) ◈").font(.system(size: 13)).foregroundColor(Palette.orb)
+                        Text("+\(tier.reward) ◈").font(.system(size: 13)).foregroundColor(UI.sun)
                     }
-                    bar(clamped(Float(save.seasonXp) / Float(tier.xp)), Palette.slow,
+                    bar(clamped(Float(save.seasonXp) / Float(tier.xp)), UI.grape,
                         save.seasonClaimed[i] ? "ПОЛУЧЕНО" : "Сезон \(save.seasonXp) / \(tier.xp) XP")
                 }
             }
@@ -762,7 +851,7 @@ struct ContentView: View {
                 panel {
                     HStack {
                         VStack(alignment: .leading) {
-                            Text(item.title).font(.system(size: 13, weight: .bold)).foregroundColor(.white)
+                            Text(item.title).font(.system(size: 13, weight: .bold)).foregroundColor(UI.ink)
                             bodyText(item.detail)
                         }
                         Spacer()
@@ -789,7 +878,7 @@ struct ContentView: View {
                     panel {
                         HStack {
                             VStack(alignment: .leading) {
-                                Text(item.title).font(.system(size: 14, weight: .bold)).foregroundColor(.white)
+                                Text(item.title).font(.system(size: 14, weight: .bold)).foregroundColor(UI.ink)
                                 bodyText(item.detail)
                             }
                             Spacer()
@@ -818,14 +907,14 @@ struct ContentView: View {
                 let open = save.achievements.contains(a.id)
                 panel {
                     HStack {
-                        Text(open ? "★" : "☆").font(.system(size: 18)).foregroundColor(open ? Palette.orb : .gray)
+                        Text(open ? "★" : "☆").font(.system(size: 18)).foregroundColor(open ? UI.sun : .gray)
                         VStack(alignment: .leading) {
                             Text(a.title).font(.system(size: 13, weight: .bold))
-                                .foregroundColor(open ? .white : .gray)
+                                .foregroundColor(open ? UI.ink : UI.muted)
                             bodyText(a.detail)
                         }
                         Spacer()
-                        Text("+\(a.reward) ◈").font(.system(size: 11)).foregroundColor(open ? Palette.orb : .gray)
+                        Text("+\(a.reward) ◈").font(.system(size: 11)).foregroundColor(open ? UI.sun : .gray)
                     }
                 }
             }
@@ -834,7 +923,7 @@ struct ContentView: View {
                 let open = save.secrets.contains(s.id)
                 panel {
                     Text(open ? s.title : "???").font(.system(size: 13, weight: .bold))
-                        .foregroundColor(open ? Palette.slow : .gray)
+                        .foregroundColor(open ? UI.grape : .gray)
                     bodyText(s.hint)
                 }
             }
@@ -871,11 +960,11 @@ struct ContentView: View {
                 else {
                     ForEach(0..<top.count, id: \.self) { i in
                         Text("\(i + 1).  \(top[i])").font(.system(size: 14, weight: i == 0 ? .bold : .regular))
-                            .foregroundColor(i == 0 ? Palette.orb : .white)
+                            .foregroundColor(i == 0 ? UI.sun : UI.ink)
                     }
                 }
             }
-            outlineButton("СКОПИРОВАТЬ КОД РЕКОРДОВ", accent: Palette.slow) {
+            outlineButton("СКОПИРОВАТЬ КОД РЕКОРДОВ", accent: UI.grape) {
                 UIPasteboard.general.string = store.exportCode()
                 showToast("Код скопирован")
             }
@@ -884,9 +973,9 @@ struct ContentView: View {
                 panel {
                     HStack {
                         Text("\(Mode.from(r.mode).title) · \(Content.sector(r.sector).name)")
-                            .font(.system(size: 12)).foregroundColor(.white)
+                            .font(.system(size: 12)).foregroundColor(UI.ink)
                         Spacer()
-                        Text("\(r.score)").font(.system(size: 14, weight: .bold)).foregroundColor(Palette.player)
+                        Text("\(r.score)").font(.system(size: 14, weight: .bold)).foregroundColor(UI.lime)
                     }
                     bodyText("Ур. \(r.level) · Сферы \(r.orbs) · Комбо x\(r.maxCombo) · \(r.seconds)с")
                 }
@@ -909,19 +998,19 @@ struct ContentView: View {
                 .frame(width: 56, height: 56)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("ТЕКУЩАЯ ПЛАНЕТА").font(.system(size: 10, weight: .bold)).tracking(2)
-                        .foregroundColor(Palette.player.opacity(0.8))
+                        .foregroundColor(UI.muted)
                     Text(Content.shop.first { $0.category == "planet" && $0.value == save.equippedPlanet }?.title ?? "ЗЕМЛЯ")
-                        .font(.system(size: 13, weight: .bold)).foregroundColor(.white)
+                        .font(.system(size: 13, weight: .bold)).foregroundColor(UI.ink)
                 }
                 Spacer()
             }
 
             sectionTitle("ЗВУК")
             panel {
-                Text("Музыка \(Int(save.settings.music * 100))%").font(.system(size: 12)).foregroundColor(.white)
+                Text("Музыка \(Int(save.settings.music * 100))%").font(.system(size: 12)).foregroundColor(UI.ink)
                 Slider(value: Binding(get: { save.settings.music },
                                       set: { v in store.updateSettings { $0.music = v } }), in: 0...1)
-                Text("Эффекты \(Int(save.settings.sfx * 100))%").font(.system(size: 12)).foregroundColor(.white)
+                Text("Эффекты \(Int(save.settings.sfx * 100))%").font(.system(size: 12)).foregroundColor(UI.ink)
                 Slider(value: Binding(get: { save.settings.sfx },
                                       set: { v in store.updateSettings { $0.sfx = v } }), in: 0...1)
                 toggleRow("Полное выключение звука", Binding(get: { save.settings.muted },
@@ -961,11 +1050,11 @@ struct ContentView: View {
             sectionTitle("СОХРАНЕНИЕ")
             panel {
                 bodyText("Код экспорта содержит контроль целостности. Импорт заменяет текущий прогресс.")
-                outlineButton("ЭКСПОРТИРОВАТЬ КОД", accent: Palette.slow) { exportText = store.exportCode() }
+                outlineButton("ЭКСПОРТИРОВАТЬ КОД", accent: UI.grape) { exportText = store.exportCode() }
                 if !exportText.isEmpty {
                     Spacer().frame(height: 10)
                     Text("КОД ЭКСПОРТА").font(.system(size: 10, weight: .bold)).tracking(2)
-                        .foregroundColor(Palette.player.opacity(0.8))
+                        .foregroundColor(UI.muted)
                     HStack(spacing: 8) {
                         TextField("", text: $exportText)
                             .textFieldStyle(.roundedBorder)
@@ -981,36 +1070,36 @@ struct ContentView: View {
                 }
                 Spacer().frame(height: 10)
                 Text("КОД ИМПОРТА").font(.system(size: 10, weight: .bold)).tracking(2)
-                    .foregroundColor(Palette.player.opacity(0.8))
+                    .foregroundColor(UI.muted)
                 TextField("ORB1-...", text: $importText)
                     .textFieldStyle(.roundedBorder)
                     .font(.system(size: 12, design: .monospaced))
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
-                wideButton("ИМПОРТИРОВАТЬ", accent: Palette.slow) {
+                wideButton("ИМПОРТИРОВАТЬ", accent: UI.grape) {
                     importSucceeded = store.importCode(importText)
                     importResult = importSucceeded ? "Прогресс восстановлен" : "Код недействителен"
                     importText = ""
                 }
                 if !importResult.isEmpty {
-                    bodyText(importResult, importSucceeded ? Palette.player : Palette.danger)
+                    bodyText(importResult, importSucceeded ? UI.lime : UI.coral)
                 }
             }
             sectionTitle("ОПАСНАЯ ЗОНА")
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill").foregroundColor(Palette.danger)
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundColor(UI.coral)
                     Text("ОПАСНАЯ ЗОНА").font(.system(size: 12, weight: .bold)).tracking(2)
-                        .foregroundColor(Palette.danger)
+                        .foregroundColor(UI.coral)
                 }
                 bodyText("Сброс удалит все рекорды, предметы и достижения без возможности восстановления.",
-                         Palette.danger.opacity(0.9))
+                         UI.coral.opacity(0.9))
                 if !confirmReset {
-                    outlineButton("СБРОСИТЬ ПРОГРЕСС", accent: Palette.danger) { confirmReset = true }
+                    outlineButton("СБРОСИТЬ ПРОГРЕСС", accent: UI.coral) { confirmReset = true }
                 } else {
-                    bodyText("Точно удалить все рекорды и предметы?", Palette.danger)
+                    bodyText("Точно удалить все рекорды и предметы?", UI.coral)
                     HStack(spacing: 12) {
-                        wideButton("ДА, СБРОСИТЬ", accent: Palette.danger) {
+                        wideButton("ДА, СБРОСИТЬ", accent: UI.coral) {
                             store.reset()
                             confirmReset = false
                         }
@@ -1020,8 +1109,8 @@ struct ContentView: View {
             }
             .padding(14)
             .background(RoundedRectangle(cornerRadius: 16).fill(Color(hex: 0x2A0A18).opacity(0.98)))
-            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Palette.danger.opacity(0.4), lineWidth: 1))
-            bodyText("Орбита 3.6 · Локальная игра без рекламы и сети")
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(UI.coral.opacity(0.4), lineWidth: 1))
+            bodyText("Орбита 3.7 · Локальная игра без рекламы и сети")
         }
     }
 
@@ -1034,8 +1123,8 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(alignment: .center, spacing: 8) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(title).font(.system(size: 22, weight: .black)).tracking(2)
-                                .foregroundColor(Palette.player)
+                            Text(title).font(.system(size: 22, weight: .black)).tracking(-0.5)
+                                .foregroundColor(UI.ink)
                                 .lineLimit(2).minimumScaleFactor(0.8)
                                 .fixedSize(horizontal: false, vertical: true)
                             creditsChip
@@ -1056,22 +1145,23 @@ struct ContentView: View {
 
     private var creditsChip: some View {
         HStack(spacing: 4) {
-            Text("◆").font(.system(size: 11)).foregroundColor(Palette.orb)
-            Text(compactCredits(save.credits)).font(.system(size: 12, weight: .bold))
+            Text("◆").font(.system(size: 11, weight: .black)).foregroundColor(UI.ink)
+            Text(compactCredits(save.credits)).font(.system(size: 12, weight: .black))
                 .monospacedDigit().lineLimit(1).minimumScaleFactor(0.8)
         }
+        .foregroundColor(UI.ink)
         .padding(.horizontal, 10).padding(.vertical, 6)
-        .background(Capsule().fill(Color(hex: 0x0A071C).opacity(0.98)))
-        .overlay(Capsule().stroke(Palette.orb.opacity(0.35), lineWidth: 1))
+        .background(Capsule().fill(UI.sun))
+        .overlay(Capsule().stroke(UI.ink, lineWidth: 1.5))
         .fixedSize()
     }
 
     private func sectionTitle(_ text: String) -> some View {
-        Text(text).font(.system(size: 11, weight: .bold)).tracking(3)
-            .foregroundColor(Palette.player.opacity(0.8))
+        Text(text).font(.system(size: 12, weight: .black)).tracking(1)
+            .foregroundColor(UI.ink)
     }
 
-    private func bodyText(_ text: String, _ color: Color = .gray) -> some View {
+    private func bodyText(_ text: String, _ color: Color = UI.muted) -> some View {
         Text(text).font(.system(size: 12)).foregroundColor(color).lineSpacing(4)
     }
 
@@ -1081,21 +1171,22 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
-        .background(RoundedRectangle(cornerRadius: 16).fill(Color(hex: 0x0A071C).opacity(0.98)))
+        .background(RoundedRectangle(cornerRadius: 18).fill(UI.paper))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(UI.ink, lineWidth: 2))
     }
 
     private func modal<Content: View>(@ViewBuilder content: @escaping () -> Content) -> some View {
         GeometryReader { geo in
             ZStack {
-                Color.black.opacity(0.88).ignoresSafeArea()
+                UI.night.opacity(0.88).ignoresSafeArea()
                 ScrollView(.vertical) {
                     VStack(spacing: 12) {
                         content()
                     }
-                    .frame(maxWidth: 360)
-                    .padding(24)
-                    .background(RoundedRectangle(cornerRadius: 24).fill(Color(hex: 0x080A1C)))
-                    .overlay(RoundedRectangle(cornerRadius: 24).stroke(Color.white.opacity(0.08), lineWidth: 1))
+                    .frame(maxWidth: 380)
+                    .padding(22)
+                    .background(RoundedRectangle(cornerRadius: 26).fill(UI.paper))
+                    .overlay(RoundedRectangle(cornerRadius: 26).stroke(UI.ink, lineWidth: 3))
                     .padding(.horizontal, 16)
                     .padding(.top, geo.safeAreaInsets.top + 20)
                     .padding(.bottom, geo.safeAreaInsets.bottom + 16)
@@ -1113,11 +1204,12 @@ struct ContentView: View {
             VStack {
                 Spacer()
                 Text(toast)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 12, weight: .black))
                     .multilineTextAlignment(.center)
-                    .foregroundColor(Palette.orb)
+                    .foregroundColor(UI.ink)
                     .padding(.horizontal, 18).padding(.vertical, 12)
-                    .background(RoundedRectangle(cornerRadius: 18).fill(Color(hex: 0x0B1A2E).opacity(0.98)))
+                    .background(RoundedRectangle(cornerRadius: 16).fill(UI.sun))
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(UI.ink, lineWidth: 2))
                     .padding(.bottom, 20)
                     .transition(.opacity)
             }
@@ -1139,32 +1231,33 @@ struct ContentView: View {
     }
 
     private func title(_ text: String, _ color: Color) -> some View {
-        Text(text).font(.system(size: 20, weight: .black)).tracking(3).foregroundColor(color)
+        Text(text).font(.system(size: 22, weight: .black)).tracking(0.5).foregroundColor(color)
             .multilineTextAlignment(.center)
             .minimumScaleFactor(0.8)
     }
 
-    private func wideButton(_ text: String, accent: Color = Palette.player,
+    private func wideButton(_ text: String, accent: Color = UI.lime,
                             _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(text).font(.system(size: 13, weight: .bold)).tracking(1)
+            Text(text).font(.system(size: 15, weight: .black)).tracking(1)
                 .lineLimit(1).minimumScaleFactor(0.8)
-                .frame(maxWidth: .infinity).padding(.vertical, 14)
-                .background(Capsule().fill(accent))
-                .foregroundColor(Color(hex: 0x06131C))
+                .frame(maxWidth: .infinity).padding(.vertical, 15)
+                .background(RoundedRectangle(cornerRadius: 16).fill(accent))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(UI.ink, lineWidth: 2))
+                .foregroundColor(UI.ink)
         }
         .buttonStyle(.plain)
     }
 
-    private func outlineButton(_ text: String, accent: Color = Palette.player,
+    private func outlineButton(_ text: String, accent: Color = UI.lime,
                                _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(text).font(.system(size: 13, weight: .bold)).tracking(1)
+            Text(text).font(.system(size: 13, weight: .black)).tracking(1)
                 .lineLimit(1).minimumScaleFactor(0.8)
                 .frame(maxWidth: .infinity).padding(.vertical, 13)
-                .foregroundColor(accent)
-                .background(RoundedRectangle(cornerRadius: 24).fill(Color(hex: 0x0A071C).opacity(0.7)))
-                .overlay(RoundedRectangle(cornerRadius: 24).stroke(accent.opacity(0.7), lineWidth: 1.5))
+                .foregroundColor(UI.ink)
+                .background(RoundedRectangle(cornerRadius: 14).fill(UI.paper))
+                .overlay(RoundedRectangle(cornerRadius: 14).stroke(UI.ink, lineWidth: 2))
         }
         .buttonStyle(.plain)
     }
@@ -1172,10 +1265,11 @@ struct ContentView: View {
     private func smallButton(_ text: String, _ enabled: Bool = true,
                              _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(text).font(.system(size: 10, weight: .bold)).lineLimit(1)
+            Text(text).font(.system(size: 10, weight: .black)).lineLimit(1)
                 .padding(.horizontal, 10).padding(.vertical, 7)
-                .background(Capsule().fill(enabled ? Palette.player.opacity(0.2) : Color.white.opacity(0.05)))
-                .foregroundColor(enabled ? Palette.player : .gray)
+                .background(Capsule().fill(enabled ? UI.sun : UI.paper))
+                .foregroundColor(enabled ? UI.ink : UI.muted)
+                .overlay(Capsule().stroke(UI.ink, lineWidth: 1.5))
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
@@ -1184,14 +1278,15 @@ struct ContentView: View {
     private func navTile(_ title: String, _ subtitle: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.system(size: 13, weight: .bold)).foregroundColor(.white)
-                Text(subtitle).font(.system(size: 10)).foregroundColor(.gray)
+                Text(title).font(.system(size: 13, weight: .black)).foregroundColor(UI.ink)
+                Text(subtitle).font(.system(size: 10)).foregroundColor(UI.muted)
                 Spacer().frame(height: 8)
-                Text("→").font(.system(size: 16)).foregroundColor(Palette.player)
+                Text("→").font(.system(size: 16, weight: .black)).foregroundColor(UI.coral)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)
-            .background(RoundedRectangle(cornerRadius: 16).fill(Color(hex: 0x0A071C).opacity(0.98)))
+            .background(RoundedRectangle(cornerRadius: 16).fill(UI.paper))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(UI.ink, lineWidth: 2))
         }
         .buttonStyle(.plain)
     }
@@ -1203,16 +1298,18 @@ struct ContentView: View {
             if owned { store.equip(item.id) } else { _ = store.buy(item.id) }
         } label: {
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.title).font(.system(size: 12, weight: .bold))
-                    .foregroundColor(equipped ? Palette.player : .white)
-                Text(item.detail).font(.system(size: 9)).foregroundColor(.gray).lineLimit(1)
+                Text(item.title).font(.system(size: 12, weight: .black))
+                    .foregroundColor(UI.ink)
+                Text(item.detail).font(.system(size: 9)).foregroundColor(UI.muted).lineLimit(1)
                 Spacer().frame(height: 6)
                 Text(owned ? (equipped ? "НОСИМ" : "НАДЕТЬ") : "\(item.price) ◈")
-                    .font(.system(size: 11)).foregroundColor(owned ? Palette.player : Palette.orb)
+                    .font(.system(size: 11, weight: .black))
+                    .foregroundColor(owned ? UI.ink : UI.coral)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
-            .background(RoundedRectangle(cornerRadius: 14).fill(Color(hex: 0x0A071C).opacity(0.98)))
+            .background(RoundedRectangle(cornerRadius: 14).fill(UI.paper))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(UI.ink, lineWidth: 1.5))
         }
         .buttonStyle(.plain)
     }
@@ -1220,11 +1317,12 @@ struct ContentView: View {
     private func choiceChip(_ label: String, _ selected: Bool, disabled: Bool = false,
                             _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(label).font(.system(size: 9, weight: .semibold)).tracking(1).lineLimit(1)
+            Text(label).font(.system(size: 10, weight: .black)).tracking(0.3).lineLimit(1)
                 .minimumScaleFactor(0.8)
-                .padding(.horizontal, 9).padding(.vertical, 8)
-                .background(Capsule().fill(selected ? Palette.player.opacity(0.22) : Color.white.opacity(0.05)))
-                .foregroundColor(disabled ? .gray : (selected ? Palette.player : .white.opacity(0.8)))
+                .padding(.horizontal, 11).padding(.vertical, 8)
+                .background(Capsule().fill(selected ? UI.lime : UI.paper))
+                .foregroundColor(disabled ? UI.muted : UI.ink)
+                .overlay(Capsule().stroke(UI.ink, lineWidth: 1.5))
         }
         .buttonStyle(.plain)
         .disabled(disabled)
@@ -1232,33 +1330,34 @@ struct ContentView: View {
 
     private func metric(_ label: String, _ value: String) -> some View {
         VStack(spacing: 2) {
-            Text(label).font(.system(size: 9)).tracking(2).foregroundColor(.gray)
+            Text(label).font(.system(size: 9, weight: .bold)).tracking(2).foregroundColor(UI.muted)
                 .lineLimit(1).minimumScaleFactor(0.8)
-            Text(value).font(.system(size: 20, weight: .black)).foregroundColor(.white)
+            Text(value).font(.system(size: 20, weight: .black)).foregroundColor(UI.ink)
                 .lineLimit(1).minimumScaleFactor(0.8)
         }
         .frame(maxWidth: .infinity)
         .padding(12)
-        .background(RoundedRectangle(cornerRadius: 14).fill(Color(hex: 0x0A071C).opacity(0.98)))
+        .background(RoundedRectangle(cornerRadius: 14).fill(UI.paper))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(UI.ink, lineWidth: 1.5))
     }
 
     private func bar(_ fraction: Float, _ color: Color, _ label: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.system(size: 9)).tracking(1).foregroundColor(.gray)
+        VStack(alignment: .leading, spacing: 5) {
+            Text(label).font(.system(size: 9, weight: .bold)).tracking(1).foregroundColor(UI.ink)
                 .lineLimit(1).minimumScaleFactor(0.8)
             GeometryReader { g in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.08))
+                    Capsule().fill(UI.ink.opacity(0.12))
                     Capsule().fill(color).frame(width: g.size.width * CGFloat(clamped(fraction)))
                 }
             }
-            .frame(height: 5)
+            .frame(height: 7)
         }
     }
 
     private func toggleRow(_ text: String, _ binding: Binding<Bool>) -> some View {
         HStack {
-            Text(text).font(.system(size: 12)).foregroundColor(.white.opacity(0.85))
+            Text(text).font(.system(size: 12, weight: .bold)).foregroundColor(UI.ink)
             Spacer()
             Toggle("", isOn: binding).labelsHidden().toggleStyle(.switch)
         }

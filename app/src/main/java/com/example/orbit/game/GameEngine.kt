@@ -161,6 +161,8 @@ class GameEngine {
     private var reducedMotion = false
     private var scoreBoost = 1f
     private var orbBoost = 1
+    private var hazardSpeed = 1f
+    private var hazardDensity = 1f
     private var nextDraftAt = 16f
     private var draftRound = 0
     private var objectiveRewarded = false
@@ -218,8 +220,8 @@ class GameEngine {
         orbSpawnCursor = 0f
         hazardSpawnCursor = rnd() * TAU
         time = 0f; shake = 0f; reverseFlash = 0f; speedLevel = 0f
-        draft = null; scoreBoost = 1f; orbBoost = 1; nextDraftAt = 16f; draftRound = 0
-        objectiveRewarded = false
+        draft = null; scoreBoost = 1f; orbBoost = 1; hazardSpeed = 1f; hazardDensity = 1f
+        nextDraftAt = 16f; draftRound = 0; objectiveRewarded = false
         fever = false; completed = false; reviveAvailable = false
         timeLeft = if (mode.seconds > 0) mode.seconds.toFloat() + if (upgradeTime) 8f else 0f else -1f
         stats.score = 0; stats.level = level; stats.orbs = 0; stats.goldenOrbs = 0
@@ -361,7 +363,7 @@ class GameEngine {
             spawnAsteroid()
             val base = 1.0f - min(0.35f, score * 0.0004f)
             val floor = if (mode == Mode.Survival) 0.40f else 0.55f
-            spawnTimer = (base / (s.density * seasonDensity)).coerceIn(floor, 1.1f) * (0.85f + rnd() * 0.3f)
+            spawnTimer = (base / (s.density * seasonDensity * hazardDensity)).coerceIn(floor, 1.1f) * (0.85f + rnd() * 0.3f)
         }
         orbTimer -= step
         if (orbTimer <= 0f) { spawnOrb(); orbTimer = 2.8f + rnd() * 2.5f }
@@ -426,7 +428,7 @@ class GameEngine {
     private fun updateCollisions(step: Float) {
         val px = playerX()
         val py = playerY()
-        val speedScale = if (slowTimer > 0f) 0.45f else if (freezeTimer > 0f) 0f else 1f
+        val speedScale = (if (slowTimer > 0f) 0.45f else if (freezeTimer > 0f) 0f else 1f) * hazardSpeed
         var hit: Asteroid? = null
         for (a in asteroids) {
             if (a.dead) continue
@@ -672,14 +674,23 @@ class GameEngine {
         val perk = Content.perks[index]
         perkIds += index
         when (perk.id) {
-            "overclock" -> scoreBoost += 0.25f
-            "barrier" -> { shield = true; shieldTime = max(shieldTime, 14f) }
-            "magnet" -> magnetTimer = max(magnetTimer, 10f)
-            "slowmo" -> slowTimer = max(slowTimer, 10f)
-            "pulse" -> triggerResonance()
-            "ghost" -> { phaseTimer = max(phaseTimer, 8f); invulnerable = max(invulnerable, 8f) }
-            "harvest" -> orbBoost = 2
-            "chronos" -> if (timeLeft > 0f) timeLeft += 12f else addPoints(150)
+            "overclock" -> { scoreBoost += 0.25f; hazardSpeed += 0.10f }
+            "barrier" -> {
+                scoreBoost = max(0.5f, scoreBoost - 0.10f)
+                shield = true; shieldTime = max(shieldTime, 14f)
+            }
+            "magnet" -> { magnetTimer = max(magnetTimer, 10f); hazardDensity += 0.10f }
+            "slowmo" -> { scoreBoost = max(0.5f, scoreBoost - 0.10f); slowTimer = max(slowTimer, 10f) }
+            "pulse" -> { triggerResonance(); combo = 0; multiplier = 1; comboTime = 0f }
+            "ghost" -> {
+                phaseTimer = max(phaseTimer, 8f); invulnerable = max(invulnerable, 8f)
+                orbTimer += 4f
+            }
+            "harvest" -> { scoreBoost = max(0.5f, scoreBoost - 0.10f); orbBoost = 2 }
+            "chronos" -> {
+                hazardDensity += 0.15f
+                if (timeLeft > 0f) timeLeft += 12f else addPoints(150)
+            }
         }
         nextDraftAt = time + 18f
         paused = false
@@ -945,6 +956,7 @@ class GameEngine {
         add("boss_1", stats.bossKills >= 1)
         add("boss_5", stats.bossKills >= 5)
         add("worm_5", stats.wormholes >= 5)
+        add("objective_done", objectiveDone())
         return out
     }
 

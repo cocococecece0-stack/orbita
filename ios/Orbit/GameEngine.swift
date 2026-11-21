@@ -97,6 +97,8 @@ final class GameEngine: ObservableObject {
     private var reducedMotion = false
     private var scoreBoost: CGFloat = 1
     private var orbBoost = 1
+    private var hazardSpeed: CGFloat = 1
+    private var hazardDensity: CGFloat = 1
     private var nextDraftAt: CGFloat = 16
     private var draftRound = 0
     private var objectiveRewarded = false
@@ -159,7 +161,8 @@ final class GameEngine: ObservableObject {
         orbSpawnCursor = 0
         hazardSpawnCursor = rnd() * tau
         time = 0; shake = 0; reverseFlash = 0; speedLevel = 0
-        draft = nil; perkIds.removeAll(); scoreBoost = 1; orbBoost = 1; nextDraftAt = 16; draftRound = 0
+        draft = nil; perkIds.removeAll(); scoreBoost = 1; orbBoost = 1
+        hazardSpeed = 1; hazardDensity = 1; nextDraftAt = 16; draftRound = 0
         objectiveRewarded = false
         fever = false; completed = false; reviveAvailable = false
         timeLeft = mode.seconds > 0 ? CGFloat(mode.seconds) + (upgradeTime ? 8 : 0) : -1
@@ -295,7 +298,7 @@ final class GameEngine: ObservableObject {
             spawnAsteroid()
             let base = 1.0 - min(0.35, CGFloat(score) * 0.0004)
             let floor: CGFloat = mode == .survival ? 0.40 : 0.55
-            spawnTimer = min(max(base / (CGFloat(s.density) * seasonDensity), floor), 1.1) * (0.85 + rnd() * 0.3)
+            spawnTimer = min(max(base / (CGFloat(s.density) * seasonDensity * hazardDensity), floor), 1.1) * (0.85 + rnd() * 0.3)
         }
         orbTimer -= step
         if orbTimer <= 0 { spawnOrb(); orbTimer = 2.8 + rnd() * 2.5 }
@@ -357,7 +360,7 @@ final class GameEngine: ObservableObject {
     private func updateCollisions(_ step: CGFloat) {
         let px = playerX
         let py = playerY
-        let speedScale: CGFloat = slowTimer > 0 ? 0.45 : (freezeTimer > 0 ? 0 : 1)
+        let speedScale: CGFloat = (slowTimer > 0 ? 0.45 : (freezeTimer > 0 ? 0 : 1)) * hazardSpeed
         var hit: Asteroid?
         for a in asteroids {
             if a.dead { continue }
@@ -585,14 +588,23 @@ final class GameEngine: ObservableObject {
         let perk = Content.perks[index]
         perkIds.append(index)
         switch perk.id {
-        case "overclock": scoreBoost += 0.25
-        case "barrier": shield = true; shieldTime = max(shieldTime, 14)
-        case "magnet": magnetTimer = max(magnetTimer, 10)
-        case "slowmo": slowTimer = max(slowTimer, 10)
-        case "pulse": triggerResonance()
-        case "ghost": phaseTimer = max(phaseTimer, 8); invulnerable = max(invulnerable, 8)
-        case "harvest": orbBoost = 2
-        case "chronos": if timeLeft > 0 { timeLeft += 12 } else { addPoints(150) }
+        case "overclock": scoreBoost += 0.25; hazardSpeed += 0.10
+        case "barrier":
+            scoreBoost = max(0.5, scoreBoost - 0.10)
+            shield = true; shieldTime = max(shieldTime, 14)
+        case "magnet": magnetTimer = max(magnetTimer, 10); hazardDensity += 0.10
+        case "slowmo":
+            scoreBoost = max(0.5, scoreBoost - 0.10)
+            slowTimer = max(slowTimer, 10)
+        case "pulse":
+            triggerResonance(); combo = 0; multiplier = 1; comboTime = 0
+        case "ghost":
+            phaseTimer = max(phaseTimer, 8); invulnerable = max(invulnerable, 8)
+            orbTimer += 4
+        case "harvest": scoreBoost = max(0.5, scoreBoost - 0.10); orbBoost = 2
+        case "chronos":
+            hazardDensity += 0.15
+            if timeLeft > 0 { timeLeft += 12 } else { addPoints(150) }
         default: break
         }
         nextDraftAt = time + 18
@@ -854,6 +866,7 @@ final class GameEngine: ObservableObject {
         add("boss_1", stats.bossKills >= 1)
         add("boss_5", stats.bossKills >= 5)
         add("worm_5", stats.wormholes >= 5)
+        add("objective_done", objectiveDone())
         return out
     }
 

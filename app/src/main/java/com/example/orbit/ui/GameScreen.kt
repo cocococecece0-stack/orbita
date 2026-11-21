@@ -99,15 +99,18 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
-private val Neon = Color(0xFF22D3EE)
-private val Amber = Color(0xFFFBBF24)
-private val Pink = Color(0xFFF472B6)
-private val Violet = Color(0xFFA78BFA)
-private val DangerRed = Color(0xFFFF6B6B)
-private val PanelColor = Color(0xE60A071C)
-private val MutedText = Color(0xFF9AA3B8)
+// Новый визуальный язык: уличная аркада — тёплая бумага, лайм, коралл, плотный инк.
+private val Ink = Color(0xFF111526)
+private val Paper = Color(0xFFFFF6E8)
+private val Neon = Color(0xFFD8FF3E)
+private val Amber = Color(0xFFFFC23D)
+private val Pink = Color(0xFFFF5B3D)
+private val Violet = Color(0xFF8B5CF6)
+private val DangerRed = Color(0xFFFF4D4D)
+private val PanelColor = Paper
+private val MutedText = Color(0xFF5D6478)
 
-private enum class Screen { Hub, Guide, Missions, Hangar, Shop, Achievements, Stats, Settings }
+private enum class Screen { Hub, League, Missions, Hangar, Shop, Achievements, Stats, Settings }
 
 @Composable
 fun GameScreen(viewModel: GameViewModel = viewModel()) {
@@ -290,7 +293,7 @@ fun GameScreen(viewModel: GameViewModel = viewModel()) {
             currentDensity.fontScale * if (settings.largeText) 1.5f else 1f,
         ),
     ) {
-    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF05030F))) {
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF101528))) {
         if (screen == null) {
             Canvas(
                 modifier = Modifier
@@ -354,7 +357,7 @@ fun GameScreen(viewModel: GameViewModel = viewModel()) {
             }
             when (screen) {
                 Screen.Hub -> HubScreen(viewModel, engine, art, frame, ::startRun, ::openScreen)
-                Screen.Guide -> GuideScreen(viewModel, ::goHub)
+                Screen.League -> LeagueScreen(viewModel, ::goHub, ::openScreen)
                 Screen.Missions -> MissionsScreen(viewModel, ::goHub)
                 Screen.Hangar -> HangarScreen(viewModel, art, ::goHub)
                 Screen.Shop -> ShopScreen(viewModel, ::goHub)
@@ -372,7 +375,7 @@ fun GameScreen(viewModel: GameViewModel = viewModel()) {
             modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
         ) {
             if (toast != null) {
-                Surface(color = Color(0xF20B1A2E), shape = RoundedCornerShape(18.dp)) {
+                Surface(color = Color(0xF2111526), shape = RoundedCornerShape(18.dp)) {
                     Text(
                         text = toast!!,
                         modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
@@ -482,8 +485,9 @@ private fun InGameHud(
 @Composable
 private fun StatBlock(label: String, value: String, extra: String?, color: Color, alignEnd: Boolean = false) {
     Column(horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start) {
-        Text(label, color = MutedText, fontSize = 10.sp, letterSpacing = 3.sp, maxLines = 1, softWrap = false)
-        Text(value, color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Black,
+        Text(label, color = Paper.copy(alpha = 0.75f), fontSize = 10.sp, letterSpacing = 3.sp,
+            maxLines = 1, softWrap = false)
+        Text(value, color = Paper, fontSize = 30.sp, fontWeight = FontWeight.Black,
             maxLines = 1, softWrap = false)
         if (extra != null) Text(extra, color = color, fontSize = 12.sp, fontWeight = FontWeight.Bold,
             maxLines = 1, softWrap = false)
@@ -501,20 +505,20 @@ private fun Banner(text: String, color: Color, alpha: Float = 1f) {
 private fun RoundButton(label: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier.size(38.dp).clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.09f))
-            .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
+            .background(Paper)
+            .border(2.dp, Ink, CircleShape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, color = Color.White.copy(alpha = 0.9f), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+        Text(label, color = Ink, fontSize = 15.sp, fontWeight = FontWeight.Black)
     }
 }
 
 @Composable
 private fun EffectChip(label: String, color: Color) {
-    Surface(color = color.copy(alpha = 0.18f), shape = RoundedCornerShape(50)) {
-        Text(label, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), color = color,
-            fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp,
+    Surface(color = color, shape = RoundedCornerShape(50), border = BorderStroke(1.5.dp, Ink)) {
+        Text(label, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp), color = Ink,
+            fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp,
             maxLines = 1, softWrap = false)
     }
 }
@@ -522,11 +526,11 @@ private fun EffectChip(label: String, color: Color) {
 /** Таймер фиксированной ширины: табular-цифры не дёргают чип при отсчёте. */
 @Composable
 private fun TimerChip(seconds: Int) {
-    Surface(color = Violet.copy(alpha = 0.18f), shape = RoundedCornerShape(50)) {
+    Surface(color = Amber, shape = RoundedCornerShape(50), border = BorderStroke(1.5.dp, Ink)) {
         Text(
             "$seconds" + "с",
-            modifier = Modifier.widthIn(min = 56.dp).padding(horizontal = 10.dp, vertical = 4.dp),
-            color = Violet, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp,
+            modifier = Modifier.widthIn(min = 56.dp).padding(horizontal = 10.dp, vertical = 5.dp),
+            color = Ink, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp,
             textAlign = TextAlign.Center,
             maxLines = 1, softWrap = false,
         )
@@ -558,7 +562,7 @@ private fun GameOverlays(
 
         engine.status == GameStatus.GameOver -> ModalCard {
             Title(if (engine.completed) "МАРШРУТ ЗАВЕРШЁН" else "ПОТЕРЯН СИГНАЛ", if (engine.completed) Neon else Pink)
-            Text("${engine.score}", color = Color.White, fontSize = 56.sp, fontWeight = FontWeight.Black,
+            Text("${engine.score}", color = Ink, fontSize = 56.sp, fontWeight = FontWeight.Black,
                 maxLines = 1, softWrap = false)
             if (engine.isNewRecord) Text("НОВЫЙ РЕКОРД", color = Amber, fontSize = 12.sp, letterSpacing = 3.sp)
             else Text("Рекорд: $best", color = MutedText, fontSize = 12.sp)
@@ -566,7 +570,7 @@ private fun GameOverlays(
             val objective = engine.objective()
             val reached = min(engine.objectiveValue(), objective.target)
             StatRow(
-                if (engine.objectiveDone()) "ЦЕЛЬ ВЫПОЛНЕНА: ${objective.title} $reached/${objective.target}"
+                if (engine.objectiveDone()) "ЦЕЛЬ ВЫПОЛНЕНА: ${objective.title} $reached/${objective.target} · +120 ◈"
                 else "ЦЕЛЬ: ${objective.title} $reached/${objective.target}",
                 if (engine.objectiveDone()) Palette.Shield else Amber,
             )
@@ -597,38 +601,44 @@ private fun GameOverlays(
     }
 }
 
-/** Рогалик-выбор: три мутации, полёт стоит до выбора. */
+/** Рогалик-выбор: три мутации с ценой. Полёт стоит до выбора. */
 @Composable
 private fun DraftOverlay(engine: GameEngine, onPick: (Int) -> Unit) {
     val draft = engine.draft ?: return
     ModalCard {
-        Title("ВЫБОР МУТАЦИИ", Neon)
-        Body("Раунд ${draft.round} · возьми одно преимущество на этот полёт")
-        Spacer(Modifier.height(16.dp))
+        Title("ВЫБЕРИ СВОЙ РИСК", Ink)
+        Body("Раунд ${draft.round} · преимущество всегда имеет цену")
+        Spacer(Modifier.height(14.dp))
         draft.options.forEachIndexed { index, perkIndex ->
             val perk = Content.perks.getOrNull(perkIndex) ?: return@forEachIndexed
             Surface(
-                color = Color(0xF2121A38),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { onPick(index) },
+                color = Paper,
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(2.dp, Ink),
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).clickable { onPick(index) },
             ) {
-                Row(
-                    modifier = Modifier.padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(perk.glyph, color = Amber, fontSize = 28.sp, modifier = Modifier.width(36.dp))
-                    Column {
-                        Text(perk.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Black,
-                            letterSpacing = 1.sp)
-                        Spacer(Modifier.height(3.dp))
-                        Text(perk.detail, color = MutedText, fontSize = 11.sp)
+                Row(modifier = Modifier.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Surface(color = Amber, shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.5.dp, Ink), modifier = Modifier.size(42.dp)) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(perk.glyph, color = Ink, fontSize = 24.sp, fontWeight = FontWeight.Black)
+                        }
                     }
+                    Spacer(Modifier.width(11.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(perk.title, color = Ink, fontSize = 14.sp, fontWeight = FontWeight.Black,
+                            letterSpacing = 0.5.sp)
+                        Spacer(Modifier.height(2.dp))
+                        Text(perk.detail, color = Ink, fontSize = 11.sp)
+                        Text("ЦЕНА: ${perk.risk}", color = Pink, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Text("▸", color = Ink, fontSize = 20.sp, fontWeight = FontWeight.Black)
                 }
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(9.dp))
         }
-        Spacer(Modifier.height(4.dp))
-        Body("Следующий выбор — примерно через 18 секунд полёта.", Violet.copy(alpha = 0.85f))
+        Spacer(Modifier.height(2.dp))
+        Body("Следующий выбор — примерно через 18 секунд полёта.", MutedText)
     }
 }
 
@@ -648,22 +658,42 @@ private fun HubScreen(
     val settings = save.settings
     val mode = Mode.from(save.selectedMode)
     val sector = Content.sector(save.selectedSector)
-    val xpInLevel = Math.floorMod(save.xp, Content.xpPerLevel)
-    val progress = (xpInLevel.toFloat() / Content.xpPerLevel.toFloat()).coerceIn(0f, 1f)
-    val seasonProgress = (save.seasonXp.toFloat() / Content.seasonTiers.last().xp.coerceAtLeast(1)).coerceIn(0f, 1f)
     val missions = Content.missionsFor(save.dailyDate)
     val seasonMod = Content.seasonModifier(save.seasonId)
     val shipTint = shipColor(save.equippedShip, settings.colorblind)
+    val briefing = Content.objective(mode, sector.id)
+    val nextTier = Content.seasonTiers.firstOrNull { save.seasonXp < it.xp }
 
     Column(
         modifier = Modifier.fillMaxSize().statusBarsPadding().imePadding().navigationBarsPadding()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 18.dp),
+            .padding(horizontal = 16.dp, vertical = 14.dp),
     ) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("ORBITA", color = Ink, fontSize = 28.sp, fontWeight = FontWeight.Black,
+                letterSpacing = (-1).sp, maxLines = 1, softWrap = false)
+            Spacer(Modifier.width(6.dp))
+            Surface(color = Pink, shape = RoundedCornerShape(8.dp), border = BorderStroke(1.5.dp, Ink)) {
+                Text("3.7", color = Paper, fontSize = 10.sp, fontWeight = FontWeight.Black,
+                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp))
+            }
+            Spacer(Modifier.weight(1f))
+            Surface(color = Amber, shape = RoundedCornerShape(50), border = BorderStroke(1.5.dp, Ink)) {
+                Text("◆ ${compactCurrency(save.credits)}", color = Ink, fontSize = 12.sp,
+                    fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp),
+                    maxLines = 1, softWrap = false)
+            }
+            Spacer(Modifier.width(6.dp))
+            Surface(color = Ink, shape = RoundedCornerShape(50)) {
+                Text("LV ${save.playerLevel}", color = Neon, fontSize = 11.sp, fontWeight = FontWeight.Black,
+                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp), maxLines = 1, softWrap = false)
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
         Box(
-            modifier = Modifier.fillMaxWidth().height(196.dp).clip(RoundedCornerShape(22.dp))
-                .background(Color.White.copy(alpha = 0.035f))
-                .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(22.dp)),
+            modifier = Modifier.fillMaxWidth().height(206.dp).clip(RoundedCornerShape(24.dp))
+                .background(Ink).border(3.dp, Neon, RoundedCornerShape(24.dp)),
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 drawHubHero(
@@ -676,195 +706,200 @@ private fun HubScreen(
                     reducedMotion = settings.reducedMotion,
                 )
             }
-            Text(
-                "ОРБИТА", color = Neon, fontSize = 27.sp, fontWeight = FontWeight.Black,
-                letterSpacing = 4.sp, modifier = Modifier.align(Alignment.TopStart).padding(14.dp),
-            )
-            Column(
-                modifier = Modifier.align(Alignment.BottomStart).padding(14.dp),
-            ) {
-                Text(
-                    Content.planetSkins.getOrElse(save.equippedPlanet) { "ЭКЗО" },
-                    color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Black,
-                    letterSpacing = 2.sp, maxLines = 1, softWrap = false,
-                )
-                Text(
-                    "УРОВЕНЬ ${save.playerLevel} · ${sector.name}", color = MutedText,
-                    fontSize = 10.sp, letterSpacing = 1.sp, maxLines = 1, softWrap = false,
-                )
+            Surface(color = Pink, shape = RoundedCornerShape(0.dp, 0.dp, 0.dp, 14.dp)) {
+                Text("СЕЗОН ${save.seasonId}", color = Paper, fontSize = 10.sp, fontWeight = FontWeight.Black,
+                    letterSpacing = 1.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
             }
-            Column(
-                modifier = Modifier.align(Alignment.BottomEnd).padding(14.dp),
-                horizontalAlignment = Alignment.End,
-            ) {
-                Text("◆ ${compactCurrency(save.credits)}", color = Amber, fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
-                Text("СЕЗОН ${save.seasonId}", color = Pink, fontSize = 10.sp, maxLines = 1, softWrap = false)
+            Column(modifier = Modifier.align(Alignment.TopStart).padding(14.dp)) {
+                Text("НОВЫЙ РЕЙД", color = Neon, fontSize = 11.sp, fontWeight = FontWeight.Black,
+                    letterSpacing = 2.sp)
+                Text(seasonMod.first, color = Paper.copy(alpha = 0.8f), fontSize = 10.sp)
+            }
+            Column(modifier = Modifier.align(Alignment.BottomStart).padding(14.dp)) {
+                Text("ЦЕЛЬ ВЫЛЕТА", color = Paper.copy(alpha = 0.7f), fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                Text(briefing.title, color = Paper, fontSize = 14.sp, fontWeight = FontWeight.Black)
+                Text(briefing.target.toString(), color = Neon, fontSize = 30.sp, fontWeight = FontWeight.Black,
+                    maxLines = 1, softWrap = false)
+            }
+            Column(modifier = Modifier.align(Alignment.BottomEnd).padding(14.dp),
+                horizontalAlignment = Alignment.End) {
+                Text("+120 ◈", color = Amber, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                Text("за выполнение цели", color = Paper.copy(alpha = 0.7f), fontSize = 9.sp)
                 if (save.dailyStreak > 0) Text(
-                    "${save.dailyStreak} ${daysWord(save.dailyStreak, capitalize = true)}",
-                    color = Pink, fontSize = 9.sp, maxLines = 1, softWrap = false,
+                    "🔥 ${save.dailyStreak} ${daysWord(save.dailyStreak)}",
+                    color = Pink, fontSize = 10.sp, fontWeight = FontWeight.Bold,
                 )
             }
         }
-        Spacer(Modifier.height(12.dp))
-        Bar(progress, Neon, "XP $xpInLevel / ${Content.xpPerLevel}")
-        Spacer(Modifier.height(6.dp))
-        Bar(seasonProgress, Violet, "СЕЗОН ${save.seasonXp} / ${Content.seasonTiers.last().xp}")
-        Spacer(Modifier.height(8.dp))
-        Panel {
-            Text("СЕЗОН: ${seasonMod.first}", color = Amber, fontSize = 10.sp,
-                fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-            val top = save.topByMode[mode.id].orEmpty().take(3)
-            Text(
-                if (top.isEmpty()) "Локальная таблица рекордов пуста — первый забег станет рекордом."
-                else "ТОП-3: ${top.joinToString(" · ")}",
-                color = MutedText, fontSize = 10.sp, maxLines = 1, softWrap = false,
-            )
-        }
 
-        Spacer(Modifier.height(12.dp))
-        val briefing = Content.objective(mode, sector.id)
-        Panel(color = Color(0xF2111730)) {
-            Text("БРИФИНГ ПОЛЁТА", color = Neon, fontSize = 10.sp, fontWeight = FontWeight.Bold,
-                letterSpacing = 3.sp)
-            Spacer(Modifier.height(6.dp))
-            Text("${briefing.title}: ${briefing.target}", color = Amber, fontSize = 16.sp,
-                fontWeight = FontWeight.Black, letterSpacing = 1.sp)
-            Spacer(Modifier.height(4.dp))
-            Body("Сферы дают опыт и очки. Тап меняет направление, удар об угрозу ломает комбо.")
-            Spacer(Modifier.height(8.dp))
-            Text("МУТАЦИИ КАЖДЫЕ ~18 СЕК", color = Violet, fontSize = 9.sp, fontWeight = FontWeight.Bold,
-                letterSpacing = 2.sp)
-            Spacer(Modifier.height(6.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Content.perks.take(3).forEach { EffectChip("${it.glyph} ${it.title}", Violet) }
-            }
-        }
-
-        Spacer(Modifier.height(20.dp))
-        SectionTitle("РЕЖИМ")
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            maxItemsInEachRow = 3,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Content.modes.forEach { m ->
-                ChoiceChip(
-                    label = m.short,
-                    selected = m.id == mode.id,
-                    modifier = Modifier.widthIn(min = 96.dp),
-                    onClick = { viewModel.selectMode(m.id) },
-                )
-            }
-        }
-        Spacer(Modifier.height(6.dp))
-        Body(mode.detail)
-
-        Spacer(Modifier.height(16.dp))
-        SectionTitle("СЕКТОР")
-        Row(
-            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(end = 20.dp),
-        ) {
-            Content.sectors.forEach { s ->
-                val unlocked = save.playerLevel >= s.unlockLevel || save.visitedSectors.contains(s.id)
-                ChoiceChip(
-                    label = if (unlocked) s.name else "🔒 ${s.name}",
-                    selected = s.id == sector.id,
-                    locked = !unlocked,
-                    onClick = { viewModel.selectSector(s.id) },
-                )
+        Spacer(Modifier.height(14.dp))
+        Text("КОНТРАКТЫ ДНЯ", color = Ink, fontSize = 13.sp, fontWeight = FontWeight.Black,
+            letterSpacing = 1.sp)
+        Spacer(Modifier.height(7.dp))
+        Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+            missions.forEachIndexed { index, mission ->
+                val value = min(save.dailyProgress.getOrElse(index) { 0 }, mission.goal)
+                val done = value >= mission.goal
+                Surface(
+                    color = if (done) Neon else Paper,
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(2.dp, Ink),
+                    modifier = Modifier.width(158.dp).height(96.dp).clickable { onOpen(Screen.Missions) },
+                ) {
+                    Column(modifier = Modifier.padding(11.dp)) {
+                        Text("КОНТРАКТ ${index + 1}", color = Ink.copy(alpha = 0.6f), fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Text(mission.title, color = Ink, fontSize = 12.sp, fontWeight = FontWeight.Black,
+                            maxLines = 1, softWrap = false)
+                        Spacer(Modifier.height(8.dp))
+                        Box(modifier = Modifier.fillMaxWidth().height(7.dp).clip(RoundedCornerShape(4.dp))
+                            .background(Ink.copy(alpha = 0.12f))) {
+                            Box(modifier = Modifier.fillMaxWidth(value.toFloat() / mission.goal.coerceAtLeast(1))
+                                .height(7.dp).clip(RoundedCornerShape(4.dp))
+                                .background(if (done) Ink else Pink))
+                        }
+                        Spacer(Modifier.height(7.dp))
+                        Text("$value / ${mission.goal}   +${mission.reward} ◈", color = Ink,
+                            fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                    }
+                }
                 Spacer(Modifier.width(8.dp))
             }
         }
-        Spacer(Modifier.height(6.dp))
-        Body("${sector.subtitle} · Рекорд ${save.bestByMode[mode.id] ?: 0}")
 
-        Spacer(Modifier.height(22.dp))
-        WideButton("НАЧАТЬ МИССИЮ  ▸", onStart)
         Spacer(Modifier.height(12.dp))
-        val missionsDone = missions.indices.count { i ->
-            save.dailyProgress.getOrNull(i)?.let { v -> v >= missions[i].goal } == true
-        }
-        SecondaryButton("ЗАДАНИЯ ДНЯ  $missionsDone/3", { onOpen(Screen.Missions) }, accent = Violet)
-        if (!save.tutorialSeen) {
-            Spacer(Modifier.height(10.dp))
-            Body("Подсказка: тап во время полёта меняет направление.", Neon.copy(alpha = 0.85f))
-        } else {
-            Spacer(Modifier.height(10.dp))
-            Body("Совет: мутации усиливают забег — бери те, что подходят под режим.", Neon.copy(alpha = 0.7f))
-        }
-        Spacer(Modifier.height(20.dp))
-
-        val tiles = listOf(
-            Triple("СУТЬ ИГРЫ", "Правила и мутации", Screen.Guide),
-            Triple("АНГАР", "Корабли и улучшения", Screen.Hangar),
-            Triple("МАГАЗИН", "Предметы за жетоны", Screen.Shop),
-            Triple("ДОСТИЖЕНИЯ", "Награды и секреты", Screen.Achievements),
-            Triple("СТАТИСТИКА", "Рекорды и история", Screen.Stats),
-            Triple("НАСТРОЙКИ", "Звук и сохранение", Screen.Settings),
-        )
-        tiles.chunked(2).forEach { pair ->
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                pair.forEach { (title, subtitle, target) ->
-                    NavTile(title, subtitle, Modifier.weight(1f)) { onOpen(target) }
-                }
-                if (pair.size == 1) Spacer(Modifier.weight(1f))
+        Panel {
+            Text("ЗАЧЕМ ИГРАТЬ", color = Ink, fontSize = 12.sp, fontWeight = FontWeight.Black,
+                letterSpacing = 1.sp)
+            Spacer(Modifier.height(4.dp))
+            Body("Выполни цель забега — +120 жетонов. Закрывай контракты, качай сезон и открывай новые планеты.", Ink)
+            if (nextTier != null) {
+                Spacer(Modifier.height(7.dp))
+                Bar((save.seasonXp.toFloat() / nextTier.xp).coerceIn(0f, 1f), Pink,
+                    "ДО СЛЕДУЮЩЕГО УРОВНЯ СЕЗОНА: ${nextTier.xp - save.seasonXp} XP")
             }
-            Spacer(Modifier.height(10.dp))
         }
-        Spacer(Modifier.height(20.dp))
+
+        Spacer(Modifier.height(12.dp))
+        Text("ВЫЛЕТ", color = Ink, fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+        Spacer(Modifier.height(6.dp))
+        Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+            Content.modes.forEach { m ->
+                ChoiceChip(m.short, m.id == mode.id) { viewModel.selectMode(m.id) }
+                Spacer(Modifier.width(6.dp))
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Body("${mode.detail}", Ink)
+        Spacer(Modifier.height(8.dp))
+        Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+            Content.sectors.forEach { s ->
+                val unlocked = save.playerLevel >= s.unlockLevel || save.visitedSectors.contains(s.id)
+                ChoiceChip(if (unlocked) s.name else "🔒 ${s.name}", s.id == sector.id, locked = !unlocked) {
+                    viewModel.selectSector(s.id)
+                }
+                Spacer(Modifier.width(6.dp))
+            }
+        }
+        Spacer(Modifier.height(5.dp))
+        Body("${sector.subtitle} · Рекорд ${save.bestByMode[mode.id] ?: 0}", Ink)
+
+        Spacer(Modifier.height(14.dp))
+        WideButton("ПОЕХАЛИ  ▸", onStart)
+
+        Spacer(Modifier.height(14.dp))
+        val docks = listOf(
+            "★" to ("ЛИГА" to Screen.League),
+            "◇" to ("ГАРАЖ" to Screen.Hangar),
+            "◈" to ("МАГАЗИН" to Screen.Shop),
+            "✓" to ("ДОСТИЖ." to Screen.Achievements),
+            "▤" to ("РЕКОРДЫ" to Screen.Stats),
+            "⚙" to ("НАСТР." to Screen.Settings),
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            docks.forEach { (icon, entry) ->
+                DockButton(icon, entry.first, Modifier.weight(1f)) { onOpen(entry.second) }
+            }
+        }
+        Spacer(Modifier.height(16.dp))
     }
 }
 
 // -------------------------------------------------------------- SCREENS ---
 
 @Composable
-private fun GuideScreen(viewModel: GameViewModel, onBack: () -> Unit) {
+private fun LeagueScreen(
+    viewModel: GameViewModel,
+    onBack: () -> Unit,
+    onOpen: (Screen) -> Unit,
+) {
     val save = viewModel.store.data
     val mode = Mode.from(save.selectedMode)
     val objective = Content.objective(mode, save.selectedSector)
-    ScrollScreen("СУТЬ ИГРЫ", viewModel, onBack,
-        "Орбита — это ритм: увернись вовремя, собирай сферы и усиливай забег мутациями.") {
-        Panel(color = Color(0xF2111730)) {
-            Text("ЦЕЛЬ ВЫЛЕТА", color = Neon, fontSize = 10.sp, fontWeight = FontWeight.Bold,
-                letterSpacing = 3.sp)
-            Spacer(Modifier.height(6.dp))
-            Text("${objective.title}: ${objective.target}", color = Amber, fontSize = 20.sp,
+    val defs = Content.missionsFor(save.dailyDate)
+    val missionsDone = defs.indices.count { i -> save.dailyProgress.getOrElse(i) { 0 } >= defs[i].goal }
+    val nextTier = Content.seasonTiers.firstOrNull { save.seasonXp < it.xp }
+    val shipsOwned = Content.shop.count { it.category == "ship" && save.inventory.contains(it.id) }
+    val planetsOwned = Content.shop.count { it.category == "planet" && save.inventory.contains(it.id) }
+    val trophies = (if (save.achievements.contains("boss_1")) 1 else 0) +
+        (if (save.achievements.contains("boss_5")) 1 else 0)
+
+    ScrollScreen("ЛИГА", viewModel, onBack,
+        "Здесь собрано всё, ради чего стоит возвращаться в орбиту.") {
+        Panel(color = Ink) {
+            Text("ГЛАВНАЯ ЦЕЛЬ ВЫЛЕТА", color = Neon, fontSize = 10.sp, fontWeight = FontWeight.Black,
+                letterSpacing = 2.sp)
+            Spacer(Modifier.height(5.dp))
+            Text("${objective.title}: ${objective.target}", color = Paper, fontSize = 22.sp,
                 fontWeight = FontWeight.Black)
-            Spacer(Modifier.height(4.dp))
-            Body("Цель зависит от режима и сектора. Выполнение даёт +200 очков и засчитывается в итоге.")
+            Spacer(Modifier.height(3.dp))
+            Body("Выполнение даёт +200 очков и +120 жетонов.", Paper.copy(alpha = 0.85f))
         }
+
         Spacer(Modifier.height(16.dp))
-        SectionTitle("КАК ИГРАТЬ")
-        val steps = listOf(
-            "01  КОСНИСЬ СФЕРЫ" to "Жёлтые точки дают опыт, очки и заряд резонанса. Чем длиннее серия, тем выше множитель.",
-            "02  МЕНЯЙ НАПРАВЛЕНИЕ" to "Тап разворачивает корабль. Метеориты приходят со всех сторон — читай траекторию заранее.",
-            "03  ВЫБИРАЙ МУТАЦИЮ" to "Каждые ~18 секунд полёт останавливается: возьми одно из трёх улучшений на этот забег.",
-            "04  ВЫПОЛНИ ЦЕЛЬ" to "Держи комбо, не дай угрозам сомкнуться у орбиты и заверши миссию на рекорд.",
+        SectionTitle("ЧЕТЫРЕ ПРИЧИНЫ ВОЗВРАЩАТЬСЯ")
+        val reasons = listOf(
+            "01" to ("СЕЗОННАЯ ГОНКА" to if (nextTier != null)
+                "${save.seasonXp} / ${nextTier.xp} XP · награда +${nextTier.reward} ◈"
+            else "Все уровни сезона пройдены"),
+            "02" to ("КОНТРАКТЫ ДНЯ" to "$missionsDone / 3 выполнено · обновляются в 00:00 UTC"),
+            "03" to ("КОЛЛЕКЦИЯ" to "$shipsOwned / 8 кораблей · $planetsOwned / 8 планет открыто"),
+            "04" to ("ОХОТА НА БОССОВ" to if (trophies == 0) "Первое ядро ещё ждёт" else "$trophies трофея в копилке"),
         )
-        steps.forEach { (head, text) ->
+        reasons.forEach { (num, entry) ->
             Panel {
-                Text(head, color = Violet, fontSize = 12.sp, fontWeight = FontWeight.Black,
-                    letterSpacing = 1.sp)
-                Spacer(Modifier.height(4.dp))
-                Body(text)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(color = if (num == "01") Neon else Amber, shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.5.dp, Ink)) {
+                        Text(num, color = Ink, fontSize = 13.sp, fontWeight = FontWeight.Black,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp))
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text(entry.first, color = Ink, fontSize = 13.sp, fontWeight = FontWeight.Black)
+                        Spacer(Modifier.height(2.dp))
+                        Text(entry.second, color = MutedText, fontSize = 11.sp)
+                    }
+                }
             }
             Spacer(Modifier.height(8.dp))
         }
-        Spacer(Modifier.height(12.dp))
-        SectionTitle("МУТАЦИИ", Amber)
+
+        Spacer(Modifier.height(8.dp))
+        SectionTitle("МУТАЦИИ: ВЫБОР С ЦЕНОЙ")
         Content.perks.forEach { perk ->
             Panel {
-                Text("${perk.glyph}  ${perk.title}", color = Amber, fontSize = 13.sp,
-                    fontWeight = FontWeight.Black, letterSpacing = 1.sp)
-                Spacer(Modifier.height(3.dp))
-                Body(perk.detail)
+                Text("${perk.glyph}  ${perk.title}", color = Ink, fontSize = 13.sp,
+                    fontWeight = FontWeight.Black)
+                Spacer(Modifier.height(2.dp))
+                Text(perk.detail, color = Ink, fontSize = 11.sp)
+                Text("ЦЕНА: ${perk.risk}", color = Pink, fontSize = 10.sp, fontWeight = FontWeight.Bold)
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(7.dp))
         }
-        Spacer(Modifier.height(8.dp))
-        Body("Мутации работают только внутри забега и не меняют сохранённый прогресс.")
+        Spacer(Modifier.height(6.dp))
+        WideButton("ВСЕ ДОСТИЖЕНИЯ  ▸", { onOpen(Screen.Achievements) }, accent = Amber)
     }
 }
 
@@ -877,7 +912,7 @@ private fun MissionsScreen(viewModel: GameViewModel, onBack: () -> Unit) {
             val value = save.dailyProgress.getOrElse(index) { 0 }
             val done = value >= m.goal
             Panel {
-                Text(m.title, color = if (done) Neon else Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Text(m.title, color = if (done) Neon else Ink, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(4.dp))
                 Bar((value.toFloat() / m.goal.coerceAtLeast(1)).coerceIn(0f, 1f), if (done) Neon else Violet, "$value / ${m.goal}")
                 Spacer(Modifier.height(8.dp))
@@ -899,7 +934,7 @@ private fun MissionsScreen(viewModel: GameViewModel, onBack: () -> Unit) {
             val unlocked = save.seasonXp >= tier.xp
             Panel {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Уровень ${i + 1} · ${tier.xp} XP", color = Color.White, fontSize = 13.sp)
+                    Text("Уровень ${i + 1} · ${tier.xp} XP", color = Ink, fontSize = 13.sp)
                     Text("+${tier.reward} ◈", color = Amber, fontSize = 13.sp)
                 }
                 Spacer(Modifier.height(4.dp))
@@ -972,7 +1007,7 @@ private fun HangarScreen(viewModel: GameViewModel, art: GameArt, onBack: () -> U
             Panel {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Column(Modifier.weight(1f)) {
-                        Text(item.title, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text(item.title, color = Ink, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                         Body(item.detail)
                     }
                     SmallButton(if (owned) "АКТИВНО" else "${item.price} ◈", owned) {
@@ -996,7 +1031,7 @@ private fun ShopScreen(viewModel: GameViewModel, onBack: () -> Unit) {
                 Panel {
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text(item.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            Text(item.title, color = Ink, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                             Body(item.detail)
                         }
                         Spacer(Modifier.width(8.dp))
@@ -1032,7 +1067,7 @@ private fun AchievementsScreen(viewModel: GameViewModel, onBack: () -> Unit) {
                     Text(if (open) "★" else "☆", color = if (open) Amber else MutedText, fontSize = 18.sp)
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(a.title, color = if (open) Color.White else MutedText, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text(a.title, color = if (open) Ink else MutedText, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                         Body(a.detail)
                     }
                     Text("+${a.reward} ◈", color = if (open) Amber else MutedText, fontSize = 11.sp)
@@ -1087,7 +1122,7 @@ private fun StatsScreen(viewModel: GameViewModel, onBack: () -> Unit) {
         val top = save.topByMode[modeTab].orEmpty()
         Panel {
             if (top.isEmpty()) Body("В этом режиме ещё нет забегов.")
-            else top.forEachIndexed { i, score -> Text("${i + 1}.  $score", color = if (i == 0) Amber else Color.White, fontSize = 14.sp) }
+            else top.forEachIndexed { i, score -> Text("${i + 1}.  $score", color = if (i == 0) Amber else Ink, fontSize = 14.sp) }
         }
         Spacer(Modifier.height(8.dp))
         val statsClipboard = LocalClipboardManager.current
@@ -1099,7 +1134,7 @@ private fun StatsScreen(viewModel: GameViewModel, onBack: () -> Unit) {
         save.history.take(12).forEach { r ->
             Panel {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("${Mode.from(r.mode).title} · ${Content.sector(r.sector).name}", color = Color.White, fontSize = 12.sp)
+                    Text("${Mode.from(r.mode).title} · ${Content.sector(r.sector).name}", color = Ink, fontSize = 12.sp)
                     Text("${r.score}", color = Neon, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 }
                 Body("Ур. ${r.level} · Сферы ${r.orbs} · Комбо x${r.maxCombo} · ${r.seconds}с")
@@ -1134,9 +1169,9 @@ private fun SettingsScreen(
         Spacer(Modifier.height(14.dp))
         SectionTitle("ЗВУК")
         Panel {
-            Text("Музыка ${(save.settings.music * 100).toInt()}%", color = Color.White, fontSize = 12.sp)
+            Text("Музыка ${(save.settings.music * 100).toInt()}%", color = Ink, fontSize = 12.sp)
             Slider(value = save.settings.music, onValueChange = { viewModel.updateSettings { s -> s.music = it } }, valueRange = 0f..1f)
-            Text("Эффекты ${(save.settings.sfx * 100).toInt()}%", color = Color.White, fontSize = 12.sp)
+            Text("Эффекты ${(save.settings.sfx * 100).toInt()}%", color = Ink, fontSize = 12.sp)
             Slider(value = save.settings.sfx, onValueChange = { viewModel.updateSettings { s -> s.sfx = it } }, valueRange = 0f..1f)
             ToggleRow("Полное выключение звука", save.settings.muted) { viewModel.updateSettings { s -> s.muted = it } }
             ToggleRow("Вибрация", save.settings.haptics) { viewModel.updateSettings { s -> s.haptics = it } }
@@ -1238,7 +1273,7 @@ private fun SettingsScreen(
             }
         }
         Spacer(Modifier.height(24.dp))
-        Body("Орбита 3.6 · Локальная игра без рекламы и сети")
+        Body("Орбита 3.7 · Локальная игра без рекламы и сети")
     }
 }
 
@@ -1253,7 +1288,7 @@ private fun ScrollScreen(title: String, viewModel: GameViewModel, onBack: () -> 
     ) {
         ScreenHeader(title, viewModel, onBack)
         Spacer(Modifier.height(12.dp))
-        Body(subtitle)
+        Body(subtitle, Paper.copy(alpha = 0.85f))
         Spacer(Modifier.height(16.dp))
         content()
         Spacer(Modifier.height(28.dp))
@@ -1286,7 +1321,12 @@ private fun Body(text: String, color: Color = MutedText) {
 
 @Composable
 private fun Panel(color: Color = PanelColor, content: @Composable ColumnScope.() -> Unit) {
-    Surface(color = color, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+    Surface(
+        color = color,
+        shape = RoundedCornerShape(18.dp),
+        border = if (color == Ink) null else BorderStroke(2.dp, Ink),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
         Column(modifier = Modifier.padding(14.dp), content = content)
     }
 }
@@ -1294,15 +1334,20 @@ private fun Panel(color: Color = PanelColor, content: @Composable ColumnScope.()
 @Composable
 private fun ModalCard(content: @Composable ColumnScope.() -> Unit) {
     Box(
-        modifier = Modifier.fillMaxSize().background(Color(0xE303020A))
+        modifier = Modifier.fillMaxSize().background(Color(0xAA0B1020))
             .statusBarsPadding().navigationBarsPadding()
             .pointerInput(Unit) { detectTapGestures { /* модальный экран не пропускает тапы в игру */ } },
         contentAlignment = Alignment.Center,
     ) {
-        Surface(color = Color(0xFC080A1C), shape = RoundedCornerShape(24.dp), modifier = Modifier.padding(24.dp)) {
+        Surface(
+            color = Paper,
+            shape = RoundedCornerShape(26.dp),
+            border = BorderStroke(3.dp, Ink),
+            modifier = Modifier.padding(20.dp),
+        ) {
             Column(
-                modifier = Modifier.fillMaxWidth(0.92f).heightIn(max = 600.dp).verticalScroll(rememberScrollState())
-                    .navigationBarsPadding().padding(24.dp),
+                modifier = Modifier.fillMaxWidth(0.94f).heightIn(max = 620.dp).verticalScroll(rememberScrollState())
+                    .navigationBarsPadding().padding(22.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 content = content,
             )
@@ -1312,7 +1357,7 @@ private fun ModalCard(content: @Composable ColumnScope.() -> Unit) {
 
 @Composable
 private fun Title(text: String, color: Color) {
-    Text(text, color = color, fontSize = 20.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp,
+    Text(text, color = color, fontSize = 22.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp,
         textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
     Spacer(Modifier.height(12.dp))
 }
@@ -1330,19 +1375,21 @@ private fun WideButton(
     accent: Color = Neon,
     modifier: Modifier = Modifier,
 ) {
-    Button(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = modifier.fillMaxWidth().height(48.dp),
-        shape = RoundedCornerShape(14.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = Color(0xFF06131C)),
+    Surface(
+        color = if (enabled) accent else accent.copy(alpha = 0.45f),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(2.dp, Ink),
+        modifier = modifier.fillMaxWidth().height(54.dp).clip(RoundedCornerShape(16.dp))
+            .clickable(enabled = enabled, onClick = onClick),
     ) {
-        Text(text, fontWeight = FontWeight.Bold, fontSize = 13.sp, letterSpacing = 1.sp,
-            maxLines = 1, softWrap = false)
+        Box(contentAlignment = Alignment.Center) {
+            Text(text, color = Ink, fontWeight = FontWeight.Black, fontSize = 15.sp,
+                letterSpacing = 1.sp, maxLines = 1, softWrap = false)
+        }
     }
 }
 
-/** Второстепенное действие: тот же размер, но контур и разный визуальный вес. */
+/** Второстепенное действие: бумажная кнопка с жёстким контуром. */
 @Composable
 private fun SecondaryButton(
     text: String,
@@ -1351,40 +1398,63 @@ private fun SecondaryButton(
     accent: Color = Violet,
     enabled: Boolean = true,
 ) {
-    OutlinedButton(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = modifier.fillMaxWidth().height(48.dp),
-        shape = RoundedCornerShape(14.dp),
-        colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.Transparent, contentColor = accent),
-        border = BorderStroke(1.dp, accent.copy(alpha = 0.6f)),
+    Surface(
+        color = Paper,
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(2.dp, Ink),
+        modifier = modifier.fillMaxWidth().height(50.dp).clip(RoundedCornerShape(16.dp))
+            .clickable(enabled = enabled, onClick = onClick),
     ) {
-        Text(text, fontWeight = FontWeight.Bold, fontSize = 13.sp, letterSpacing = 1.sp,
-            maxLines = 1, softWrap = false)
+        Box(contentAlignment = Alignment.Center) {
+            Text(text, color = Ink, fontWeight = FontWeight.Black, fontSize = 13.sp,
+                letterSpacing = 1.sp, maxLines = 1, softWrap = false)
+        }
     }
 }
 
 @Composable
 private fun SmallButton(text: String, enabled: Boolean = true, onClick: () -> Unit) {
     Surface(
-        color = if (enabled) Neon.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.05f),
+        color = if (enabled) Amber else Paper.copy(alpha = 0.6f),
         shape = RoundedCornerShape(10.dp),
+        border = BorderStroke(1.5.dp, Ink),
         modifier = Modifier.clickable(enabled = enabled, onClick = onClick),
     ) {
-        Text(text, color = if (enabled) Neon else MutedText, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+        Text(text, color = Ink, fontSize = 10.sp, fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp), maxLines = 1, softWrap = false)
     }
 }
 
 @Composable
+private fun DockButton(icon: String, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Surface(
+        color = Paper,
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.5.dp, Ink),
+        modifier = modifier.clickable(onClick = onClick),
+    ) {
+        Column(
+            modifier = Modifier.padding(vertical = 9.dp, horizontal = 2.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(icon, color = Pink, fontSize = 17.sp, fontWeight = FontWeight.Black, maxLines = 1)
+            Spacer(Modifier.height(3.dp))
+            Text(label, color = Ink, fontSize = 8.sp, fontWeight = FontWeight.Bold,
+                maxLines = 1, softWrap = false)
+        }
+    }
+}
+
+@Composable
 private fun NavTile(title: String, subtitle: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Surface(color = PanelColor, shape = RoundedCornerShape(16.dp), modifier = modifier.clickable(onClick = onClick)) {
+    Surface(color = PanelColor, shape = RoundedCornerShape(16.dp), border = BorderStroke(2.dp, Ink),
+        modifier = modifier.clickable(onClick = onClick)) {
         Column(modifier = Modifier.padding(14.dp)) {
-            Text(title, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text(title, color = Ink, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(3.dp))
             Text(subtitle, color = MutedText, fontSize = 10.sp)
             Spacer(Modifier.height(10.dp))
-            Text("→", color = Neon, fontSize = 16.sp)
+            Text("→", color = Pink, fontSize = 16.sp, fontWeight = FontWeight.Black)
         }
     }
 }
@@ -1394,52 +1464,65 @@ private fun ShopTile(
     title: String, detail: String, price: Int, owned: Boolean, equipped: Boolean,
     modifier: Modifier = Modifier, onBuy: () -> Unit, onEquip: () -> Unit,
 ) {
-    Surface(color = PanelColor, shape = RoundedCornerShape(14.dp), modifier = modifier.clickable {
-        if (!owned) onBuy() else onEquip()
-    }) {
+    Surface(color = PanelColor, shape = RoundedCornerShape(14.dp), border = BorderStroke(1.5.dp, Ink),
+        modifier = modifier.clickable { if (!owned) onBuy() else onEquip() }) {
         Column(modifier = Modifier.padding(12.dp)) {
-            Text(title, color = if (equipped) Neon else Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Text(title, color = if (equipped) Ink else Ink, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(2.dp))
             Text(detail, color = MutedText, fontSize = 9.sp)
             Spacer(Modifier.height(8.dp))
-            Text(if (owned) (if (equipped) "НОСИМ" else "НАДЕТЬ") else "$price ◈", color = if (owned) Neon else Amber, fontSize = 11.sp)
+            Text(if (owned) (if (equipped) "НОСИМ" else "НАДЕТЬ") else "$price ◈",
+                color = if (owned) Ink else Pink, fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
 
 @Composable
 private fun Metric(label: String, value: String, modifier: Modifier = Modifier) {
-    Surface(color = PanelColor, shape = RoundedCornerShape(14.dp), modifier = modifier) {
+    Surface(color = PanelColor, shape = RoundedCornerShape(14.dp), border = BorderStroke(1.5.dp, Ink),
+        modifier = modifier) {
         Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(label, color = MutedText, fontSize = 9.sp, letterSpacing = 2.sp)
-            Text(value, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Black,
-                maxLines = 1)
+            Text(value, color = Ink, fontSize = 20.sp, fontWeight = FontWeight.Black, maxLines = 1)
         }
     }
 }
 
 @Composable
-private fun ChoiceChip(label: String, selected: Boolean, modifier: Modifier = Modifier, locked: Boolean = false, onClick: () -> Unit) {
+private fun ChoiceChip(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    locked: Boolean = false,
+    onClick: () -> Unit,
+) {
     Surface(
-        color = if (selected) Neon.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.05f),
+        color = if (selected) Neon else Paper,
         shape = RoundedCornerShape(10.dp),
+        border = BorderStroke(1.5.dp, Ink),
         modifier = modifier.clickable(enabled = !locked, onClick = onClick),
     ) {
-        Text(label, color = if (locked) MutedText else if (selected) Neon else Color.White.copy(alpha = 0.8f),
-            fontSize = 9.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp,
-            modifier = Modifier.padding(horizontal = 9.dp, vertical = 8.dp), maxLines = 1,
-            softWrap = false, overflow = TextOverflow.Ellipsis)
+        Text(
+            label,
+            color = if (locked) MutedText else Ink,
+            fontSize = 10.sp,
+            fontWeight = if (selected) FontWeight.Black else FontWeight.Bold,
+            letterSpacing = 0.3.sp,
+            modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
+            maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
 @Composable
 private fun Bar(fraction: Float, color: Color, label: String) {
     Column {
-        Text(label, color = MutedText, fontSize = 9.sp, letterSpacing = 1.sp)
-        Spacer(Modifier.height(4.dp))
-        Box(modifier = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(3.dp)).background(Color.White.copy(alpha = 0.08f))) {
-            Box(modifier = Modifier.fillMaxWidth(fraction.coerceIn(0f, 1f)).height(5.dp)
-                .clip(RoundedCornerShape(3.dp)).background(color))
+        Text(label, color = Ink, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+        Spacer(Modifier.height(5.dp))
+        Box(modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp))
+            .background(Ink.copy(alpha = 0.12f))) {
+            Box(modifier = Modifier.fillMaxWidth(fraction.coerceIn(0f, 1f)).height(8.dp)
+                .clip(RoundedCornerShape(4.dp)).background(color))
         }
     }
 }
@@ -1447,7 +1530,7 @@ private fun Bar(fraction: Float, color: Color, label: String) {
 @Composable
 private fun ToggleRow(text: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(text, color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp, modifier = Modifier.weight(1f))
+        Text(text, color = Ink, fontSize = 12.sp, modifier = Modifier.weight(1f))
         Switch(checked = checked, onCheckedChange = onChange)
     }
 }

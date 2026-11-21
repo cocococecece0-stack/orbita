@@ -432,6 +432,12 @@ final class SaveStore: ObservableObject {
             summary.achievements.append(a.title)
         }
 
+        // Цель забега — главная причина играть: за выполнение платим отдельный бонус.
+        if achieved.contains("objective_done") {
+            credits = satAdd(credits, 120)
+            xp = satAdd(xp, 30)
+        }
+
         let defs = Content.missionsFor(day)
         let values: [String: Int] = [
             "orbs": rr.orbs, "dodges": rr.dodges, "nearMisses": rr.nearMisses,
@@ -448,6 +454,7 @@ final class SaveStore: ObservableObject {
                 summary.missions.append("\(m.title) +\(m.reward)")
             }
         }
+        if achieved.contains("objective_done") { summary.missions.append("ЦЕЛЬ ВЫПОЛНЕНА +120") }
 
         for id in foundSecrets where !d.secrets.contains(id) {
             d.secrets.append(id)

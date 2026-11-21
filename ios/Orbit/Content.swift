@@ -91,11 +91,12 @@ struct AchievementDef {
     let xp: Int
 }
 
-/// Мутации забега: игрок выбирает одну из трёх каждые ~18 секунд.
+/// Мутации забега: игрок выбирает одну из трёх каждые ~18 секунд. У каждой есть цена.
 struct Perk {
     let id: String
     let title: String
     let detail: String
+    let risk: String
     let glyph: String
 }
 
@@ -148,14 +149,22 @@ enum Content {
     static let bossNames = ["ЯДРО", "РОЙ", "ИМПУЛЬС"]
 
     static let perks = [
-        Perk(id: "overclock", title: "ПЕРЕГРУЗ", detail: "+25% очков до конца забега", glyph: "✦"),
-        Perk(id: "barrier", title: "БАРЬЕР", detail: "Щит на 14 секунд", glyph: "◆"),
-        Perk(id: "magnet", title: "МАГНИТ", detail: "Сферы притягиваются 10 секунд", glyph: "◎"),
-        Perk(id: "slowmo", title: "ЗАМЕДЛЕНИЕ", detail: "Угрозы летят медленнее 10 секунд", glyph: "◐"),
-        Perk(id: "pulse", title: "ИМПУЛЬС", detail: "Волна резонанса очищает орбиту", glyph: "✺"),
-        Perk(id: "ghost", title: "ФАНТОМ", detail: "Неуязвимость на 8 секунд", glyph: "◇"),
-        Perk(id: "harvest", title: "УРОЖАЙ", detail: "Сферы дают двойной опыт", glyph: "●"),
-        Perk(id: "chronos", title: "ХРОНОС", detail: "+12 секунд, если есть таймер", glyph: "◷"),
+        Perk(id: "overclock", title: "ПЕРЕГРУЗ", detail: "+25% очков до конца забега",
+             risk: "Угрозы на 10% быстрее", glyph: "✦"),
+        Perk(id: "barrier", title: "БАРЬЕР", detail: "Щит на 14 секунд",
+             risk: "−10% очков", glyph: "◆"),
+        Perk(id: "magnet", title: "МАГНИТ", detail: "Сферы притягиваются 10 секунд",
+             risk: "Угрозы на 10% плотнее", glyph: "◎"),
+        Perk(id: "slowmo", title: "ЗАМЕДЛЕНИЕ", detail: "Угрозы летят медленнее 10 секунд",
+             risk: "−10% очков", glyph: "◐"),
+        Perk(id: "pulse", title: "ИМПУЛЬС", detail: "Волна резонанса очищает орбиту",
+             risk: "Сбрасывает комбо", glyph: "✺"),
+        Perk(id: "ghost", title: "ФАНТОМ", detail: "Неуязвимость на 8 секунд",
+             risk: "Сферы появляются реже", glyph: "◇"),
+        Perk(id: "harvest", title: "УРОЖАЙ", detail: "Сферы дают двойной опыт",
+             risk: "−10% очков", glyph: "●"),
+        Perk(id: "chronos", title: "ХРОНОС", detail: "+12 секунд, если есть таймер",
+             risk: "Угрозы на 15% плотнее", glyph: "◷"),
     ]
 
     static func objective(_ mode: Mode, sectorId: Int) -> Objective {

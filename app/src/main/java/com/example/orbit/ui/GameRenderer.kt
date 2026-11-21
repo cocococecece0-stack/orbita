@@ -680,7 +680,8 @@ private fun DrawScope.drawParticles(engine: GameEngine, art: GameArt) {
     }
 }
 
-/** Фон для хаба и экранов меню — та же текстура, что и в игре. */
+/** Фон меню: тёплый «уличный» постер вместо однотонного неонового космоса. */
+@Suppress("UNUSED_PARAMETER")
 fun DrawScope.drawMenuBackground(
     art: GameArt,
     style: Int,
@@ -688,28 +689,85 @@ fun DrawScope.drawMenuBackground(
     colorblind: Boolean = false,
     reducedMotion: Boolean = false,
 ) {
-    val image = art.backgrounds[style % art.backgrounds.size]
-    val scale = max(size.width / image.width, size.height / image.height) * 1.05f
-    val dw = image.width * scale
-    val dh = image.height * scale
-    drawImage(
-        image,
-        dstOffset = IntOffset(((size.width - dw) / 2f).roundToInt(), ((size.height - dh) / 2f).roundToInt()),
-        dstSize = IntSize(dw.roundToInt(), dh.roundToInt()),
-    )
+    val w = size.width
+    val h = size.height
+    val paper = Color(0xFFFFF6E8)
     drawRect(
-        brush = Brush.radialGradient(
-            colors = listOf(Color.Transparent, Color(0xFF05030F).copy(alpha = 0.86f)),
-            center = Offset(size.width / 2f, size.height / 2f),
-            radius = max(size.width, size.height) * 0.72f,
+        brush = Brush.verticalGradient(
+            colors = listOf(Color(0xFFFF8A3D), Color(0xFFD3457E), Color(0xFF5B2E86), Color(0xFF12162C)),
+            startY = 0f,
+            endY = h,
         ),
     )
-    val accent = SectorAccents[style.coerceIn(0, SectorAccents.lastIndex)]
+
+    // Большое солнце-стикер и концентрическая рамка.
+    val sunX = w * 0.78f
+    val sunY = h * 0.19f
+    val sunR = minOf(w, h) * 0.155f
+    drawCircle(Color(0xFFFFD34A), radius = sunR, center = Offset(sunX, sunY))
+    drawCircle(Color(0xFFFF5B3D).copy(alpha = 0.55f), radius = sunR * 0.66f,
+        center = Offset(sunX, sunY + sunR * 0.28f))
+    drawCircle(paper.copy(alpha = 0.35f), radius = sunR * 1.32f, center = Offset(sunX, sunY),
+        style = Stroke(width = 2.dp.toPx()))
+
+    // Полутоновые точки — дешёвый принт-эффект, как на обложках аркад.
+    val dot = 1.6.dp.toPx()
+    for (row in 0..14) {
+        for (col in 0..9) {
+            drawCircle(
+                color = paper.copy(alpha = 0.10f),
+                radius = dot,
+                center = Offset(w * 0.55f + col * w * 0.052f, h * 0.06f + row * h * 0.052f),
+            )
+        }
+    }
+
+    // Диагональные полосы speed-линий.
+    rotate(-18f) {
+        repeat(8) { i ->
+            drawRect(
+                color = if (i % 2 == 0) Color(0xFFD8FF3E).copy(alpha = 0.14f)
+                else Color(0xFFFF5B3D).copy(alpha = 0.16f),
+                topLeft = Offset(-w * 0.2f + i * 58.dp.toPx(), h * 0.62f),
+                size = Size(20.dp.toPx(), h * 0.7f),
+            )
+        }
+    }
+    repeat(12) { i ->
+        val y = h * (0.09f + i * 0.061f)
+        drawLine(
+            color = paper.copy(alpha = 0.13f),
+            start = Offset(w * 0.04f, y),
+            end = Offset(w * (0.20f + (i % 4) * 0.09f), y - 10f),
+            strokeWidth = 2.dp.toPx(),
+            cap = StrokeCap.Round,
+        )
+    }
+
+    // Низкий силуэт города: якорь для нижнего меню.
+    val blocks = listOf(0.10f, 0.07f, 0.13f, 0.09f, 0.16f, 0.08f, 0.12f, 0.10f, 0.15f, 0.09f)
+    var x = w * 0.03f
+    val baseY = h * 0.94f
+    blocks.forEachIndexed { i, rel ->
+        val bw = w * rel
+        val bh = h * (0.055f + (i % 3) * 0.022f)
+        drawRect(Color(0xFF0A0E1E).copy(alpha = 0.62f), topLeft = Offset(x, baseY - bh), size = Size(bw, bh))
+        repeat(2) { row ->
+            repeat(3) { col ->
+                drawRect(paper.copy(alpha = 0.18f),
+                    topLeft = Offset(x + bw * (0.16f + col * 0.26f), baseY - bh + bh * (0.25f + row * 0.35f)),
+                    size = Size(3.dp.toPx(), 5.dp.toPx()))
+            }
+        }
+        x += bw + w * 0.012f
+    }
+
+    // Затемняем низ, чтобы белый текст меню оставался читаемым.
     drawRect(
-        brush = Brush.radialGradient(
-            colors = listOf(accent.copy(alpha = 0.06f), Color.Transparent),
-            center = Offset(size.width * 0.82f, size.height * 0.16f),
-            radius = max(size.width, size.height) * 0.55f,
+        brush = Brush.verticalGradient(
+            colors = listOf(Color.Transparent, Color(0xFF101528).copy(alpha = 0.90f)),
+            startY = h * 0.52f,
+            endY = h,
         ),
     )
 }
