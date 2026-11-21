@@ -249,7 +249,7 @@ extension GameEngine {
             let radius = playerRadius * (orb.kind == .artifact ? 2.2 : 1.7) * pulse
             if let glow = art.glow {
                 context.drawUI(glow, in: CGRect(x: x - radius * 1.8, y: y - radius * 1.8,
-                                              width: radius * 3.6, height: radius * 3.6), opacity: 0.4)
+                                              width: radius * 3.6, height: radius * 3.6), alpha: 0.4)
             }
             let sprite = art.orbs[orb.sprite % art.orbs.count]
             context.drawUI(sprite, in: CGRect(x: x - radius, y: y - radius, width: radius * 2, height: radius * 2))
@@ -326,7 +326,7 @@ extension GameEngine {
         let halo = playerRadius * 4.5
         if let glow = art.glow {
             context.drawUI(glow, in: CGRect(x: position.x - halo, y: position.y - halo,
-                                          width: halo * 2, height: halo * 2), opacity: Double(0.35 * alpha))
+                                          width: halo * 2, height: halo * 2), alpha: Double(0.35 * alpha))
         }
         if shield || phaseTimer > 0 || freezeTimer > 0 {
             let color = phaseTimer > 0 ? Palette.phase : (freezeTimer > 0 ? Palette.freeze : Palette.shield)
@@ -357,7 +357,7 @@ extension GameEngine {
             let life = min(max(particle.life / particle.maxLife, 0), 1)
             let radius = particle.size * (1.4 + life)
             context.drawUI(glow, in: CGRect(x: particle.x - radius, y: particle.y - radius,
-                                          width: radius * 2, height: radius * 2), opacity: Double(life * 0.85))
+                                          width: radius * 2, height: radius * 2), alpha: Double(life * 0.85))
         }
     }
 }
