@@ -254,7 +254,7 @@ private fun DrawScope.drawPlanet(engine: GameEngine, art: GameArt, style: Int, t
     val diameter = (engine.planetRadius * 2f / PLANET_SPRITE_VISIBLE).roundToInt()
     drawGlow(center, engine.planetRadius * 1.7f, if (colorblind) Contrast.Bonus else Color(0xFF7C5CFF), 0.22f)
     translate(center.x, center.y) {
-        rotate(time * 0.9f) {
+        rotate(time * 0.9f, pivot = Offset.Zero) {
             drawImage(
                 image,
                 dstOffset = IntOffset(-diameter / 2, -diameter / 2),
@@ -339,7 +339,7 @@ private fun DrawScope.drawWormholes(engine: GameEngine, art: GameArt, colorblind
         val radius = engine.playerRadius * 5f
         val color = if (colorblind) Contrast.Bonus else Palette.Phase
         translate(x, y) {
-            rotate(worm.pulse * 70f) {
+            rotate(worm.pulse * 70f, pivot = Offset.Zero) {
                 val sizePx = (radius * 2).roundToInt()
                 drawImage(
                     art.ring,
@@ -459,7 +459,7 @@ private fun DrawScope.drawPowerUps(engine: GameEngine, art: GameArt, colorblind:
         val glowColor = if (colorblind) Contrast.BonusAlt else Palette.Shield
         drawGlow(Offset(x, y), radius * 2.4f, glowColor, 0.28f)
         translate(x, y) {
-            rotate(if (still) 0f else sin(power.pulse * 0.5f) * 8f) {
+            rotate(if (still) 0f else sin(power.pulse * 0.5f) * 8f, pivot = Offset.Zero) {
                 drawImage(
                     art.powers[index],
                     dstOffset = IntOffset(-sizePx / 2, -sizePx / 2),
@@ -511,7 +511,7 @@ private fun DrawScope.drawAsteroids(engine: GameEngine, art: GameArt, colorblind
                 val sprite = art.comets[asteroid.sprite % art.comets.size]
                 val diameter = (asteroid.radius * 3.8f).roundToInt()
                 translate(x, y) {
-                    rotate(asteroid.angle * RAD) {
+                    rotate(asteroid.angle * RAD, pivot = Offset.Zero) {
                         drawImage(
                             sprite,
                             dstOffset = IntOffset(-diameter / 2, -diameter / 2),
@@ -540,7 +540,7 @@ private fun DrawScope.drawAsteroids(engine: GameEngine, art: GameArt, colorblind
                 val sprite = art.asteroids[asteroid.sprite % art.asteroids.size]
                 val diameter = (asteroid.radius * 3.6f).roundToInt()
                 translate(x, y) {
-                    rotate(asteroid.rotation * RAD) {
+                    rotate(asteroid.rotation * RAD, pivot = Offset.Zero) {
                         drawImage(
                             sprite,
                             dstOffset = IntOffset(-diameter / 2, -diameter / 2),
@@ -562,7 +562,7 @@ private fun DrawScope.drawAsteroids(engine: GameEngine, art: GameArt, colorblind
                 val sprite = art.asteroids[asteroid.sprite % art.asteroids.size]
                 val diameter = (asteroid.radius * 3.6f).roundToInt()
                 translate(x, y) {
-                    rotate(asteroid.rotation * RAD) {
+                    rotate(asteroid.rotation * RAD, pivot = Offset.Zero) {
                         drawImage(
                             sprite,
                             dstOffset = IntOffset(-diameter / 2, -diameter / 2),
@@ -656,7 +656,7 @@ private fun DrawScope.drawPlayer(
     val heading = engine.playerAngle + engine.direction * (PI.toFloat() / 2f)
     val diameter = (engine.playerRadius * 6.5f).roundToInt()
     translate(position.x, position.y) {
-        rotate(heading * RAD + 90f) {
+        rotate(heading * RAD + 90f, pivot = Offset.Zero) {
             drawImage(
                 art.ships[shipSprite.coerceIn(0, art.ships.lastIndex)],
                 dstOffset = IntOffset(-diameter / 2, -diameter / 2),
@@ -724,7 +724,7 @@ fun DrawScope.drawPreviewPlanet(
     val diameter = (radius * 2f / PLANET_SPRITE_VISIBLE).roundToInt()
     drawGlow(center, radius * 1.7f, if (colorblind) Contrast.Bonus else Color(0xFF7C5CFF), 0.22f)
     translate(center.x, center.y) {
-        rotate(if (reducedMotion) 0f else tick * 0.01f) {
+        rotate(if (reducedMotion) 0f else tick * 0.01f, pivot = Offset.Zero) {
             drawImage(
                 art.planets[index % art.planets.size],
                 dstOffset = IntOffset(-diameter / 2, -diameter / 2),
@@ -776,7 +776,7 @@ fun DrawScope.drawHubHero(
     drawGlow(Offset(px, py), r * 0.26f, skinColor, 0.45f)
     val shipSize = (r * 0.24f).roundToInt()
     translate(px, py) {
-        rotate(phase * RAD + 180f) {
+        rotate(phase * RAD + 180f, pivot = Offset.Zero) {
             drawImage(
                 art.ships[shipSprite.coerceIn(0, art.ships.lastIndex)],
                 dstOffset = IntOffset(-shipSize / 2, -shipSize / 2),
