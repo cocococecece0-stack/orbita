@@ -69,3 +69,19 @@ git tag v3.0 && git push origin v3.0
 
 Android: Kotlin 2.0, AGP 8.7, Gradle 8.11, Compose BOM 2024.10, minSdk 26.
 iOS: Swift 5, SwiftUI Canvas, iOS 16+, XcodeGen.
+
+## v2 — единое ядро TypeScript + WebGL2 + Capacitor
+
+Старый нативный код (Kotlin/Swift) перенесён в ветку `legacy-native` для истории.
+Вся игровая логика, рендер, звук и UI живут в `src/` и собираются в оба приложения.
+
+```bash
+pnpm install
+pnpm run build          # tsc --noEmit + vite build -> dist/
+pnpm exec cap sync      # копирует dist/ в android/ и ios/
+python3 tools/resource_checksum.py
+python3 tools/size_budget.py <path-to.apk> <path-to.ipa>
+```
+
+CI: `Build` — Android debug APK, iOS unsigned device IPA, валидация бюджета 8 MB.
+Bundle ID `com.example.orbit`, имя приложения `Orbit`, имя IPA при релизе не менялись.

@@ -14,24 +14,43 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Set up JDK
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.21.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build web core
+        run: pnpm run build
+
+      - name: Sync Capacitor (Android)
+        run: pnpm exec cap sync android
+
+      - name: Setup JDK
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      # The ubuntu-latest runner ships with the Android SDK preinstalled.
       - name: Build debug APK
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: cd android && ./gradlew assembleDebug --no-daemon
+
+      - name: Size budget
+        run: python3 tools/size_budget.py android/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: orbita-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
   ios:
@@ -40,52 +59,57 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Install XcodeGen
-        run: brew install xcodegen
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.21.0
 
-      - name: Generate Xcode project
-        run: cd ios && xcodegen generate
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
 
-      - name: Build for simulator
-        run: |
-          cd ios
-          xcodebuild \
-            -project Orbit.xcodeproj \
-            -scheme Orbit \
-            -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO \
-            build
+      - name: Install
+        run: pnpm install --frozen-lockfile
 
-      # Unsigned device build: sideloading tools (AltStore, Sideloadly) re-sign it
-      # with the user's own Apple ID, so no developer account is needed here.
+      - name: Build web core
+        run: pnpm run build
+
+      - name: Sync Capacitor (iOS)
+        run: pnpm exec cap sync ios
+
       - name: Build unsigned device app
         run: |
-          cd ios
+          cd ios/App
           xcodebuild \
-            -project Orbit.xcodeproj \
-            -scheme Orbit \
+            -project App.xcodeproj \
+            -scheme App \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -configuration Release \
             -derivedDataPath build/DerivedData \
+            -archivePath build/Orbit.xcarchive \
+            IPHONEOS_DEPLOYMENT_TARGET=16.0 \
             CODE_SIGNING_ALLOWED=NO \
             build
 
       - name: Package unsigned IPA
         run: |
-          cd ios
+          cd ios/App
           mkdir -p build/Payload
-          cp -R build/DerivedData/Build/Products/Release-iphoneos/Orbit.app build/Payload/
+          cp -R build/DerivedData/Build/Products/Release-iphoneos/App.app build/Payload/Orbit.app
           cd build
           zip -qry Orbit-unsigned.ipa Payload
+
+      - name: Size budget
+        run: python3 tools/size_budget.py ios/App/build/Orbit-unsigned.ipa
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: orbita-unsigned-ipa
-          path: ios/build/Orbit-unsigned.ipa
+          path: ios/App/build/Orbit-unsigned.ipa
           if-no-files-found: error
 
   release:

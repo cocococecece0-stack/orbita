@@ -1,0 +1,27 @@
+{
+  "name": "orbita-v2",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.21.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "cap:sync": "cap sync",
+    "check:size": "python3 tools/size_budget.py",
+    "check:assets": "python3 tools/resource_checksum.py"
+  },
+  "dependencies": {
+    "@capacitor/core": "8.6.2",
+    "@capacitor/haptics": "8.0.2"
+  },
+  "devDependencies": {
+    "@capacitor/android": "8.6.2",
+    "@capacitor/cli": "8.6.2",
+    "@capacitor/ios": "8.6.2",
+    "typescript": "5.9.3",
+    "vite": "8.3.8",
+    "esbuild": "0.28.2"
+  }
+}

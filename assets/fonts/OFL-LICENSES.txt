@@ -1,0 +1,5 @@
+Шрифты распространяются по лицензии SIL Open Font License 1.1.
+Используемые семейства: Unbounded, Golos Text, JetBrains Mono.
+Источник: Google Fonts (fonts.gstatic.com), подмножества cyrillic + latin в WOFF2.
+Лицензия: https://openfontlicense.org/open-font-license-official-text/
+При распространении приложения сохраняйте этот файл в бандле.
