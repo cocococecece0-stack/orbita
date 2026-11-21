@@ -30,7 +30,7 @@ sealed interface GameEvent {
     data object Tap : GameEvent
     data class BlockMove(val direction: Int) : GameEvent
     data object BlockRotate : GameEvent
-    data class BlockHold : GameEvent
+    data object BlockHold : GameEvent
     data class BlockDrop(val cells: Int) : GameEvent
     data class BlockClear(val lines: Int) : GameEvent
     data object BlockTopOut : GameEvent
