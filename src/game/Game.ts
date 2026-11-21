@@ -1,4 +1,4 @@
-import { CONFIG } from '../core/Config';
+import { CONFIG, type Mode } from '../core/Config';
 import { EventBus } from '../core/Events';
 import { Rng } from '../core/Rng';
 import { TAU, clamp, angDiff } from '../core/Mathx';
@@ -20,6 +20,7 @@ export interface GameSnapshot {
   nearMisses: number;
   elapsed: number;
   isNewBest: boolean;
+  mode: Mode;
 }
 
 const ACCENT = { r: 1.0, g: 0.706, b: 0.329 };
@@ -32,6 +33,7 @@ export class Game {
   readonly events = new EventBus();
   private rng = new Rng(Rng.runSeed());
   private screen: Screen = 'menu';
+  private mode: Mode = 'classic';
 
   private centerX = 0;
   private centerY = 0;
@@ -78,7 +80,7 @@ export class Game {
 
   private snapshot: GameSnapshot = {
     screen: 'menu', score: 0, best: 0, combo: 0, mult: 1, level: 1,
-    orbs: 0, shields: 0, slowLeft: 0, feverLeft: 0, nearMisses: 0,
+    orbs: 0, shields: 0, mode: 'classic', slowLeft: 0, feverLeft: 0, nearMisses: 0,
     elapsed: 0, isNewBest: false,
   };
 
@@ -94,7 +96,14 @@ export class Game {
   }
 
   setBest(value: number): void { this.best = value; }
+  /** Скин меняет только визуальный акцент, не затрагивая симуляцию. */
+  setAccent(r: number, g: number, b: number): void {
+    ACCENT.r = r;
+    ACCENT.g = g;
+    ACCENT.b = b;
+  }
   getBest(): number { return this.best; }
+  getMode(): Mode { return this.mode; }
   getScreen(): Screen { return this.screen; }
   getSnapshot(): GameSnapshot { return this.sync(); }
   getPlanetVisual(): { pulse: number; crack: number; shake: number; zoom: number } {
@@ -105,7 +114,8 @@ export class Game {
     return this.visual;
   }
 
-  startRun(seed = Rng.runSeed()): void {
+  startRun(seed = Rng.runSeed(), mode: Mode = 'classic'): void {
+    this.mode = mode;
     this.rng = new Rng(seed);
     this.orbs.clear();
     this.asteroids.clear();
@@ -130,11 +140,12 @@ export class Game {
     this.shake = 0;
     this.zoom = 0.08;
     this.angle = -Math.PI / 2;
-    this.angularSpeed = 1.35;
-    this.orbitIndex = 1;
+    this.angularSpeed = mode === 'hardcore' ? 2.1 : 1.35;
+    this.orbitIndex = mode === 'hardcore' ? 0 : 1;
     this.spawnTimer = 0;
     this.hazardTimer = 1.2;
     this.screen = 'playing';
+    this.snapshot.mode = mode;
     this.updatePlayerPosition();
     this.sync();
   }
@@ -146,6 +157,11 @@ export class Game {
   /** Тап: мгновенная смена орбиты (отклик в том же кадре). */
   tap(): void {
     if (this.screen !== 'playing') return;
+    // Hardcore: одна орбита, тап даёт только визуальный отклик.
+    if (this.mode === 'hardcore') {
+      this.zoom = Math.max(this.zoom, 0.02);
+      return;
+    }
     this.orbitIndex = this.orbitIndex === 0 ? 1 : 0;
     this.zoom = Math.max(this.zoom, 0.035);
     this.burst(this.px, this.py, 5, ACCENT, 34);
@@ -153,7 +169,7 @@ export class Game {
 
   /** Удержание: нырок на внутреннюю орбиту с риском. */
   setDiving(active: boolean): void {
-    if (this.screen !== 'playing') return;
+    if (this.screen !== 'playing' || this.mode === 'hardcore') return;
     this.orbitIndex = active ? 0 : 1;
   }
 
@@ -240,7 +256,7 @@ export class Game {
     this.orbsCollected++;
     this.levelOrbs++;
     this.setCombo(this.combo + 1);
-    const gain = this.mult * (this.feverActive() ? 2 : 1);
+    const gain = this.mult * (this.feverActive() ? 2 : 1) * (this.mode === 'hardcore' ? 2 : 1);
     this.score += 10 * gain;
     this.hitStop = CONFIG.hitStopMs / 1000;
     this.zoom = Math.max(this.zoom, 0.06 + this.mult * 0.008);
@@ -370,6 +386,7 @@ export class Game {
     }
 
     this.hazardTimer -= dt;
+    if (this.mode === 'zen') return;
     if (this.hazardTimer <= 0) {
       this.hazardTimer = Math.max(0.7, 2.4 - this.level * 0.09);
       const a = this.asteroids.spawn();
@@ -464,6 +481,7 @@ export class Game {
     s.nearMisses = this.nearMisses;
     s.elapsed = this.elapsed;
     s.isNewBest = this.isNewBest;
+    s.mode = this.mode;
     return s;
   }
 

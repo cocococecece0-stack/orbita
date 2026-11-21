@@ -21,3 +21,4 @@ export const CONFIG = {
 } as const;
 
 export type Locale = 'ru' | 'en';
+export type Mode = 'classic' | 'zen' | 'hardcore' | 'daily';

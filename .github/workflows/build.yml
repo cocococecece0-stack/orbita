@@ -31,8 +31,13 @@ jobs:
       - name: Build web core
         run: pnpm run build
 
-      - name: Sync Capacitor (Android)
-        run: pnpm exec cap sync android
+      - name: Sync Capacitor
+        run: pnpm exec cap sync
+
+      - name: Asset checksum and platform parity
+        run: |
+          python3 tools/resource_checksum.py
+          python3 tools/parity_report.py
 
       - name: Setup JDK
         uses: actions/setup-java@v5

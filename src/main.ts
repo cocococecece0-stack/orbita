@@ -1,12 +1,13 @@
 import './theme/theme.css';
 import { GameLoop } from './core/GameLoop';
 import { Rng } from './core/Rng';
+import type { Mode } from './core/Config';
 import { Renderer } from './render/Renderer';
 import { EntityRenderer } from './render/EntityRenderer';
 import { Game } from './game/Game';
 import { AudioManager, type SfxName } from './audio/Audio';
 import { haptic, type HapticPreset } from './platform/Haptics';
-import { Save } from './save/Save';
+import { Save, SKINS, TRAILS } from './save/Save';
 import { UI } from './ui/UI';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement | null;
@@ -15,19 +16,35 @@ if (!canvas || !uiRoot) throw new Error('Не найдены #game или #ui');
 
 const save = new Save();
 const data = save.load();
-document.documentElement.dataset['palette'] = data.settings.palette;
-document.documentElement.lang = data.settings.locale;
-
 const renderer = new Renderer(canvas);
 const entities = new EntityRenderer(renderer.getGl());
 const audio = new AudioManager();
 const game = new Game(save.get().best);
 const ui = new UI(uiRoot);
-ui.setMenuBest(data.best);
 
 let audioReady = false;
-let pointerDownAt = 0;
 let diveTimer = 0;
+let lastScore = 0;
+let lastMode: Mode = 'classic';
+
+function applyTheme(): void {
+  const s = save.get().settings;
+  document.documentElement.dataset['palette'] = s.palette;
+  document.documentElement.lang = s.locale;
+  document.documentElement.style.setProperty('--fx-intensity', String(s.fx));
+  document.documentElement.style.setProperty('--grain', s.reducedMotion ? '0.01' : '0.04');
+  const skin = SKINS.find((x) => x.id === save.get().selectedSkin) ?? SKINS[0];
+  const gl = (skin as { gl: readonly number[] }).gl;
+  if (skin) {
+    document.documentElement.style.setProperty('--c-accent', skin.accent);
+    document.documentElement.style.setProperty('--gl-acc', `${gl[0]}, ${gl[1]}, ${gl[2]}`);
+  }
+  renderer.refreshTheme();
+  game.setAccent?.(gl[0] ?? 1, gl[1] ?? 0.706, gl[2] ?? 0.329);
+}
+applyTheme();
+ui.setMenuBest(data.best);
+ui.syncSettings(save.get());
 
 function insets(): { top: number; right: number; bottom: number; left: number } {
   const cs = getComputedStyle(document.documentElement);
@@ -44,68 +61,140 @@ window.addEventListener('resize', resize, { passive: true });
 window.addEventListener('orientationchange', resize, { passive: true });
 resize();
 
-function sfx(name: SfxName, pitch = 1): void {
-  if (!data.settings.sound) return;
-  void ensureAudio().then(() => audio.play(name, pitch));
-}
-
-function tapHaptic(preset: HapticPreset): void {
-  if (data.settings.haptics) void haptic(preset);
-}
-
 async function ensureAudio(): Promise<void> {
   if (audioReady) return;
   audioReady = true;
   try {
     await audio.init();
-    audio.setMuted(!data.settings.sound);
-    if (data.settings.music) audio.startAmbient();
+    audio.setMuted(!save.get().settings.sound);
+    if (save.get().settings.music) audio.startAmbient();
   } catch (error) {
     console.warn('Аудио недоступно:', error);
   }
 }
 
-game.events.on('orb', (mult) => {
-  sfx('orb', 0.92 + mult * 0.09);
-  tapHaptic('light');
-});
-game.events.on('nearMiss', () => { sfx('dodge', 1.18); tapHaptic('medium'); });
-game.events.on('shieldOn', () => { sfx('shield', 0.9); tapHaptic('medium'); });
-game.events.on('shieldBreak', () => { sfx('shield', 0.7); tapHaptic('heavy'); });
-game.events.on('slowOn', () => { sfx('powerup', 0.85); tapHaptic('medium'); });
-game.events.on('levelUp', (level) => { sfx('level', 0.95 + level * 0.01); tapHaptic('success'); });
-game.events.on('feverOn', () => { sfx('powerup', 1.25); tapHaptic('success'); });
-game.events.on('newBest', () => { sfx('level', 1.3); tapHaptic('success'); });
-game.events.on('death', () => { sfx('crash'); tapHaptic('heavy'); });
+function sfx(name: SfxName, pitch = 1): void {
+  if (!save.get().settings.sound) return;
+  void ensureAudio().then(() => audio.play(name, pitch));
+}
+
+function hapticSafe(preset: HapticPreset): void {
+  if (save.get().settings.haptics) void haptic(preset);
+}
+
+game.events.on('orb', (mult) => { sfx('orb', 0.92 + mult * 0.09); hapticSafe('light'); });
+game.events.on('nearMiss', () => { sfx('dodge', 1.18); hapticSafe('medium'); });
+game.events.on('shieldOn', () => { sfx('shield', 0.9); hapticSafe('medium'); });
+game.events.on('shieldBreak', () => { sfx('shield', 0.7); hapticSafe('heavy'); });
+game.events.on('slowOn', () => { sfx('powerup', 0.85); hapticSafe('medium'); });
+game.events.on('levelUp', (level) => { sfx('level', 0.95 + level * 0.01); hapticSafe('success'); });
+game.events.on('feverOn', () => { sfx('powerup', 1.25); hapticSafe('success'); });
+game.events.on('newBest', () => { sfx('level', 1.3); hapticSafe('success'); });
+game.events.on('death', () => { sfx('crash'); hapticSafe('heavy'); });
+
+function seedFor(mode: Mode): number {
+  return mode === 'daily' ? Rng.dailySeedUTC() : Rng.runSeed();
+}
 
 function startRun(): void {
+  const mode = ui.getMode();
+  lastMode = mode;
+  lastScore = 0;
   void ensureAudio();
-  game.startRun(Rng.runSeed());
+  game.startRun(seedFor(mode), mode);
   ui.show('playing');
 }
 
-ui.on('ui-play', startRun);
-ui.on('ui-again', startRun);
-ui.on('ui-pause', () => { game.pause(); ui.show('paused'); });
-ui.on('ui-resume', () => { game.resume(); ui.show('playing'); });
-ui.on('ui-pause-menu', () => { game.toMenu(); ui.setMenuBest(save.get().best); ui.show('menu'); });
-ui.on('ui-over-menu', () => { game.toMenu(); ui.setMenuBest(save.get().best); ui.show('menu'); });
-ui.on('ui-sound', () => {
-  data.settings.sound = !data.settings.sound;
-  audio.setMuted(!data.settings.sound);
+function toMenu(): void {
+  game.toMenu();
+  ui.setMenuBest(save.get().best);
+  ui.show('menu');
+}
+
+ui.on('play', startRun);
+ui.on('again', startRun);
+ui.on('pause', () => { game.pause(); ui.show('paused'); });
+ui.on('resume', () => { game.resume(); ui.show('playing'); });
+ui.on('pause-menu', toMenu);
+ui.on('over-menu', toMenu);
+ui.on('to-stats', () => ui.showStats(save.get()));
+ui.on('stats-back', toMenu);
+ui.on('to-custom', () => ui.showCustom(save.get()));
+ui.on('custom-back', toMenu);
+ui.on('to-settings', () => { ui.syncSettings(save.get()); ui.show('settings'); });
+ui.on('settings-back', toMenu);
+ui.on('sound', () => {
+  save.get().settings.sound = !save.get().settings.sound;
+  audio.setMuted(!save.get().settings.sound);
   save.save();
+  ui.syncSettings(save.get());
+});
+
+ui.onInput('set-sound', (v) => { save.get().settings.sound = v === 'true'; audio.setMuted(v !== 'true'); save.save(); });
+ui.onInput('set-music', (v) => { save.get().settings.music = v === 'true'; save.save(); });
+ui.onInput('set-haptics', (v) => { save.get().settings.haptics = v === 'true'; save.save(); });
+ui.onInput('set-lowfps', (v) => { save.get().settings.lowFps = v === 'true'; loop.setFpsCap(v === 'true' ? 30 : 0); save.save(); });
+ui.onInput('set-fx', (v) => { save.get().settings.fx = Number(v); applyTheme(); save.save(); });
+ui.onInput('set-palette', (v) => {
+  save.get().settings.palette = v as 'default' | 'protan' | 'deutan' | 'tritan';
+  applyTheme(); save.save();
+});
+ui.onInput('set-locale', (v) => { save.setLocale(v as 'ru' | 'en'); applyTheme(); });
+ui.on('export-code', () => {
+  const code = save.exportCode();
+  ui.setTransferCode(code);
+  const clip = navigator.clipboard;
+  if (!clip) { ui.toast('КОД В ПОЛЕ ВВОДА'); return; }
+  void clip.writeText(code).then(
+    () => ui.toast('КОД СКОПИРОВАН'),
+    () => ui.toast('КОД В ПОЛЕ ВВОДА'),
+  ).catch(() => ui.toast('КОД В ПОЛЕ ВВОДА'));
+});
+ui.on('import-code', () => {
+  if (save.importCode(ui.getTransferCode())) {
+    applyTheme();
+    game.setBest(save.get().best);
+    ui.syncSettings(save.get());
+    ui.setMenuBest(save.get().best);
+    ui.toast('СОХРАНЕНИЕ ВОССТАНОВЛЕНО');
+  } else {
+    ui.toast('НЕВЕРНЫЙ КОД');
+  }
+});
+
+ui.root.addEventListener('shop', (event) => {
+  const detail = (event as CustomEvent<{ skin?: string; trail?: string; cost: number }>).detail;
+  if (detail.skin) {
+    const item = SKINS.find((s) => s.id === detail.skin);
+    if (!item) return;
+    if (!save.get().unlockedSkins.includes(item.id)) {
+      if (!save.buySkin(item.id, detail.cost)) { ui.toast('НЕДОСТАТОЧНО ЖЕТОНОВ'); return; }
+      ui.toast(`ОТКРЫТО: ${item.name}`);
+    }
+    save.selectSkin(item.id);
+    applyTheme();
+  }
+  if (detail.trail) {
+    const item = TRAILS.find((s) => s.id === detail.trail);
+    if (!item) return;
+    if (!save.get().unlockedTrails.includes(item.id)) {
+      if (!save.buyTrail(item.id, detail.cost)) { ui.toast('НЕДОСТАТОЧНО ЖЕТОНОВ'); return; }
+      ui.toast(`ОТКРЫТО: ${item.name}`);
+    }
+    save.selectTrail(item.id);
+  }
+  ui.showCustom(save.get());
 });
 
 canvas.addEventListener('pointerdown', (e: PointerEvent) => {
   e.preventDefault();
-  pointerDownAt = performance.now();
   void ensureAudio();
-  if (game.getScreen() === 'menu') { startRun(); return; }
-  if (game.getScreen() === 'gameover') { startRun(); return; }
-  if (game.getScreen() === 'paused') { game.resume(); ui.show('playing'); return; }
+  const screen = game.getScreen();
+  if (screen === 'menu') { startRun(); return; }
+  if (screen === 'gameover') { startRun(); return; }
+  if (screen === 'paused') { game.resume(); ui.show('playing'); return; }
   game.tap();
   sfx('tap');
-  // Удержание >140 мс — рискованный нырок на внутреннюю орбиту.
   diveTimer = window.setTimeout(() => game.setDiving(true), 140);
 }, { passive: false });
 
@@ -122,26 +211,38 @@ let wasPlaying = false;
 const loop = new GameLoop({
   update: (dt: number): void => {
     game.update(dt);
-    const snapshot = game.getSnapshot();
-    if (snapshot.screen === 'gameover' && wasPlaying) {
-      wasPlaying = false;
-      save.recordRun(snapshot.score, snapshot.orbs, snapshot.elapsed, snapshot.mult);
-      ui.showGameOver(snapshot, save.get());
+    const s = game.getSnapshot();
+    if (s.screen === 'playing') {
+      wasPlaying = true;
+      lastScore = s.score;
     }
-    if (snapshot.screen === 'playing') wasPlaying = true;
+    if (s.screen === 'gameover' && wasPlaying) {
+      wasPlaying = false;
+      const before = save.get().runs;
+      const earned = save.recordRun(
+        s.score, s.orbs, s.elapsed, s.combo, s.mode, s.isNewBest,
+        seedFor(s.mode),
+        { score: s.score, orbs: s.orbs, combo: s.combo, elapsed: s.elapsed,
+          nearMisses: s.nearMisses, level: s.level, mode: s.mode, runs: before + 1,
+          isNewBest: s.isNewBest },
+      );
+      game.setBest(save.get().best);
+      ui.showGameOver(s, save.get());
+      for (const a of earned) ui.toast(`ДОСТИЖЕНИЕ: ${a}`);
+    }
   },
   render: (_alpha: number, elapsed: number): void => {
     renderer.draw({ time: elapsed, ...game.getPlanetVisual() });
     const view = renderer.getView();
     const n = game.fillInstances(entities.bufferData, entities.capacity);
     const v = game.getPlanetVisual();
-    const t = elapsed;
     entities.draw(n, view.width, view.height,
-      Math.sin(t * 71) * v.shake, Math.cos(t * 83) * v.shake);
+      Math.sin(elapsed * 71) * v.shake, Math.cos(elapsed * 83) * v.shake);
     ui.update(game.getSnapshot());
   },
 });
 renderer.attach(loop);
+if (save.get().settings.lowFps) loop.setFpsCap(30);
 loop.start();
 
 document.addEventListener('visibilitychange', () => {
@@ -155,7 +256,6 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
-// Debug-код переноса доступен из консоли: window.__orbita.export()
 (window as unknown as { __orbita: unknown }).__orbita = {
   export: (): string => save.exportCode(),
   import: (code: string): boolean => save.importCode(code),

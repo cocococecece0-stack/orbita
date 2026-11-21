@@ -1,87 +1,74 @@
-# Орбита
+# Орбита v2 — Observatory Cassette
 
-Неоновая аркада про корабль на орбите планеты. Android — Kotlin + Jetpack Compose, iOS — SwiftUI + Canvas. Вся графика рисуется кодом, все звуки синтезированы, никаких сторонних ассетов.
+Единая кроссплатформенная аркада: одно ядро на TypeScript + WebGL2, упакованное в Android и iOS через Capacitor. Один и тот же код, одни и те же ассеты, детерминированная симуляция с фиксированным шагом 1/120 с. Старый нативный код (Kotlin/Compose, SwiftUI) сохранён в ветке `legacy-native`.
 
-## Геймплей
+## Статус
 
-Корабль летит по орбите. Из космоса летят астероиды.
+Реализовано и собирается в CI:
 
-- **Тап** — сменить направление полёта
-- **Астероид пролетел мимо** — очки
-- **Близкий пролёт** — бонус за риск, вспышка и микро-замедление
-- **Золотая сфера** — +3 очка и рост комбо
-- **Бонусы** — щит, замедление времени, двойные очки
-- **Комбо** — серия уклонений/сборов повышает множитель до x5; таймер комбо виден кольцом вокруг планеты
-- **Уровни** — каждые 50 очков, скорость и плотность растут
-- **Кометы** — со 2 уровня, быстрые, дают вдвое больше очков
-- **Метеорный дождь** — со 2 уровня, предупреждение и залп из 8 астероидов с безопасным окном
-- **Скины корабля** — 4 цвета, открываются за рекорд (150 / 400 / 800)
-- **Статистика** — забеги, всего сфер, лучшее комбо, локальный топ-5
-- **Столкновение** — конец игры; щит спасает один раз
+- орбитальный геймплей: тап переключает орбиту, удержание >140 мс — нырок на внутреннюю орбиту;
+- сбор сфер, множитель x1–x5, лихорадка x8 (двойные очки, 6 с), затухание комбо за 4 с;
+- близкий пролёт: бонус, искры, микро-замедление 120 мс;
+- астероиды с процедурным силуэтом и кратерами, щит и замедление времени;
+- спавн-режиссёр: телеграф 400 мс, честные паттерны, ничего не появляется на игроке;
+- уровни с нарастающей скоростью и плотностью, пульсация планеты и радиальный зум;
+- хитстоп 75 мс, тряска экрана, инстанс-частицы (до 256), один draw call на все сущности;
+- режимы: Классика, Дзен (без астероидов), Хардкор (одна орбита, x2 очков), Daily (общий UTC-сид);
+- экраны: меню с выбором режима, HUD, пауза, отчёт миссии, статистика, достижения, ангар, настройки;
+- сохранение JSON v2 с миграцией старых ключей + код переноса `ORB1-...` (Base64 + CRC32) через буфер обмена;
+- 8 достижений с реальными условиями, жетоны, 4 скина планеты и 4 шлейфа;
+- звук AAC/M4A: 9 SFX 64 kbps + эмбиент 48 kbps; хаптика через Capacitor Haptics;
+- Safe Area, адаптивный DPR, 30/60/90/120 Гц, пауза при сворачивании.
 
-## Звук
+Ещё не реализовано (следующие фазы): боссы каждые 5 уровней, метеорный дождь и червоточины, 7 бонусов, еженедельные/ежедневные миссии с наградами, ghost replay, сезоны, облачные таблицы рекордов, темы B/C.
 
-Все сэмплы сгенерированы скриптом `tools/generate_sounds.py` (чистый Python, стандартная библиотека):
+## Управление
 
-- 8 эффектов: тап, уклонение, сфера, бонус, щит, краш, новый уровень, метеорный дождь
-- зацикленный эмбиент-пад на 12 секунд
-- высота звука уклонения растёт вместе с комбо (rate у SoundPool / AVAudioPlayer)
-
-```bash
-python3 tools/generate_sounds.py   # перегенерировать в res/raw и ios/Orbit/Resources
-```
+| Действие | Эффект |
+| --- | --- |
+| Тап по экрану | Смена орбиты / запуск / рестарт |
+| Удержание >140 мс | Нырок на внутреннюю орбиту (риск/награда) |
+| Кнопка `II` | Пауза |
+| Кнопка `♪` | Звук вкл/выкл |
 
 ## Структура
 
 ```
-app/                Android (Kotlin, Compose)
-  src/main/java/com/example/orbit/
-    game/           движок: сущности, симуляция
-    ui/             Canvas-рендер, HUD, оверлеи
-    audio/          SoundPool + MediaPlayer
-    data/           DataStore (рекорд, mute)
-ios/                iOS (SwiftUI)
-  Orbit/            GameEngine, GameRenderer, ContentView, SoundEngine
-  project.yml       проект генерируется XcodeGen
-tools/              генератор звуков
+src/
+  core/       Config, GameLoop (1/120), Rng (xorshift32), Mathx, Events
+  game/       Game (симуляция), Entities (пулы), Achievements
+  render/     Renderer (планета, звёзды, grain), EntityRenderer (инстансы),
+              shaders/*.glsl
+  audio/      AudioManager (WebAudio + AAC/M4A)
+  platform/   Haptics (Capacitor)
+  save/       Save (JSON v2), TransferCode (Base64 + CRC32)
+  ui/         UI (все экраны)
+  theme/      theme.css — единственный источник цветов, шрифтов, размеров,
+              отступов и motion; theme.ts — чтение CSS-переменных для GLSL
+assets/
+  audio-src/  исходные WAV (только для перекодирования)
+  audio/      готовые M4A
+  fonts/      WOFF2 с кириллицей: Unbounded, Golos Text, JetBrains Mono
+android/ ios/ сгенерированные Capacitor-оболочки (в репозитории)
+tools/      resource_checksum.py, size_budget.py, parity_report.py
+.github/workflows/build.yml  сборка обеих платформ + бюджет 8 MB
 ```
 
-## Сборка
-
-**Android** — APK собирается в GitHub Actions на каждый пуш: вкладка Actions → артефакт `orbita-debug-apk`. Локально: `./gradlew assembleDebug`.
-
-**iOS** — CI на macOS собирает проект для симулятора и пакует **unsigned IPA** (`orbita-unsigned-ipa`) из device-сборки без подписи. Такой IPA ставится на iPhone через AltStore или Sideloadly: они переподписывают его твоим Apple ID. Для TestFlight нужна подпись — см. [RELEASE.md](RELEASE.md). Локально:
+## Сборка и проверка
 
 ```bash
-cd ios
-brew install xcodegen
-xcodegen generate
-open Orbit.xcodeproj
-```
-
-**Релиз** — поставь тег `vX.Y`: workflow соберёт обе платформы и сам опубликует релиз с APK и IPA.
-
-```bash
-git tag v3.0 && git push origin v3.0
-```
-
-## Стек
-
-Android: Kotlin 2.0, AGP 8.7, Gradle 8.11, Compose BOM 2024.10, minSdk 26.
-iOS: Swift 5, SwiftUI Canvas, iOS 16+, XcodeGen.
-
-## v2 — единое ядро TypeScript + WebGL2 + Capacitor
-
-Старый нативный код (Kotlin/Swift) перенесён в ветку `legacy-native` для истории.
-Вся игровая логика, рендер, звук и UI живут в `src/` и собираются в оба приложения.
-
-```bash
-pnpm install
-pnpm run build          # tsc --noEmit + vite build -> dist/
-pnpm exec cap sync      # копирует dist/ в android/ и ios/
+pnpm install --store-dir /tmp/opencode/pnpm-store
+pnpm run build              # tsc --noEmit && vite build -> dist/
+pnpm exec cap sync          # копирует dist/ в android/ и ios/
 python3 tools/resource_checksum.py
 python3 tools/size_budget.py <path-to.apk> <path-to.ipa>
+python3 tools/parity_report.py
 ```
 
-CI: `Build` — Android debug APK, iOS unsigned device IPA, валидация бюджета 8 MB.
-Bundle ID `com.example.orbit`, имя приложения `Orbit`, имя IPA при релизе не менялись.
+CI `Build` собирает Android debug APK и iOS unsigned device IPA, затем проверяет бюджет `TARGET_SIZE_MB: 8`. Релиз по тегу `vX.Y` публикует оба артефакта. Имя приложения `Orbit`, Bundle ID `com.example.orbit` и имя IPA не изменялись. Сертификаты и ключи в репозитории отсутствуют.
+
+Локально iOS-сборка невозможна без macOS/Xcode — она проверяется только в GitHub Actions.
+
+## Дизайн
+
+Все визуальные параметры находятся в `src/theme/theme.css`: палитра, шрифты, кегли (44/28/16/12), отступы, `--fx-intensity`, `--grain`, `--ease-out-expo`, safe-area. `theme.ts` читает их и передаёт в шейдеры. Игровая логика не содержит хардкодных цветов и размеров; скины меняют только акцент через `setAccent()`.
