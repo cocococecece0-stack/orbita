@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Орбита</string>
+    <string name="score_label">СЧЁТ</string>
+    <string name="best_label">РЕКОРД</string>
+    <string name="ready_title">ОРБИТА</string>
+    <string name="ready_subtitle">Уклоняйся от астероидов и собирай сферы</string>
+    <string name="ready_hint">Тап по экрану — сменить направление полёта</string>
+    <string name="ready_tap">НАЖМИ, ЧТОБЫ НАЧАТЬ</string>
+    <string name="paused_title">ПАУЗА</string>
+    <string name="paused_hint">Тапни, чтобы продолжить</string>
+    <string name="game_over_title">ИГРА ОКОНЧЕНА</string>
+    <string name="new_record">НОВЫЙ РЕКОРД</string>
+    <string name="best_score">Рекорд: %1$d</string>
+    <string name="play_again">Ещё раз</string>
+</resources>
