@@ -41,6 +41,17 @@
 5. **Workflow:** шаг декодирования ключа и `./gradlew bundleRelease` (AAB), затем загрузка через `r0adkll/upload-google-play` или вручную в Play Console.
 6. **Закрытое тестирование** → ревью → production. Первый релиз лучше катить в internal testing.
 
+## iOS: unsigned IPA и сайдлоад
+
+CI собирает `orbita-vX.Y-unsigned.ipa` из device-сборки без подписи. Поставить на iPhone без Apple Developer можно так:
+
+1. Установи [AltStore](https://altstore.io) (нужен компьютер с AltServer) или [Sideloadly](https://sideloadly.io).
+2. Подключи iPhone, выбери скачанный IPA.
+3. Введи свой Apple ID — инструмент переподпишет приложение.
+4. Доверь профилю: Настройки → Основные → VPN и управление устройством.
+
+Ограничения бесплатного Apple ID: приложение живёт 7 дней, максимум 3 приложения и 10 App ID в неделю. Для постоянной установки и TestFlight нужен платный аккаунт.
+
 ## App Store / TestFlight
 
 1. **Apple Developer Program** — $99/год, нужен Mac или CI с macOS (есть).
