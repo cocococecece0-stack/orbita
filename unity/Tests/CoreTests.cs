@@ -105,7 +105,7 @@ namespace Orbit.Core.Tests
             Assert.Equal("nearMisses", missions[1].Field);
             Assert.Equal(11, missions[1].Goal);
             Assert.Equal(100, missions[1].Reward);
-            Assert.Equal("boss", missions[2].Field);
+            Assert.Equal("bossKills", missions[2].Field);
             Assert.Equal(1, missions[2].Goal);
             Assert.Equal(192, missions[2].Reward);
 
@@ -124,7 +124,7 @@ namespace Orbit.Core.Tests
             Assert.Equal(4, arena.Next.Count); // native queue length
             var seen = new HashSet<int> { arena.Piece };
             foreach (int id in arena.Next) seen.Add(id);
-            for (int i = 0; i < 5; i++)
+            for (int i = 0; i < 6; i++)
             {
                 arena.HardDrop();
                 seen.Add(arena.Piece);
