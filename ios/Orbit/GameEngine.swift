@@ -12,6 +12,7 @@ final class GameEngine: ObservableObject {
     @Published var multiplier = 1
     @Published var level = 1
     @Published var shield = false
+    @Published var shieldTime: CGFloat = 0
     @Published var orbsCollected = 0
     @Published var maxCombo = 0
     @Published var frameTick: UInt64 = 0
@@ -76,6 +77,9 @@ final class GameEngine: ObservableObject {
     private var portalTimer: CGFloat = 0
     private var wellTimer: CGFloat = 0
     private var lastBossLevel = 0
+    private var nextBossLevel = 5
+    private var eventCooldown: CGFloat = 0
+    private var elapsed: CGFloat = 0
     private var ghostTimer: CGFloat = 0
     private var reviveAvailable = false
     private var upgradeShield = false
@@ -126,7 +130,10 @@ final class GameEngine: ObservableObject {
         ghostCount = 0; ghostTimer = 0
         score = 0; isNewRecord = false; paused = false
         combo = 0; multiplier = 1; level = mode == .survival ? 3 : 1
-        shield = upgradeShield; orbsCollected = 0; maxCombo = 0
+        shield = upgradeShield
+        shieldTime = shield ? (upgradeShield ? 14 : 10) : 0
+        orbsCollected = 0; maxCombo = 0
+        eventCooldown = 0; elapsed = 0
         comboTime = 0; slowTimer = 0; doubleTimer = 0
         magnetTimer = 0; phaseTimer = 0; freezeTimer = 0
         invulnerable = 0; hitStop = 0; flash = 0
@@ -134,7 +141,7 @@ final class GameEngine: ObservableObject {
         playerAngle = -CGFloat.pi / 2; direction = 1
         spawnTimer = 0.7; orbTimer = 2.2; powerTimer = 5
         stormTimer = 20; flareTimer = 16; mineTimer = 9
-        portalTimer = 12; wellTimer = 18; lastBossLevel = 0
+        portalTimer = 12; wellTimer = 18; lastBossLevel = 0; nextBossLevel = 5
         time = 0; shake = 0; reverseFlash = 0; speedLevel = 0
         fever = false; completed = false; reviveAvailable = false
         timeLeft = mode.seconds > 0 ? CGFloat(mode.seconds) + (upgradeTime ? 8 : 0) : -1
@@ -161,19 +168,43 @@ final class GameEngine: ObservableObject {
 
     func pause() { if status == .playing { paused = true } }
     func resume() { paused = false }
-    func toReady() { status = .ready; paused = false }
+    func toReady() { status = .ready; paused = false; shieldTime = 0 }
+
+    /// Выход из забега домой: результат фиксируется, а не теряется.
+    func abandonRun() {
+        guard status == .playing else { return }
+        status = .gameOver
+        completed = false
+        paused = false
+        stats.seconds = Int(elapsed)
+        onRunEnd?(stats)
+    }
 
     func tick(dt raw: CGFloat) {
         defer { frameTick &+= 1 }
         guard width > 0 else { return }
         let step = max(0, min(raw, 0.05))
         time += step
+        elapsed += step
+        // Таймер тикает по реальному времени, даже во время hit-stop.
+        if status == .playing && !paused && timeLeft > 0 {
+            timeLeft = max(0, timeLeft - step)
+            stats.seconds = Int(elapsed)
+            if timeLeft <= 0 { finishRun(); return }
+        } else if status == .playing && !paused {
+            stats.seconds = Int(elapsed)
+        }
         decayVisuals(step)
         updateParticles(step)
         updateTrail(step)
         guard status == .playing, !paused else { return }
         if hitStop > 0 { hitStop = max(0, hitStop - step); return }
+        eventCooldown = max(0, eventCooldown - step)
 
+        if shieldTime > 0 {
+            shieldTime = max(0, shieldTime - step)
+            if shieldTime <= 0 { shield = false; onEvent?(.shieldBreak) }
+        }
         if combo > 0 {
             comboTime -= step
             if comboTime <= 0 { combo = 0; multiplier = 1; fever = false }
@@ -184,14 +215,6 @@ final class GameEngine: ObservableObject {
         phaseTimer = max(0, phaseTimer - step)
         freezeTimer = max(0, freezeTimer - step)
         invulnerable = max(0, invulnerable - step)
-
-        if timeLeft > 0 {
-            timeLeft = max(0, timeLeft - step)
-            stats.seconds = max(0, Int(CGFloat(mode.seconds) - timeLeft))
-            if timeLeft <= 0 { finishRun(); return }
-        } else {
-            stats.seconds = Int(time)
-        }
 
         speedLevel = min(1, CGFloat(score) / 400 + (mode == .survival ? time / 180 : 0))
         playerAngle += direction * (1.45 + speedLevel * 0.65) * step
@@ -244,9 +267,9 @@ final class GameEngine: ObservableObject {
         spawnTimer -= step
         if spawnTimer <= 0 && stormWarning <= 0 {
             spawnAsteroid()
-            let base = (1.05 - CGFloat(score) * 0.012) / CGFloat(s.density)
-            let floor: CGFloat = mode == .survival ? 0.18 : 0.30
-            spawnTimer = min(max(base, floor), 1.05) * (0.75 + rnd() * 0.5)
+            let base = 1.0 - min(0.35, CGFloat(score) * 0.0004)
+            let floor: CGFloat = mode == .survival ? 0.40 : 0.55
+            spawnTimer = min(max(base / CGFloat(s.density), floor), 1.1) * (0.85 + rnd() * 0.3)
         }
         orbTimer -= step
         if orbTimer <= 0 { spawnOrb(); orbTimer = 2.8 + rnd() * 2.5 }
@@ -267,7 +290,11 @@ final class GameEngine: ObservableObject {
                 wellTimer = 20 + rnd() * 12
             }
         }
-        if level % 5 == 0 && level != lastBossLevel && status == .playing { spawnBoss() }
+        // Пороговый спавн: уровни могут перепрыгивать порог, но босс не теряется.
+        while level >= nextBossLevel && status == .playing {
+            spawnBoss()
+            nextBossLevel += 5
+        }
     }
 
     private func updateHazards(_ step: CGFloat) {
@@ -304,6 +331,7 @@ final class GameEngine: ObservableObject {
         var hit: Asteroid?
         for a in asteroids {
             a.pulse += step * 2
+            let prevDistance = a.distance
             if freezeTimer <= 0 { a.distance -= a.speed * speedScale * step }
             a.rotation += a.spin * step
             a.life -= step
@@ -312,21 +340,24 @@ final class GameEngine: ObservableObject {
             let ay = centerY + sin(a.angle) * a.distance
             let d = distance(ax, ay, px, py)
             let cd = a.radius + playerRadius
+            let angleToPlayer = abs(angDiff(a.angle, playerAngle))
             if d < cd && invulnerable <= 0 && phaseTimer <= 0 { hit = a; break }
-            if !a.nearMissed && d < cd + playerRadius * 2.1 && invulnerable <= 0 && a.kind != .bolt {
+            // Близкий пролёт — только рядом с кораблём и на расстоянии «на волоске».
+            if !a.nearMissed && d > cd && d < cd + playerRadius * 1.2 &&
+                angleToPlayer < 0.16 && invulnerable <= 0 && a.kind != .bolt {
                 a.nearMissed = true
                 stats.nearMisses += 1
-                bumpCombo()
-                addPoints(2)
+                rewardSkill(1)
                 flash = 1
-                hitStop = reducedMotion ? 0 : 0.035
+                hitStop = reducedMotion ? 0 : 0.02
                 onEvent?(.nearMiss)
             }
-            if !a.dodged && a.distance < orbitRadius - a.radius && a.kind != .bolt {
+            // Уклонение — пересечение орбиты именно в секторе корабля.
+            if !a.dodged && prevDistance >= orbitRadius && a.distance < orbitRadius &&
+                angleToPlayer < 0.24 && a.kind != .bolt {
                 a.dodged = true
                 stats.dodges += 1
-                bumpCombo()
-                addPoints(a.kind == .comet ? 2 : 1)
+                rewardSkill(1)
                 onEvent?(.dodge(combo))
             }
             if a.distance < planetRadius * 0.35 {
@@ -379,17 +410,16 @@ final class GameEngine: ObservableObject {
     }
 
     private func collectOrb(_ o: Orb) {
-        bumpCombo()
         switch o.kind {
         case .normal:
             stats.orbs += 1; orbsCollected += 1
-            addPoints(3); onEvent?(.orb)
+            rewardSkill(2); onEvent?(.orb)
         case .golden:
             stats.orbs += 1; stats.goldenOrbs += 1; orbsCollected += 1
-            addPoints(12); onEvent?(.goldenOrb(combo))
+            rewardSkill(8); onEvent?(.goldenOrb(combo))
         case .artifact:
             stats.rareOrbs += 1
-            addPoints(50); onEvent?(.artifact)
+            rewardSkill(25); onEvent?(.artifact)
         }
         let ox = centerX + cos(o.angle) * orbitRadius
         let oy = centerY + sin(o.angle) * orbitRadius
@@ -399,14 +429,14 @@ final class GameEngine: ObservableObject {
 
     private func damageBoss(_ angle: CGFloat) {
         for b in boss {
-            if abs(angDiff(b.angle, angle)) > 0.38 { continue }
+            if abs(angDiff(b.angle, angle)) > 0.75 { continue }
             b.hitFlash = 1
             addPoints(40)
             onEvent?(.bossHit)
             if b.hp <= 1 {
                 b.dead = true
                 stats.bossKills += 1
-                addPoints(500 * level)
+                addPoints(150 + 10 * level)
                 burst(centerX + cos(b.angle) * orbitRadius, centerY + sin(b.angle) * orbitRadius,
                       count: 60, color: Palette.boss, power: 2)
                 onEvent?(.bossDown)
@@ -422,31 +452,40 @@ final class GameEngine: ObservableObject {
 
     private func applyPowerUp(_ kind: PowerUpKind) {
         switch kind {
-        case .shield: if activeCount() < 2 { shield = true }
-        case .slow: if activeCount() < 2 { slowTimer = upgradeSlow ? 8 : 5 }
-        case .double: if activeCount() < 2 { doubleTimer = upgradeDouble ? 12 : 8 }
-        case .magnet: if activeCount() < 2 { magnetTimer = 8 }
-        case .phase: if activeCount() < 2 { phaseTimer = 6 }
-        case .freeze: if activeCount() < 2 { freezeTimer = 4 }
+        case .shield: if activeCount() < 3 { shield = true; shieldTime = upgradeShield ? 14 : 10 }
+        case .slow: if activeCount() < 3 { slowTimer = upgradeSlow ? 8 : 5 }
+        case .double: if activeCount() < 3 { doubleTimer = upgradeDouble ? 12 : 8 }
+        case .magnet: if activeCount() < 3 { magnetTimer = 8 }
+        case .phase: if activeCount() < 3 { phaseTimer = 6 }
+        case .freeze: if activeCount() < 3 { freezeTimer = 4 }
         case .revive: reviveAvailable = true
         }
     }
 
+    /// Награда за навык: один счётчик на любое событие, чтобы очки не «капали».
+    private func rewardSkill(_ base: Int) {
+        if eventCooldown > 0 { return }
+        eventCooldown = 0.45
+        bumpCombo()
+        addPoints(base)
+    }
+
     private func bumpCombo() {
         combo += 1
-        comboTime = 2.5
-        multiplier = min(8, 1 + combo / 3)
-        fever = multiplier >= 5
+        comboTime = 2.0
+        multiplier = min(5, 1 + combo / 5)
+        fever = multiplier >= 4
         if combo > maxCombo { maxCombo = combo; stats.maxCombo = combo }
     }
 
     private func addPoints(_ base: Int) {
         let gained = base * multiplier * (doubleTimer > 0 ? 2 : 1)
-        score += gained
+        let sum = score.addingReportingOverflow(gained)
+        score = sum.overflow ? Int.max / 4 : min(Int.max / 4, sum.partialValue)
         stats.score = score
-        let next = 1 + score / 50
+        let next = 1 + score / 150
         if next > level {
-            level = next
+            level = min(level + 1, next)
             stats.level = level
             levelUpFlash = 1
             onEvent?(.levelUp(level))
@@ -459,6 +498,9 @@ final class GameEngine: ObservableObject {
 
     private func handleHit(_ a: Asteroid) {
         stats.hits += 1
+        // Любое попадание сбивает цепочку: комбо — навык, а не таймер.
+        combo = 0; multiplier = 1; comboTime = 0; fever = false
+        shieldTime = 0
         if phaseTimer > 0 {
             a.dead = true
             burst(playerX, playerY, count: 12, color: Palette.phase, power: 0.8)
@@ -478,6 +520,7 @@ final class GameEngine: ObservableObject {
             onEvent?(.powerUp(.revive))
         } else if mode == .sprint {
             timeLeft = max(0, timeLeft - 3)
+            flash = 1
             invulnerable = 1.2
             if !reducedMotion { shake = 0.7 }
             burst(playerX, playerY, count: 20, color: Palette.danger, power: 1)
@@ -506,7 +549,7 @@ final class GameEngine: ObservableObject {
         status = .gameOver
         completed = true
         paused = false
-        stats.seconds = mode.seconds + (upgradeTime ? 8 : 0)
+        stats.seconds = max(1, Int(elapsed))
         onRunEnd?(stats)
         onEvent?(.finish)
     }
@@ -519,7 +562,7 @@ final class GameEngine: ObservableObject {
 
     private func spawnStorm() {
         let safe = rnd() * tau
-        for _ in 0..<(mode == .survival ? 10 : 8) {
+        for _ in 0..<(mode == .survival ? 6 : 5) {
             var angle = rnd() * tau
             var tries = 0
             while abs(angDiff(angle, safe)) < 0.8 && tries < 24 {
@@ -537,8 +580,10 @@ final class GameEngine: ObservableObject {
 
     private func spawnBoss() {
         lastBossLevel = level
-        let b = Boss(angle: rnd() * tau, hp: 3 + level / 15, duration: 18)
+        let b = Boss(angle: rnd() * tau, hp: 2 + level / 20, duration: 26)
         boss.append(b)
+        // Рядом с боссом появляются сферы — ядро реально можно сбить.
+        for _ in 0..<2 { orbs.append(Orb(angle: norm(b.angle + (rnd() - 0.5) * 0.55), kind: .normal, sprite: 0)) }
         onEvent?(.bossSpawn)
         burst(centerX + cos(b.angle) * orbitRadius, centerY + sin(b.angle) * orbitRadius,
               count: 40, color: Palette.boss, power: 1.5)
@@ -552,7 +597,8 @@ final class GameEngine: ObservableObject {
     }
 
     private func spawnPowerUp() {
-        let kinds = PowerUpKind.allCases
+        // В Дзене нет астероидов: бесполезные щит/возрождение только занимают слот.
+        let kinds = mode == .zen ? PowerUpKind.allCases.filter { $0 != .shield && $0 != .revive } : PowerUpKind.allCases
         let k = kinds[Int(rnd() * CGFloat(kinds.count)) % kinds.count]
         powerUps.append(PowerUp(angle: rnd() * tau, kind: k))
     }

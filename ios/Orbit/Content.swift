@@ -17,6 +17,17 @@ enum Mode: String, CaseIterable {
         }
     }
 
+    /// Короткая подпись для чипов в хабе и таблице рекордов.
+    var shortTitle: String {
+        switch self {
+        case .classic: return "КЛАСС"
+        case .zen: return "ДЗЕН"
+        case .sprint: return "СПРИНТ"
+        case .survival: return "ВЫЖИВ"
+        case .daily: return "ДЕЙЛИ"
+        }
+    }
+
     var detail: String {
         switch self {
         case .classic: return "Бесконечный полёт. Один промах — конец."

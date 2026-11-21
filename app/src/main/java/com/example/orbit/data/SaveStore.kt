@@ -68,7 +68,48 @@ data class SaveData(
     var tutorialSeen: Boolean = false,
     var settings: GameSettings = GameSettings(),
 ) {
-    val playerLevel: Int get() = 1 + xp / Content.xpPerLevel
+    val playerLevel: Int get() = 1 + Math.floorDiv(xp, Content.xpPerLevel)
+
+    /** Гарантирует, что битое или старое сохранение не сломает экономику. */
+    fun sanitize() {
+        credits = credits.coerceIn(0, MAX)
+        xp = xp.coerceIn(0, MAX)
+        seasonXp = seasonXp.coerceIn(0, MAX)
+        dailyStreak = dailyStreak.coerceIn(0, 3650)
+        zenRuns = zenRuns.coerceIn(0, MAX)
+        selectedSector = selectedSector.coerceIn(0, 7)
+        equippedShip = equippedShip.coerceIn(0, 7)
+        equippedTrail = equippedTrail.coerceIn(0, 7)
+        equippedPlanet = equippedPlanet.coerceIn(0, 7)
+        if (mutedTrack !in -1..7) mutedTrack = -1
+        for (k in bestByMode.keys.toList()) bestByMode[k] = (bestByMode[k] ?: 0).coerceIn(0, MAX)
+        for (k in topByMode.keys.toList()) {
+            topByMode[k] = (topByMode[k] ?: emptyList()).map { it.coerceIn(0, MAX) }
+                .sortedDescending().take(10).toMutableList()
+        }
+        for (i in history.indices) {
+            val r = history[i]
+            history[i] = r.copy(
+                score = r.score.coerceIn(0, MAX), level = r.level.coerceIn(1, 10000),
+                orbs = r.orbs.coerceIn(0, MAX), maxCombo = r.maxCombo.coerceIn(0, MAX),
+                nearMisses = r.nearMisses.coerceIn(0, MAX), dodges = r.dodges.coerceIn(0, MAX),
+                bossKills = r.bossKills.coerceIn(0, MAX), wormholes = r.wormholes.coerceIn(0, MAX),
+                rareOrbs = r.rareOrbs.coerceIn(0, MAX), seconds = r.seconds.coerceIn(0, 100000),
+                sector = r.sector.coerceIn(0, 7),
+            )
+        }
+        if (dailyProgress.size != 3) dailyProgress = mutableListOf(0, 0, 0)
+        if (dailyClaimed.size != 3) dailyClaimed = mutableListOf(false, false, false)
+        if (seasonClaimed.size != 4) seasonClaimed = mutableListOf(false, false, false, false)
+        for (i in dailyProgress.indices) dailyProgress[i] = dailyProgress[i].coerceIn(0, MAX)
+        for (k in upgrades.keys.toList()) upgrades[k] = (upgrades[k] ?: 0).coerceIn(0, 1)
+        visitedSectors.removeAll { it !in 0..7 }
+        if (Content.modes.none { it.id == selectedMode }) selectedMode = Mode.Classic.id
+        settings.music = settings.music.coerceIn(0f, 1f)
+        settings.sfx = settings.sfx.coerceIn(0f, 1f)
+    }
+
+    companion object { const val MAX = 100_000_000 }
 }
 
 data class RewardSummary(
@@ -119,54 +160,71 @@ class SaveStore(context: Context) {
         if (raw.isNullOrBlank()) return null
         return try {
             val o = JSONObject(raw)
-            if (o.optInt("version", 0) != 3) return null
+            var valid = true
+            // org.json.optInt() молча обрезает 64-битные числа до Int — отсюда отрицательные
+            // балансы. Читаем через Long и отклоняем файл целиком, если число вне диапазона.
+            fun number(value: Any?, default: Int, min: Int = 0, max: Int = SaveData.MAX): Int {
+                val n = (value as? Number)?.toLong()
+                if (n == null || n < min.toLong() || n > max.toLong()) {
+                    if (value != null) valid = false
+                    return default
+                }
+                return n.toInt()
+            }
+            fun read(obj: JSONObject, key: String, default: Int = 0, min: Int = 0, max: Int = SaveData.MAX): Int =
+                number(obj.opt(key), default, min, max)
+            fun read(arr: JSONArray, index: Int, default: Int = 0, min: Int = 0, max: Int = SaveData.MAX): Int =
+                number(arr.opt(index), default, min, max)
+
+            if (read(o, "version", 0, 3, 3) != 3) return null
             val d = SaveData()
             d.version = 3
-            d.credits = o.optInt("credits", 0).coerceAtLeast(0)
-            d.xp = o.optInt("xp", 0).coerceAtLeast(0)
+            d.credits = read(o, "credits")
+            d.xp = read(o, "xp")
             val best = o.optJSONObject("bestByMode")
-            if (best != null) for (k in best.keys()) d.bestByMode[k] = best.optInt(k, 0)
+            if (best != null) for (k in best.keys()) d.bestByMode[k] = read(best, k)
             val top = o.optJSONObject("topByMode")
             if (top != null) for (k in top.keys()) {
                 val arr = top.optJSONArray(k) ?: continue
-                d.topByMode[k] = MutableList(arr.length()) { arr.optInt(it, 0) }
-                    .filter { it >= 0 }.sortedDescending().take(10).toMutableList()
+                d.topByMode[k] = MutableList(arr.length()) { read(arr, it) }
+                    .sortedDescending().take(10).toMutableList()
             }
             val hist = o.optJSONArray("history")
             if (hist != null) for (i in 0 until hist.length()) {
                 val r = hist.optJSONObject(i) ?: continue
+                val stamp = (r.opt("timestamp") as? Number)?.toLong() ?: 0L
                 d.history += RunRecord(
-                    score = r.optInt("score"), mode = r.optString("mode", "classic"),
-                    sector = r.optInt("sector"), level = r.optInt("level", 1),
-                    orbs = r.optInt("orbs"), maxCombo = r.optInt("maxCombo"),
-                    nearMisses = r.optInt("nearMisses"), dodges = r.optInt("dodges"),
-                    bossKills = r.optInt("bossKills"), wormholes = r.optInt("wormholes"),
-                    rareOrbs = r.optInt("rareOrbs"), seconds = r.optInt("seconds"),
-                    timestamp = r.optLong("timestamp"),
+                    score = read(r, "score"), mode = r.optString("mode", "classic"),
+                    sector = read(r, "sector", max = 7), level = read(r, "level", 1, 1, 10000),
+                    orbs = read(r, "orbs"), maxCombo = read(r, "maxCombo"),
+                    nearMisses = read(r, "nearMisses"), dodges = read(r, "dodges"),
+                    bossKills = read(r, "bossKills"), wormholes = read(r, "wormholes"),
+                    rareOrbs = read(r, "rareOrbs"), seconds = read(r, "seconds", max = 100000),
+                    timestamp = stamp,
                 )
             }
             d.achievements += strings(o.optJSONArray("achievements"))
             d.dailyDate = o.optString("dailyDate", today())
             d.dailyProgress = ints(o.optJSONArray("dailyProgress"), 3)
             d.dailyClaimed = bools(o.optJSONArray("dailyClaimed"), 3)
-            d.dailyStreak = o.optInt("dailyStreak")
+            d.dailyStreak = read(o, "dailyStreak", max = 3650)
             d.lastPlayedDay = o.optString("lastPlayedDay", "")
             d.seasonId = o.optString("seasonId", seasonId())
-            d.seasonXp = o.optInt("seasonXp")
+            d.seasonXp = read(o, "seasonXp")
             d.seasonClaimed = bools(o.optJSONArray("seasonClaimed"), 4)
             d.inventory = strings(o.optJSONArray("inventory")).ifEmpty { d.inventory }
-            d.equippedShip = o.optInt("equippedShip")
-            d.equippedTrail = o.optInt("equippedTrail")
-            d.equippedPlanet = o.optInt("equippedPlanet")
+            d.equippedShip = read(o, "equippedShip", max = 7)
+            d.equippedTrail = read(o, "equippedTrail", max = 7)
+            d.equippedPlanet = read(o, "equippedPlanet", max = 7)
             val up = o.optJSONObject("upgrades")
-            if (up != null) for (k in up.keys()) d.upgrades[k] = up.optInt(k, 0)
+            if (up != null) for (k in up.keys()) d.upgrades[k] = read(up, k, max = 1)
             d.secrets += strings(o.optJSONArray("secrets"))
             d.visitedSectors = ints(o.optJSONArray("visitedSectors"), 0).toMutableList()
             d.modesPlayed = strings(o.optJSONArray("modesPlayed")).toMutableList()
-            d.zenRuns = o.optInt("zenRuns")
+            d.zenRuns = read(o, "zenRuns")
             d.selectedMode = o.optString("selectedMode", "classic")
-            d.selectedSector = o.optInt("selectedSector")
-            d.mutedTrack = o.optInt("mutedTrack", -1)
+            d.selectedSector = read(o, "selectedSector", max = 7)
+            d.mutedTrack = read(o, "mutedTrack", -1, -1, 7)
             d.tutorialSeen = o.optBoolean("tutorialSeen")
             val s = o.optJSONObject("settings")
             if (s != null) {
@@ -177,6 +235,7 @@ class SaveStore(context: Context) {
                 d.settings.reducedMotion = s.optBoolean("reducedMotion")
                 d.settings.colorblind = s.optBoolean("colorblind")
             }
+            if (!valid) return null
             if (d.dailyDate != today()) {
                 d.dailyDate = today()
                 d.dailyProgress = mutableListOf(0, 0, 0)
@@ -187,6 +246,7 @@ class SaveStore(context: Context) {
                 d.seasonXp = 0
                 d.seasonClaimed = mutableListOf(false, false, false, false)
             }
+            d.sanitize()
             d
         } catch (_: Exception) {
             null
@@ -279,6 +339,7 @@ class SaveStore(context: Context) {
     }
 
     private fun writeAll(d: SaveData) {
+        d.sanitize()
         try {
             if (mainFile.exists()) mainFile.copyTo(backupFile, overwrite = true)
             mainFile.writeText(encode(d), Charsets.UTF_8)
@@ -289,12 +350,29 @@ class SaveStore(context: Context) {
 
     fun save() = writeAll(data)
 
+    /** Сложение с насыщением: экономика никогда не уходит в минус/переполнение. */
+    private fun satAdd(a: Int, b: Int): Int =
+        minOf(SaveData.MAX, maxOf(0, a) + maxOf(0, b))
+
+    private fun clampRecord(r: RunRecord): RunRecord = r.copy(
+        score = r.score.coerceIn(0, SaveData.MAX),
+        sector = r.sector.coerceIn(0, 7), level = r.level.coerceIn(1, 10000),
+        orbs = r.orbs.coerceIn(0, SaveData.MAX), maxCombo = r.maxCombo.coerceIn(0, SaveData.MAX),
+        nearMisses = r.nearMisses.coerceIn(0, SaveData.MAX), dodges = r.dodges.coerceIn(0, SaveData.MAX),
+        bossKills = r.bossKills.coerceIn(0, SaveData.MAX), wormholes = r.wormholes.coerceIn(0, SaveData.MAX),
+        rareOrbs = r.rareOrbs.coerceIn(0, SaveData.MAX), seconds = r.seconds.coerceIn(0, 100000),
+    )
+
     fun submitRun(
         record: RunRecord,
         achieved: List<String>,
         foundSecrets: List<String>,
     ): RewardSummary {
         val d = data
+        d.sanitize()
+        val r = clampRecord(record)
+        val modeId = if (Content.modes.any { it.id == r.mode }) r.mode else Mode.Classic.id
+        val rr = r.copy(mode = modeId)
         val day = today()
         if (d.dailyDate != day) {
             d.dailyDate = day
@@ -307,54 +385,50 @@ class SaveStore(context: Context) {
             d.seasonClaimed = mutableListOf(false, false, false, false)
         }
         val before = d.credits
-        val isBest = record.score > (d.bestByMode[record.mode] ?: 0)
-        if (isBest) d.bestByMode[record.mode] = record.score
-        val list = d.topByMode.getOrPut(record.mode) { mutableListOf() }
-        list += record.score
-        val sorted = list.sortedDescending().take(10).toMutableList()
-        d.topByMode[record.mode] = sorted
-        d.history.add(0, record)
+        val isBest = rr.score > (d.bestByMode[rr.mode] ?: 0)
+        if (isBest) d.bestByMode[rr.mode] = rr.score
+        val list = d.topByMode.getOrPut(rr.mode) { mutableListOf() }
+        list += rr.score
+        d.topByMode[rr.mode] = list.sortedDescending().take(10).toMutableList()
+        d.history.add(0, rr)
         while (d.history.size > 25) d.history.removeAt(d.history.lastIndex)
 
-        var credits = record.score / 10 + record.orbs + record.rareOrbs * 20
-        var xp = record.score / 20
+        var credits = satAdd(rr.score / 10, satAdd(rr.orbs, rr.rareOrbs * 20))
+        var xp = rr.score / 20
         val levelBefore = d.playerLevel
-        d.xp += xp
 
-        if (!d.modesPlayed.contains(record.mode)) d.modesPlayed += record.mode
-        if (!d.visitedSectors.contains(record.sector)) d.visitedSectors += record.sector
-        if (record.mode == Mode.Zen.id) d.zenRuns += 1
+        if (!d.modesPlayed.contains(rr.mode)) d.modesPlayed += rr.mode
+        if (!d.visitedSectors.contains(rr.sector)) d.visitedSectors += rr.sector
+        if (rr.mode == Mode.Zen.id) d.zenRuns = satAdd(d.zenRuns, 1)
         d.dailyStreak = if (d.lastPlayedDay == day) d.dailyStreak
-        else if (d.lastPlayedDay == LocalDate.now(ZoneOffset.UTC).minusDays(1).toString()) d.dailyStreak + 1
+        else if (d.lastPlayedDay == LocalDate.now(ZoneOffset.UTC).minusDays(1).toString()) satAdd(d.dailyStreak, 1)
         else 1
         d.lastPlayedDay = day
-        d.seasonXp += record.score / 25
+        d.seasonXp = satAdd(d.seasonXp, rr.score / 25)
 
         val newAchievements = mutableListOf<String>()
         for (a in Content.achievements) {
             if (d.achievements.contains(a.id) || !achieved.contains(a.id)) continue
             d.achievements += a.id
-            credits += a.reward
-            xp += a.xp
-            d.xp += a.xp
+            credits = satAdd(credits, a.reward)
+            xp = satAdd(xp, a.xp)
             newAchievements += a.title
         }
 
         val missions = mutableListOf<String>()
         val defs = Content.missionsFor(day)
         val values = mapOf(
-            "orbs" to record.orbs, "dodges" to record.dodges, "nearMisses" to record.nearMisses,
-            "maxCombo" to record.maxCombo, "score" to record.score, "bossKills" to record.bossKills,
-            "wormholes" to record.wormholes, "level" to record.level,
+            "orbs" to rr.orbs, "dodges" to rr.dodges, "nearMisses" to rr.nearMisses,
+            "maxCombo" to rr.maxCombo, "score" to rr.score, "bossKills" to rr.bossKills,
+            "wormholes" to rr.wormholes, "level" to rr.level,
         )
         defs.forEachIndexed { i, m ->
             val v = values[m.field] ?: 0
             if (v > (d.dailyProgress.getOrElse(i) { 0 })) d.dailyProgress[i] = v
             if (d.dailyProgress[i] >= m.goal && !d.dailyClaimed[i]) {
                 d.dailyClaimed[i] = true
-                credits += m.reward
-                xp += m.reward / 3
-                d.xp += m.reward / 3
+                credits = satAdd(credits, m.reward)
+                xp = satAdd(xp, m.reward / 3)
                 missions += "${m.title} +${m.reward}"
             }
         }
@@ -364,8 +438,8 @@ class SaveStore(context: Context) {
             if (d.secrets.contains(id)) continue
             d.secrets += id
             val def = Content.secrets.firstOrNull { it.id == id } ?: continue
-            credits += 200
-            d.xp += 100
+            credits = satAdd(credits, 200)
+            xp = satAdd(xp, 100)
             newSecrets += def.title
             if (id == "collector") unlockSector(7)
         }
@@ -375,20 +449,22 @@ class SaveStore(context: Context) {
         Content.seasonTiers.forEachIndexed { i, tier ->
             if (d.seasonXp >= tier.xp && !d.seasonClaimed[i]) {
                 d.seasonClaimed[i] = true
-                credits += tier.reward
+                credits = satAdd(credits, tier.reward)
                 tiers += i
             }
         }
-        if (d.credits >= 5000 && !d.achievements.contains("rich_5000")) {
+        if (satAdd(d.credits, credits) >= 5000 && !d.achievements.contains("rich_5000")) {
             d.achievements += "rich_5000"
-            credits += 300
+            credits = satAdd(credits, 300)
             newAchievements += Content.achievements.first { it.id == "rich_5000" }.title
         }
-        d.credits += credits
+        d.credits = satAdd(d.credits, credits)
+        d.xp = satAdd(d.xp, xp)
         writeAll(d)
         return RewardSummary(
             credits = credits, xp = xp, achievements = newAchievements, missions = missions,
-            secrets = newSecrets, seasonTiers = tiers, levelUps = d.playerLevel - levelBefore,
+            secrets = newSecrets, seasonTiers = tiers,
+            levelUps = maxOf(0, d.playerLevel - levelBefore),
             newBest = isBest, creditsBefore = before,
         )
     }
@@ -406,8 +482,8 @@ class SaveStore(context: Context) {
         val progress = data.dailyProgress.getOrElse(index) { 0 }
         if (data.dailyClaimed[index] || progress < m.goal) return false
         data.dailyClaimed[index] = true
-        data.credits += m.reward
-        data.xp += m.reward / 2
+        data.credits = satAdd(data.credits, m.reward)
+        data.xp = satAdd(data.xp, m.reward / 2)
         save()
         return true
     }
@@ -415,7 +491,7 @@ class SaveStore(context: Context) {
     fun buy(itemId: String): Boolean {
         val item = Content.shop.firstOrNull { it.id == itemId } ?: return false
         if (data.inventory.contains(itemId) || data.credits < item.price) return false
-        data.credits -= item.price
+        data.credits = maxOf(0, data.credits - item.price)
         data.inventory += itemId
         if (item.category == "upgrade") data.upgrades[itemId] = item.value
         save()

@@ -2,12 +2,12 @@ package com.example.orbit.game
 
 /** Статический контент: режимы, сектора, предметы, достижения. Зеркально совпадает с iOS Content.swift. */
 
-enum class Mode(val id: String, val title: String, val detail: String, val seconds: Int) {
-    Classic("classic", "КЛАССИКА", "Бесконечный полёт. Один промах — конец.", 0),
-    Zen("zen", "ДЗЕН", "90 секунд без астероидов. Собирай сферы и бонусы.", 90),
-    Sprint("sprint", "СПРИНТ", "60 секунд на максимальный счёт. Удар стоит 3 секунды.", 60),
-    Survival("survival", "ВЫЖИВАНИЕ", "Плотность растёт постоянно. Ошибка — конец.", 0),
-    Daily("daily", "ДЕЙЛИ", "Фиксированный сид дня. Общий вызов для всех.", 0);
+enum class Mode(val id: String, val title: String, val short: String, val detail: String, val seconds: Int) {
+    Classic("classic", "КЛАССИКА", "КЛАСС", "Бесконечный полёт. Один промах — конец.", 0),
+    Zen("zen", "ДЗЕН", "ДЗЕН", "90 секунд без астероидов. Собирай сферы и бонусы.", 90),
+    Sprint("sprint", "СПРИНТ", "СПРИНТ", "60 секунд на максимальный счёт. Удар стоит 3 секунды.", 60),
+    Survival("survival", "ВЫЖИВАНИЕ", "ВЫЖИВ", "Плотность растёт постоянно. Ошибка — конец.", 0),
+    Daily("daily", "ДЕЙЛИ", "ДЕЙЛИ", "Фиксированный сид дня. Общий вызов для всех.", 0);
 
     companion object {
         fun from(id: String?): Mode = entries.firstOrNull { it.id == id } ?: Classic

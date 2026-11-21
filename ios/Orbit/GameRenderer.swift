@@ -30,6 +30,14 @@ final class GameArt {
     }
 }
 
+/// Высококонтрастная палитра для режима «Контрастные цвета».
+private enum RenderColors {
+    static let hazard = Color(hex: 0xFF7A1A)
+    static let hazardDark = Color(hex: 0xC4232B)
+    static let bonusBlue = Color(hex: 0x35A7FF)
+    static let bonusGreen = Color(hex: 0x37E39B)
+}
+
 private extension GraphicsContext {
     /// UIImage не рисуется GraphicsContext напрямую — оборачиваем в SwiftUI.Image.
     mutating func drawUI(_ image: UIImage, in rect: CGRect,
@@ -43,42 +51,59 @@ private extension GraphicsContext {
         blendMode = oldMode
         opacity = oldAlpha
     }
+
+    /// Круглое свечение без квадратного изображения fx_glow.
+    mutating func drawGlow(_ center: CGPoint, radius: CGFloat, color: Color, alpha: Double) {
+        guard radius > 0, alpha > 0 else { return }
+        let path = Path(ellipseIn: CGRect(x: center.x - radius, y: center.y - radius,
+                                          width: radius * 2, height: radius * 2))
+        fill(path, with: .radialGradient(
+            Gradient(colors: [color.opacity(alpha), color.opacity(alpha * 0.4), Color.clear]),
+            center: center, startRadius: 0, endRadius: radius))
+    }
 }
 
 extension GameEngine {
 
     func draw(context: inout GraphicsContext, size: CGSize, tick: Int, art: GameArt,
-              shipSprite: Int, planetStyle: Int, trailStyle: Int) {
+              shipSprite: Int, planetStyle: Int, trailStyle: Int,
+              colorblind: Bool, reducedMotion: Bool) {
         guard width > 0, !art.backgrounds.isEmpty else { return }
         let center = CGPoint(x: centerX, y: centerY)
         let w = size.width
         let h = size.height
         let full = Path(CGRect(origin: .zero, size: size))
+        // Визуальное время отделено от игровой логики: при reducedMotion все пульсации стоят.
+        let visualTime: CGFloat = reducedMotion ? 0 : time
+        let visualTick: Int = reducedMotion ? 0 : tick
 
-        drawBackground(&context, art: art, sector: sectorId, style: planetStyle, time: time, w: w, h: h)
+        drawBackground(&context, art: art, sector: sectorId, style: planetStyle,
+                       time: visualTime, w: w, h: h)
 
         for star in stars {
-            let twinkle = 0.35 + 0.65 * abs(sin(star.phase + CGFloat(tick) * 0.03 * star.speed))
+            let twinkle = 0.35 + 0.65 * abs(sin(star.phase + CGFloat(visualTick) * 0.03 * star.speed))
             let rect = CGRect(x: star.x * w - star.size, y: star.y * h - star.size,
                               width: star.size * 2, height: star.size * 2)
             context.fill(Path(ellipseIn: rect), with: .color(Color.white.opacity(twinkle * 0.75)))
         }
 
         var world = context
-        if shake > 0 {
-            world.translateBy(x: sin(time * 83) * shake * 14, y: cos(time * 71) * shake * 14)
+        if shake > 0 && !reducedMotion {
+            world.translateBy(x: sin(visualTime * 83) * shake * 14, y: cos(visualTime * 71) * shake * 14)
         }
-        drawWells(&world, art: art)
-        drawPlanet(&world, art: art, style: planetStyle)
+        drawWells(&world, art: art, reducedMotion: reducedMotion)
+        drawPlanet(&world, art: art, style: planetStyle, reducedMotion: reducedMotion,
+                   colorblind: colorblind)
         drawComboRing(&world)
         drawOrbitRing(&world)
-        drawWormholes(&world, art: art)
-        drawBosses(&world, art: art)
-        drawTrail(&world, art: art, style: trailStyle)
-        drawOrbs(&world, art: art)
-        drawPowerUps(&world, art: art)
-        drawAsteroids(&world, art: art)
-        drawPlayer(&world, art: art, shipSprite: shipSprite)
+        drawWormholes(&world, art: art, reducedMotion: reducedMotion)
+        drawBosses(&world, art: art, reducedMotion: reducedMotion, colorblind: colorblind)
+        drawTrail(&world, art: art, style: trailStyle, visualTime: visualTime)
+        drawOrbs(&world, art: art, reducedMotion: reducedMotion, colorblind: colorblind)
+        drawPowerUps(&world, art: art, reducedMotion: reducedMotion, colorblind: colorblind)
+        drawAsteroids(&world, art: art, reducedMotion: reducedMotion, colorblind: colorblind)
+        drawPlayer(&world, art: art, shipSprite: shipSprite, visualTime: visualTime,
+                   reducedMotion: reducedMotion)
         drawParticles(&world, art: art)
 
         if multiplier >= 3 {
@@ -87,7 +112,7 @@ extension GameEngine {
                 center: center, startRadius: 0, endRadius: max(w, h) * 0.72))
         }
         if stormWarning > 0 {
-            let pulse = 0.5 + 0.5 * sin(time * 12)
+            let pulse = 0.5 + 0.5 * sin(visualTime * 12)
             context.fill(full, with: .color(Palette.danger.opacity(Double(stormWarning) * (0.06 + 0.06 * Double(pulse)))))
         }
         if flareWarning > 0 {
@@ -114,33 +139,88 @@ extension GameEngine {
                                width: radius * 2, height: radius * 2))
     }
 
+    /// Обводка и шевроны над опасностью — читается даже при дальтонизме.
+    private func drawHazardMarker(_ context: inout GraphicsContext, center: CGPoint,
+                                  radius: CGFloat, colorblind: Bool) {
+        guard colorblind, radius > 0 else { return }
+        context.stroke(circlePath(center, radius), with: .color(RenderColors.hazard),
+                       style: StrokeStyle(lineWidth: max(2, radius * 0.16)))
+        for ySign in [-1, 1] {
+            let y = center.y + CGFloat(ySign) * radius * 1.3
+            let half = radius * 0.5
+            var chevron = Path()
+            chevron.move(to: CGPoint(x: center.x - half, y: y - radius * 0.22))
+            chevron.addLine(to: CGPoint(x: center.x, y: y + radius * 0.22))
+            chevron.addLine(to: CGPoint(x: center.x + half, y: y - radius * 0.22))
+            context.stroke(chevron, with: .color(RenderColors.hazardDark),
+                           style: StrokeStyle(lineWidth: max(2, radius * 0.14),
+                                              lineCap: .round, lineJoin: .round))
+        }
+    }
+
+    /// Разные формы бонусов: квадрат / ромб / треугольник.
+    private func drawBonusMarker(_ context: inout GraphicsContext, center: CGPoint,
+                                 radius: CGFloat, shape: Int, colorblind: Bool) {
+        guard colorblind, radius > 0 else { return }
+        let color = shape == 1 ? RenderColors.bonusGreen : RenderColors.bonusBlue
+        let r = radius
+        var marker = Path()
+        switch shape {
+        case 1:
+            marker.move(to: CGPoint(x: center.x, y: center.y - r))
+            marker.addLine(to: CGPoint(x: center.x + r, y: center.y))
+            marker.addLine(to: CGPoint(x: center.x, y: center.y + r))
+            marker.addLine(to: CGPoint(x: center.x - r, y: center.y))
+            marker.closeSubpath()
+        case 2:
+            marker.move(to: CGPoint(x: center.x, y: center.y - r))
+            marker.addLine(to: CGPoint(x: center.x + r, y: center.y + r * 0.8))
+            marker.addLine(to: CGPoint(x: center.x - r, y: center.y + r * 0.8))
+            marker.closeSubpath()
+        default:
+            marker = Path(CGRect(x: center.x - r * 0.75, y: center.y - r * 0.75,
+                                 width: r * 1.5, height: r * 1.5))
+        }
+        context.stroke(marker, with: .color(color),
+                       style: StrokeStyle(lineWidth: max(1.5, r * 0.14), lineJoin: .round))
+    }
+
     private func drawBackground(_ context: inout GraphicsContext, art: GameArt, sector: Int,
-                                style: Int, time: CGFloat, w: CGFloat, h: CGFloat) {
+                                 style: Int, time: CGFloat, w: CGFloat, h: CGFloat) {
         let image = art.backgrounds[(sector + style * 2) % art.backgrounds.count]
         let scale = max(w / CGFloat(image.size.width), h / CGFloat(image.size.height)) * 1.04
         let dw = CGFloat(image.size.width) * scale
         let dh = CGFloat(image.size.height) * scale
-        let drift = sin(time * 0.12) * 8
+        let drift = sin(time * 0.08) * 3
         context.drawUI(image, in: CGRect(x: (w - dw) / 2 + drift, y: (h - dh) / 2, width: dw, height: dh))
     }
 
-    private func drawPlanet(_ context: inout GraphicsContext, art: GameArt, style: Int) {
+    private func drawPlanet(_ context: inout GraphicsContext, art: GameArt, style: Int,
+                            reducedMotion: Bool, colorblind: Bool) {
         let center = CGPoint(x: centerX, y: centerY)
         let image = art.planets[(sectorId + style) % art.planets.count]
-        let diameter = planetRadius * 2.7
-        context.fill(circlePath(center, planetRadius * 2.4), with: .radialGradient(
-            Gradient(colors: [Color(hex: 0x7C5CFF).opacity(0.28), Color.clear]),
-            center: center, startRadius: 0, endRadius: planetRadius * 2.4))
-        let rect = CGRect(x: center.x - diameter / 2, y: center.y - diameter / 2,
-                          width: diameter, height: diameter)
+        // Видимый радиус спрайта совпадает с радиусом обводки и не заходит на орбиту.
+        let diameter = planetRadius * 2.25
+        let outlineRadius = planetRadius * 1.02
+        context.drawGlow(center, radius: planetRadius * 2.4,
+                         color: Color(hex: 0x7C5CFF), alpha: 0.28)
         context.drawLayer { layer in
             layer.translateBy(x: center.x, y: center.y)
-            layer.rotate(by: .radians(Double(time * 2.2)))
-            layer.drawUI(image, in: CGRect(x: -diameter / 2, y: -diameter / 2, width: diameter, height: diameter))
+            layer.rotate(by: .radians(Double(reducedMotion ? 0 : time * 2.2)))
+            layer.drawUI(image, in: CGRect(x: -diameter / 2, y: -diameter / 2,
+                                           width: diameter, height: diameter))
         }
-        context.stroke(circlePath(center, planetRadius), with: .color(Color.white.opacity(0.16)),
+        context.stroke(circlePath(center, outlineRadius), with: .color(Color.white.opacity(0.16)),
                        lineWidth: planetRadius * 0.025)
-        _ = rect
+        // Секторный акцент рисуется здесь, а не запекается в текстуру планеты.
+        let accents: [UInt32] = [0x22D3EE, 0xFB7185, 0xA78BFA, 0x78DCFF,
+                                 0xF472B6, 0xB388FF, 0xFFFF5C70, 0xFBBF24]
+        let accent = Color(hex: accents[max(0, min(sectorId, accents.count - 1))])
+        var arc = Path()
+        arc.addArc(center: center, radius: planetRadius * 1.22,
+                   startAngle: .degrees(-115), endAngle: .degrees(35), clockwise: false)
+        context.stroke(arc, with: .color(accent.opacity(colorblind ? 0.9 : 0.35)),
+                       style: StrokeStyle(lineWidth: colorblind ? 3 : 2, lineCap: .round))
     }
 
     private func drawComboRing(_ context: inout GraphicsContext) {
@@ -149,33 +229,36 @@ extension GameEngine {
         let fraction = min(max(comboTime / 2.5, 0), 1)
         var arc = Path()
         arc.addArc(center: CGPoint(x: centerX, y: centerY), radius: radius,
-                   startAngle: .degrees(-90), endAngle: .degrees(-90 + 360 * Double(fraction)), clockwise: false)
+                    startAngle: .degrees(-90), endAngle: .degrees(-90 + 360 * Double(fraction)), clockwise: false)
         context.stroke(arc, with: .color(skinColor.opacity(0.55)),
                        style: StrokeStyle(lineWidth: 3, lineCap: .round))
     }
 
     private func drawOrbitRing(_ context: inout GraphicsContext) {
         context.stroke(circlePath(CGPoint(x: centerX, y: centerY), orbitRadius),
-                       with: .color(Color(hex: 0xA78BFA).opacity(0.26)),
-                       style: StrokeStyle(lineWidth: 1.5, dash: [9, 13]))
+                        with: .color(Color(hex: 0xA78BFA).opacity(0.26)),
+                        style: StrokeStyle(lineWidth: 1.5, dash: [9, 13]))
     }
 
-    private func drawWells(_ context: inout GraphicsContext, art: GameArt) {
+    private func drawWells(_ context: inout GraphicsContext, art: GameArt, reducedMotion: Bool) {
         for well in wells {
             let x = centerX + cos(well.angle) * orbitRadius * 0.72
             let y = centerY + sin(well.angle) * orbitRadius * 0.72
-            let radius = planetRadius * (0.8 + 0.12 * sin(well.pulse))
+            let pulse: CGFloat = reducedMotion ? 0 : 0.12 * sin(well.pulse)
+            let radius = planetRadius * (0.8 + pulse)
+            let center = CGPoint(x: x, y: y)
             if let ring = art.ring {
                 context.drawUI(ring, in: CGRect(x: x - radius, y: y - radius,
-                                              width: radius * 2, height: radius * 2))
+                                                width: radius * 2, height: radius * 2))
             }
-            context.fill(circlePath(CGPoint(x: x, y: y), radius), with: .radialGradient(
+            context.drawGlow(center, radius: radius, color: Palette.slow, alpha: 0.3)
+            context.fill(circlePath(center, radius), with: .radialGradient(
                 Gradient(colors: [Color.black.opacity(0.7), Color.clear]),
-                center: CGPoint(x: x, y: y), startRadius: 0, endRadius: radius))
+                center: center, startRadius: 0, endRadius: radius))
         }
     }
 
-    private func drawWormholes(_ context: inout GraphicsContext, art: GameArt) {
+    private func drawWormholes(_ context: inout GraphicsContext, art: GameArt, reducedMotion: Bool) {
         for worm in wormholes {
             let x = centerX + cos(worm.angle) * orbitRadius
             let y = centerY + sin(worm.angle) * orbitRadius
@@ -183,7 +266,7 @@ extension GameEngine {
             if let ring = art.ring {
                 context.drawLayer { layer in
                     layer.translateBy(x: x, y: y)
-                    layer.rotate(by: .radians(Double(worm.pulse * 70)))
+                    layer.rotate(by: .radians(Double(reducedMotion ? 0 : worm.pulse * 70)))
                     layer.drawUI(ring, in: CGRect(x: -radius, y: -radius, width: radius * 2, height: radius * 2))
                 }
             }
@@ -193,90 +276,99 @@ extension GameEngine {
         }
     }
 
-    private func drawBosses(_ context: inout GraphicsContext, art: GameArt) {
+    private func drawBosses(_ context: inout GraphicsContext, art: GameArt,
+                            reducedMotion: Bool, colorblind: Bool) {
         for boss in boss {
             let x = centerX + cos(boss.angle) * orbitRadius
             let y = centerY + sin(boss.angle) * orbitRadius
             let radius = playerRadius * 6
-            let pulse = 1 + 0.14 * sin(boss.time * 5)
-            if let glow = art.glow {
-                let glowSize = radius * 3 * pulse
-                context.drawUI(glow, in: CGRect(x: x - glowSize / 2, y: y - glowSize / 2,
-                                              width: glowSize, height: glowSize))
-            }
-            context.fill(circlePath(CGPoint(x: x, y: y), radius * pulse), with: .radialGradient(
+            let pulse: CGFloat = reducedMotion ? 1 : 1 + 0.14 * sin(boss.time * 5)
+            let center = CGPoint(x: x, y: y)
+            context.drawGlow(center, radius: radius * 1.5 * pulse, color: Palette.boss, alpha: 0.35)
+            context.fill(circlePath(center, radius * pulse), with: .radialGradient(
                 Gradient(colors: [boss.hitFlash > 0 ? Color.white : Color(hex: 0x3A0A24), Palette.boss.opacity(0.85)]),
-                center: CGPoint(x: x, y: y), startRadius: 0, endRadius: radius))
-            context.fill(circlePath(CGPoint(x: x, y: y), radius * 0.35), with: .color(Color.white.opacity(0.8)))
+                center: center, startRadius: 0, endRadius: radius))
+            context.fill(circlePath(center, radius * 0.35), with: .color(Color.white.opacity(0.8)))
             let arcRadius = radius * 1.35
             var arc = Path()
             let hpMax = CGFloat(3 + level / 15)
-            arc.addArc(center: CGPoint(x: x, y: y), radius: arcRadius,
+            arc.addArc(center: center, radius: arcRadius,
                        startAngle: .degrees(-90),
                        endAngle: .degrees(-90 + 360 * Double(CGFloat(boss.hp) / max(1, hpMax))),
                        clockwise: false)
             context.stroke(arc, with: .color(Palette.boss), style: StrokeStyle(lineWidth: 3, lineCap: .round))
+            drawHazardMarker(&context, center: center, radius: radius * 1.1, colorblind: colorblind)
         }
     }
 
-    private func drawTrail(_ context: inout GraphicsContext, art: GameArt, style: Int) {
-        guard let glow = art.glow else { return }
+    private func drawTrail(_ context: inout GraphicsContext, art: GameArt, style: Int,
+                           visualTime: CGFloat) {
         for (index, point) in trail.enumerated() {
             let life = min(max(point.life, 0), 1)
             let color: Color
             if style == 2 {
-                color = Color(hue: Double(((time * 90 + CGFloat(index) * 12).truncatingRemainder(dividingBy: 360)) / 360),
+                color = Color(hue: Double(((visualTime * 90 + CGFloat(index) * 12).truncatingRemainder(dividingBy: 360)) / 360),
                               saturation: 0.75, brightness: 1)
             } else { color = point.color }
             let radius: CGFloat
             switch style {
             case 1: radius = playerRadius * (0.6 + life * 1.5)
-            case 3: radius = playerRadius * (0.4 + life * 0.9) * (1 + 0.35 * sin(CGFloat(index) * 0.8 + time * 9))
+            case 3: radius = playerRadius * (0.4 + life * 0.9) *
+                        (1 + 0.35 * sin(CGFloat(index) * 0.8 + visualTime * 9))
             default: radius = playerRadius * (0.4 + life * 0.8)
             }
-            let rect = CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2)
-            context.drawUI(glow, in: rect, mode: .normal, alpha: Double(life * (style == 1 ? 0.5 : 0.35)))
-            context.fill(circlePath(CGPoint(x: point.x, y: point.y), radius * 0.5),
-                         with: .color(color.opacity(Double(life * 0.7))))
+            // Как на Android: только мягкое свечение, без дополнительного круглого ядра.
+            context.drawGlow(CGPoint(x: point.x, y: point.y), radius: radius,
+                             color: color, alpha: Double(life * (style == 1 ? 0.5 : 0.35)))
         }
     }
 
-    private func drawOrbs(_ context: inout GraphicsContext, art: GameArt) {
+    private func drawOrbs(_ context: inout GraphicsContext, art: GameArt,
+                          reducedMotion: Bool, colorblind: Bool) {
         for orb in orbs {
-            let pulse = 1 + 0.12 * sin(orb.pulse)
+            let pulse: CGFloat = reducedMotion ? 1 : 1 + 0.12 * sin(orb.pulse)
             let x = centerX + cos(orb.angle) * orbitRadius
             let y = centerY + sin(orb.angle) * orbitRadius
             let radius = playerRadius * (orb.kind == .artifact ? 2.2 : 1.7) * pulse
-            if let glow = art.glow {
-                context.drawUI(glow, in: CGRect(x: x - radius * 1.8, y: y - radius * 1.8,
-                                              width: radius * 3.6, height: radius * 3.6), alpha: 0.4)
-            }
+            let center = CGPoint(x: x, y: y)
+            let haloColor = orb.kind == .normal ? Palette.orb : Color(hex: 0xFFFFF3B0)
+            context.drawGlow(center, radius: radius * 1.8, color: haloColor, alpha: 0.4)
             let sprite = art.orbs[orb.sprite % art.orbs.count]
             context.drawUI(sprite, in: CGRect(x: x - radius, y: y - radius, width: radius * 2, height: radius * 2))
+            let shape: Int = orb.kind == .artifact ? 2 : (orb.kind == .golden ? 1 : 0)
+            drawBonusMarker(&context, center: center, radius: radius * 0.9,
+                            shape: shape, colorblind: colorblind)
         }
     }
 
-    private func drawPowerUps(_ context: inout GraphicsContext, art: GameArt) {
+    private func drawPowerUps(_ context: inout GraphicsContext, art: GameArt,
+                              reducedMotion: Bool, colorblind: Bool) {
         for power in powerUps {
             let x = centerX + cos(power.angle) * orbitRadius
             let y = centerY + sin(power.angle) * orbitRadius
-            let radius = playerRadius * 2.5 * (1 + 0.09 * sin(power.pulse))
+            let radius = playerRadius * 2.5 * (reducedMotion ? 1 : 1 + 0.09 * sin(power.pulse))
             let index = allPowerKinds.firstIndex(of: power.kind) ?? 0
             let sprite = art.powers[index % art.powers.count]
+            let center = CGPoint(x: x, y: y)
+            context.drawGlow(center, radius: radius * 1.5, color: Palette.shield, alpha: 0.28)
             context.drawLayer { layer in
                 layer.translateBy(x: x, y: y)
-                layer.rotate(by: .radians(Double(sin(power.pulse * 0.5) * 8)))
+                layer.rotate(by: .radians(Double(reducedMotion ? 0 : sin(power.pulse * 0.5) * 8)))
                 layer.drawUI(sprite, in: CGRect(x: -radius, y: -radius, width: radius * 2, height: radius * 2))
             }
+            drawBonusMarker(&context, center: center, radius: radius * 0.85,
+                            shape: index % 2 == 0 ? 1 : 0, colorblind: colorblind)
         }
     }
 
     private var allPowerKinds: [PowerUpKind] { [.shield, .slow, .double, .magnet, .phase, .freeze, .revive] }
 
-    private func drawAsteroids(_ context: inout GraphicsContext, art: GameArt) {
+    private func drawAsteroids(_ context: inout GraphicsContext, art: GameArt,
+                               reducedMotion: Bool, colorblind: Bool) {
         for asteroid in asteroids {
             let x = centerX + cos(asteroid.angle) * asteroid.distance
             let y = centerY + sin(asteroid.angle) * asteroid.distance
+            let center = CGPoint(x: x, y: y)
             switch asteroid.kind {
             case .comet:
                 let dx = cos(asteroid.angle)
@@ -287,50 +379,61 @@ extension GameEngine {
                 tail.move(to: start)
                 tail.addLine(to: end)
                 context.stroke(tail, with: .linearGradient(
-                    Gradient(colors: [Color(hex: 0xFFB86B).opacity(0.85), Color.clear]),
+                    Gradient(colors: [RenderColors.hazard.opacity(0.85), Color.clear]),
                     startPoint: start, endPoint: end),
                     style: StrokeStyle(lineWidth: asteroid.radius * 0.9, lineCap: .round))
                 let sprite = art.comets[asteroid.sprite % art.comets.count]
                 let d = asteroid.radius * 3.6
-                context.drawUI(sprite, in: CGRect(x: x - d / 2, y: y - d / 2, width: d, height: d))
+                context.drawLayer { layer in
+                    layer.translateBy(x: x, y: y)
+                    layer.rotate(by: .radians(Double(asteroid.angle)))
+                    layer.drawUI(sprite, in: CGRect(x: -d / 2, y: -d / 2, width: d, height: d))
+                }
+                drawHazardMarker(&context, center: center, radius: asteroid.radius * 1.8,
+                                 colorblind: colorblind)
             case .bolt:
                 let dx = cos(asteroid.angle)
                 let dy = sin(asteroid.angle)
                 var bolt = Path()
                 bolt.move(to: CGPoint(x: x + dx * asteroid.radius * 4, y: y + dy * asteroid.radius * 4))
                 bolt.addLine(to: CGPoint(x: x - dx * asteroid.radius * 4, y: y - dy * asteroid.radius * 4))
-                context.stroke(bolt, with: .color(Palette.boss.opacity(0.9)),
-                               style: StrokeStyle(lineWidth: asteroid.radius * 1.2, lineCap: .round))
+                context.stroke(bolt, with: .color((colorblind ? RenderColors.hazardDark : Palette.boss).opacity(0.9)),
+                               style: StrokeStyle(lineWidth: asteroid.radius * (colorblind ? 1.6 : 1.2),
+                                                  lineCap: .round))
+                drawHazardMarker(&context, center: center, radius: asteroid.radius * 1.5,
+                                 colorblind: colorblind)
             case .mine, .rock:
                 let sprite = art.asteroids[asteroid.sprite % art.asteroids.count]
-                let d = asteroid.radius * 2.6
+                let d = asteroid.radius * 3.6
                 context.drawLayer { layer in
                     layer.translateBy(x: x, y: y)
                     layer.rotate(by: .radians(Double(asteroid.rotation)))
                     layer.drawUI(sprite, in: CGRect(x: -d / 2, y: -d / 2, width: d, height: d))
                 }
                 if asteroid.kind == .mine {
-                    context.stroke(circlePath(CGPoint(x: x, y: y), asteroid.radius * 0.75),
-                                   with: .color(Palette.danger.opacity(0.75 + 0.25 * sin(asteroid.pulse * 3))),
-                                   lineWidth: asteroid.radius * 0.2)
-                    context.fill(circlePath(CGPoint(x: x, y: y), asteroid.radius * 0.3),
-                                 with: .color(Palette.danger))
+                    let alpha: CGFloat = reducedMotion ? 0.9 : 0.75 + 0.25 * sin(asteroid.pulse * 3)
+                    let mineColor = colorblind ? RenderColors.hazardDark : Palette.danger
+                    context.stroke(circlePath(center, asteroid.radius * 0.75),
+                                   with: .color(mineColor.opacity(alpha)),
+                                   lineWidth: asteroid.radius * 0.3)
+                    context.fill(circlePath(center, asteroid.radius * 0.3), with: .color(mineColor))
                 }
+                drawHazardMarker(&context, center: center, radius: asteroid.radius * 1.8,
+                                 colorblind: colorblind)
             }
         }
     }
 
-    private func drawPlayer(_ context: inout GraphicsContext, art: GameArt, shipSprite: Int) {
+    private func drawPlayer(_ context: inout GraphicsContext, art: GameArt, shipSprite: Int,
+                            visualTime: CGFloat, reducedMotion: Bool) {
         let position = CGPoint(x: playerX, y: playerY)
-        let alpha = invulnerable > 0 ? 0.4 + 0.6 * abs(sin(time * 22)) : 1
-        let halo = playerRadius * 4.5
-        if let glow = art.glow {
-            context.drawUI(glow, in: CGRect(x: position.x - halo, y: position.y - halo,
-                                          width: halo * 2, height: halo * 2), alpha: Double(0.35 * alpha))
-        }
+        let alpha: CGFloat = (invulnerable > 0 && !reducedMotion)
+            ? 0.4 + 0.6 * abs(sin(visualTime * 22)) : 1
+        context.drawGlow(position, radius: playerRadius * 4.5, color: skinColor,
+                         alpha: Double(0.35 * alpha))
         if shield || phaseTimer > 0 || freezeTimer > 0 {
             let color = phaseTimer > 0 ? Palette.phase : (freezeTimer > 0 ? Palette.freeze : Palette.shield)
-            let pulse = 1 + 0.08 * sin(time * 6)
+            let pulse: CGFloat = reducedMotion ? 1 : 1 + 0.08 * sin(visualTime * 6)
             context.fill(circlePath(position, playerRadius * 2.7 * pulse), with: .color(color.opacity(0.12)))
             context.stroke(circlePath(position, playerRadius * 2.7 * pulse), with: .color(color.opacity(0.75)),
                            lineWidth: playerRadius * 0.4)
@@ -352,12 +455,11 @@ extension GameEngine {
     }
 
     private func drawParticles(_ context: inout GraphicsContext, art: GameArt) {
-        guard let glow = art.glow else { return }
         for particle in particles {
             let life = min(max(particle.life / particle.maxLife, 0), 1)
             let radius = particle.size * (1.4 + life)
-            context.drawUI(glow, in: CGRect(x: particle.x - radius, y: particle.y - radius,
-                                          width: radius * 2, height: radius * 2), alpha: Double(life * 0.85))
+            context.drawGlow(CGPoint(x: particle.x, y: particle.y), radius: radius,
+                             color: particle.color, alpha: Double(life * 0.85))
         }
     }
 }
@@ -365,15 +467,16 @@ extension GameEngine {
 // MARK: - Menu backgrounds
 
 extension GameArt {
-    func drawMenu(in context: inout GraphicsContext, size: CGSize, style: Int, tick: Int) {
+    func drawMenuBackground(in context: inout GraphicsContext, size: CGSize, style: Int,
+                            tick: Int, reducedMotion: Bool) {
         guard !backgrounds.isEmpty else { return }
         let image = backgrounds[style % backgrounds.count]
         let scale = max(size.width / CGFloat(image.size.width), size.height / CGFloat(image.size.height)) * 1.05
         let dw = CGFloat(image.size.width) * scale
         let dh = CGFloat(image.size.height) * scale
-        let shift = sin(Double(tick) * 0.004) * 10
+        let shift: CGFloat = reducedMotion ? 0 : sin(Double(tick) * 0.002) * 4
         context.drawUI(image, in: CGRect(x: (size.width - dw) / 2 + shift, y: (size.height - dh) / 2,
-                                       width: dw, height: dh))
+                                        width: dw, height: dh))
         let full = Path(CGRect(origin: .zero, size: size))
         context.fill(full, with: .radialGradient(
             Gradient(colors: [Color.clear, Color(hex: 0x05030F).opacity(0.86)]),
@@ -382,14 +485,19 @@ extension GameArt {
     }
 
     func drawPlanetPreview(in context: inout GraphicsContext, index: Int, center: CGPoint,
-                           radius: CGFloat, tick: Int) {
+                           radius: CGFloat, tick: Int, colorblind: Bool, reducedMotion: Bool) {
         guard !planets.isEmpty else { return }
         let image = planets[index % planets.count]
         let d = radius * 2
         context.drawLayer { layer in
             layer.translateBy(x: center.x, y: center.y)
-            layer.rotate(by: .radians(Double(tick) * 0.01))
+            layer.rotate(by: .radians(reducedMotion ? 0 : Double(tick) * 0.01))
             layer.drawUI(image, in: CGRect(x: -d / 2, y: -d / 2, width: d, height: d))
+        }
+        if colorblind {
+            context.stroke(Path(ellipseIn: CGRect(x: center.x - radius, y: center.y - radius,
+                                                  width: radius * 2, height: radius * 2)),
+                           with: .color(RenderColors.bonusBlue), lineWidth: 2)
         }
     }
 }

@@ -36,6 +36,8 @@ class GameEngine {
         private set
     var shield by androidx.compose.runtime.mutableStateOf(false)
         private set
+    var shieldTime by androidx.compose.runtime.mutableFloatStateOf(0f)
+        private set
     var orbsCollected by androidx.compose.runtime.mutableIntStateOf(0)
         private set
     var maxCombo by androidx.compose.runtime.mutableIntStateOf(0)
@@ -134,6 +136,9 @@ class GameEngine {
     private var portalTimer = 0f
     private var wellTimer = 0f
     private var lastBossLevel = 0
+    private var nextBossLevel = 5
+    private var eventCooldown = 0f
+    private var elapsed = 0f
     private var ghostTimer = 0f
     private var reviveAvailable = false
     private var settings = GameSettings()
@@ -180,7 +185,10 @@ class GameEngine {
         ghostCount = 0; ghostTimer = 0f
         score = 0; isNewRecord = false; paused = false
         combo = 0; multiplier = 1; level = if (mode == Mode.Survival) 3 else 1
-        shield = upgradeShield; orbsCollected = 0; maxCombo = 0
+        shield = upgradeShield
+        shieldTime = if (shield) if (upgradeShield) 14f else 10f else 0f
+        orbsCollected = 0; maxCombo = 0
+        eventCooldown = 0f; elapsed = 0f
         comboTime = 0f; slowTimer = 0f; doubleTimer = 0f
         magnetTimer = 0f; phaseTimer = 0f; freezeTimer = 0f
         invulnerable = 0f; hitStop = 0f; flash = 0f
@@ -188,7 +196,7 @@ class GameEngine {
         playerAngle = -PI.toFloat() / 2f; direction = 1
         spawnTimer = 0.7f; orbTimer = 2.2f; powerTimer = 5f
         stormTimer = 20f; flareTimer = 16f; mineTimer = 9f
-        portalTimer = 12f; wellTimer = 18f; lastBossLevel = 0
+        portalTimer = 12f; wellTimer = 18f; lastBossLevel = 0; nextBossLevel = 5
         time = 0f; shake = 0f; reverseFlash = 0f; speedLevel = 0f
         fever = false; completed = false; reviveAvailable = false
         timeLeft = if (mode.seconds > 0) mode.seconds.toFloat() + if (upgradeTime) 8f else 0f else -1f
@@ -224,17 +232,41 @@ class GameEngine {
 
     fun pause() { if (status == GameStatus.Playing) paused = true }
     fun resume() { paused = false }
-    fun toReady() { status = GameStatus.Ready; paused = false }
+    fun toReady() { status = GameStatus.Ready; paused = false; shieldTime = 0f }
+
+    /** Выход из забега домой: результат фиксируется, а не теряется. */
+    fun abandonRun() {
+        if (status != GameStatus.Playing) return
+        status = GameStatus.GameOver
+        completed = false
+        paused = false
+        stats.seconds = elapsed.toInt()
+        onRunEnd(stats)
+    }
 
     fun update(dtRaw: Float) {
         val step = dtRaw.coerceIn(0f, 0.05f)
         time += step
+        elapsed += step
+        // Таймер тикает по реальному времени, даже во время hit-stop.
+        if (status == GameStatus.Playing && !paused && timeLeft > 0f) {
+            timeLeft = max(0f, timeLeft - step)
+            stats.seconds = elapsed.toInt()
+            if (timeLeft <= 0f) { finishRun(); return }
+        } else if (status == GameStatus.Playing && !paused) {
+            stats.seconds = elapsed.toInt()
+        }
         decayVisuals(step)
         updateParticles(step)
         updateTrail(step)
         if (status != GameStatus.Playing || paused) return
         if (hitStop > 0f) { hitStop = max(0f, hitStop - step); return }
+        eventCooldown = max(0f, eventCooldown - step)
 
+        if (shieldTime > 0f) {
+            shieldTime = max(0f, shieldTime - step)
+            if (shieldTime <= 0f) { shield = false; onEvent(GameEvent.ShieldBreak) }
+        }
         if (combo > 0) {
             comboTime -= step
             if (comboTime <= 0f) { combo = 0; multiplier = 1; fever = false }
@@ -245,14 +277,6 @@ class GameEngine {
         phaseTimer = max(0f, phaseTimer - step)
         freezeTimer = max(0f, freezeTimer - step)
         invulnerable = max(0f, invulnerable - step)
-
-        if (timeLeft > 0f) {
-            timeLeft = max(0f, timeLeft - step)
-            stats.seconds = (mode.seconds - timeLeft).toInt().coerceAtLeast(0)
-            if (timeLeft <= 0f) { finishRun(); return }
-        } else {
-            stats.seconds = time.toInt()
-        }
 
         speedLevel = min(1f, score / 400f + if (mode == Mode.Survival) time / 180f else 0f)
         playerAngle += direction * (1.45f + speedLevel * 0.65f) * step
@@ -305,9 +329,9 @@ class GameEngine {
         spawnTimer -= step
         if (spawnTimer <= 0f && stormWarning <= 0f) {
             spawnAsteroid()
-            val base = (1.05f - score * 0.012f) / s.density
-            val floor = if (mode == Mode.Survival) 0.18f else 0.30f
-            spawnTimer = base.coerceIn(floor, 1.05f) * (0.75f + rnd() * 0.5f)
+            val base = 1.0f - min(0.35f, score * 0.0004f)
+            val floor = if (mode == Mode.Survival) 0.40f else 0.55f
+            spawnTimer = (base / s.density).coerceIn(floor, 1.1f) * (0.85f + rnd() * 0.3f)
         }
         orbTimer -= step
         if (orbTimer <= 0f) { spawnOrb(); orbTimer = 2.8f + rnd() * 2.5f }
@@ -329,8 +353,10 @@ class GameEngine {
                 wellTimer = 20f + rnd() * 12f
             }
         }
-        if (level % 5 == 0 && level != lastBossLevel && status == GameStatus.Playing) {
+        // Пороговый спавн: уровни могут перепрыгивать порог, но босс не теряется.
+        while (level >= nextBossLevel && status == GameStatus.Playing) {
             spawnBoss()
+            nextBossLevel += 5
         }
     }
 
@@ -374,6 +400,7 @@ class GameEngine {
         var hit: Asteroid? = null
         for (a in asteroids) {
             a.pulse += step * 2f
+            val prevDistance = a.distance
             if (freezeTimer <= 0f) a.distance -= a.speed * speedScale * step
             a.rotation += a.spin * step
             a.life -= step
@@ -382,21 +409,24 @@ class GameEngine {
             val ay = centerY + sin(a.angle) * a.distance
             val d = distance(ax, ay, px, py)
             val cd = a.radius + playerRadius
+            val angleToPlayer = abs(angDiff(a.angle, playerAngle))
             if (d < cd && invulnerable <= 0f && phaseTimer <= 0f) { hit = a; break }
-            if (!a.nearMissed && d < cd + playerRadius * 2.1f && invulnerable <= 0f && a.kind != AsteroidKind.Bolt) {
+            // Близкий пролёт — только рядом с кораблём и на расстоянии «на волоске».
+            if (!a.nearMissed && d > cd && d < cd + playerRadius * 1.2f &&
+                angleToPlayer < 0.16f && invulnerable <= 0f && a.kind != AsteroidKind.Bolt) {
                 a.nearMissed = true
                 stats.nearMisses++
-                bumpCombo()
-                addPoints(2)
+                rewardSkill(1)
                 flash = 1f
-                hitStop = if (reducedMotion) 0f else 0.035f
+                hitStop = if (reducedMotion) 0f else 0.02f
                 onEvent(GameEvent.NearMiss)
             }
-            if (!a.dodged && a.distance < orbitRadius - a.radius && a.kind != AsteroidKind.Bolt) {
+            // Уклонение — пересечение орбиты именно в секторе корабля.
+            if (!a.dodged && prevDistance >= orbitRadius && a.distance < orbitRadius &&
+                angleToPlayer < 0.24f && a.kind != AsteroidKind.Bolt) {
                 a.dodged = true
                 stats.dodges++
-                bumpCombo()
-                addPoints(if (a.kind == AsteroidKind.Comet) 2 else 1)
+                rewardSkill(1)
                 onEvent(GameEvent.Dodge(combo))
             }
             if (a.distance < planetRadius * 0.35f) {
@@ -454,24 +484,23 @@ class GameEngine {
     }
 
     private fun collectOrb(o: Orb) {
-        bumpCombo()
         when (o.kind) {
             OrbKind.Normal -> {
                 stats.orbs++
                 orbsCollected++
-                addPoints(3)
+                rewardSkill(2)
                 onEvent(GameEvent.Orb)
             }
             OrbKind.Golden -> {
                 stats.orbs++
                 stats.goldenOrbs++
                 orbsCollected++
-                addPoints(12)
+                rewardSkill(8)
                 onEvent(GameEvent.GoldenOrb(combo))
             }
             OrbKind.Artifact -> {
                 stats.rareOrbs++
-                addPoints(50)
+                rewardSkill(25)
                 onEvent(GameEvent.Artifact)
             }
         }
@@ -483,14 +512,14 @@ class GameEngine {
 
     private fun damageBoss(angle: Float) {
         for (b in boss) {
-            if (abs(angDiff(b.angle, angle)) > 0.38f) continue
+            if (abs(angDiff(b.angle, angle)) > 0.75f) continue
             b.hitFlash = 1f
             addPoints(40)
             onEvent(GameEvent.BossHit)
             if (b.hp <= 1) {
                 b.dead = true
                 stats.bossKills++
-                addPoints(500 * level)
+                addPoints(150 + 10 * level)
                 burst(centerX + cos(b.angle) * orbitRadius, centerY + sin(b.angle) * orbitRadius, 60, Palette.Boss, 2f)
                 onEvent(GameEvent.BossDown)
             } else {
@@ -507,32 +536,43 @@ class GameEngine {
 
     private fun applyPowerUp(kind: PowerUpKind) {
         when (kind) {
-            PowerUpKind.Shield -> if (activeCount() < 2) shield = true
-            PowerUpKind.Slow -> if (activeCount() < 2) slowTimer = if (upgradeSlow) 8f else 5f
-            PowerUpKind.Double -> if (activeCount() < 2) doubleTimer = if (upgradeDouble) 12f else 8f
-            PowerUpKind.Magnet -> if (activeCount() < 2) magnetTimer = 8f
-            PowerUpKind.Phase -> if (activeCount() < 2) phaseTimer = 6f
-            PowerUpKind.Freeze -> if (activeCount() < 2) freezeTimer = 4f
+            PowerUpKind.Shield -> if (activeCount() < 3) {
+                shield = true
+                shieldTime = if (upgradeShield) 14f else 10f
+            }
+            PowerUpKind.Slow -> if (activeCount() < 3) slowTimer = if (upgradeSlow) 8f else 5f
+            PowerUpKind.Double -> if (activeCount() < 3) doubleTimer = if (upgradeDouble) 12f else 8f
+            PowerUpKind.Magnet -> if (activeCount() < 3) magnetTimer = 8f
+            PowerUpKind.Phase -> if (activeCount() < 3) phaseTimer = 6f
+            PowerUpKind.Freeze -> if (activeCount() < 3) freezeTimer = 4f
             PowerUpKind.Revive -> reviveAvailable = true
         }
     }
 
+    /** Награда за навык: один счётчик на любое событие, чтобы очки не «капали». */
+    private fun rewardSkill(base: Int) {
+        if (eventCooldown > 0f) return
+        eventCooldown = 0.45f
+        bumpCombo()
+        addPoints(base)
+    }
+
     private fun bumpCombo() {
         combo += 1
-        comboTime = 2.5f
-        multiplier = min(8, 1 + combo / 3)
-        fever = multiplier >= 5
+        comboTime = 2.0f
+        multiplier = min(5, 1 + combo / 5)
+        fever = multiplier >= 4
         if (combo > maxCombo) { maxCombo = combo; stats.maxCombo = combo }
     }
 
     private fun addPoints(base: Int) {
         val factor = if (doubleTimer > 0f) 2 else 1
         val gained = base * multiplier * factor
-        score += gained
+        score = min(Int.MAX_VALUE / 4, score + gained)
         stats.score = score
-        val next = 1 + score / 50
+        val next = 1 + score / 150
         if (next > level) {
-            level = next
+            level = min(level + 1, next)
             stats.level = level
             levelUpFlash = 1f
             onEvent(GameEvent.LevelUp(level))
@@ -545,6 +585,9 @@ class GameEngine {
 
     private fun handleHit(a: Asteroid) {
         stats.hits++
+        // Любое попадание сбивает цепочку: комбо — навык, а не таймер.
+        combo = 0; multiplier = 1; comboTime = 0f; fever = false
+        shieldTime = 0f
         when {
             phaseTimer > 0f -> {
                 a.dead = true
@@ -568,6 +611,7 @@ class GameEngine {
             }
             mode == Mode.Sprint -> {
                 timeLeft = max(0f, timeLeft - 3f)
+                flash = 1f
                 invulnerable = 1.2f
                 if (!reducedMotion) shake = 0.7f
                 burst(playerX(), playerY(), 20, Palette.Danger, 1f)
@@ -595,7 +639,7 @@ class GameEngine {
         status = GameStatus.GameOver
         completed = true
         paused = false
-        stats.seconds = mode.seconds + if (upgradeTime) 8 else 0
+        stats.seconds = elapsed.toInt().coerceAtLeast(1)
         onRunEnd(stats)
         onEvent(GameEvent.Finish)
     }
@@ -609,7 +653,7 @@ class GameEngine {
 
     private fun spawnStorm() {
         val safe = rnd() * TAU
-        repeat(if (mode == Mode.Survival) 10 else 8) {
+        repeat(if (mode == Mode.Survival) 6 else 5) {
             var angle = rnd() * TAU
             var tries = 0
             while (abs(angDiff(angle, safe)) < 0.8f && tries < 24) { angle = rnd() * TAU; tries++ }
@@ -624,8 +668,10 @@ class GameEngine {
 
     private fun spawnBoss() {
         lastBossLevel = level
-        val b = Boss(rnd() * TAU, 3 + level / 15, 18f)
+        val b = Boss(rnd() * TAU, 2 + level / 20, 26f)
         boss += b
+        // Рядом с боссом появляются сферы — ядро реально можно сбить.
+        repeat(2) { orbs += Orb(norm(b.angle + (rnd() - 0.5f) * 0.55f), OrbKind.Normal, 0) }
         onEvent(GameEvent.BossSpawn)
         burst(centerX + cos(b.angle) * orbitRadius, centerY + sin(b.angle) * orbitRadius, 40, Palette.Boss, 1.5f)
     }
@@ -642,7 +688,10 @@ class GameEngine {
     }
 
     private fun spawnPowerUp() {
-        val kinds = PowerUpKind.entries
+        // В Дзене нет астероидов: бесполезные щит/возрождение только занимают слот.
+        val kinds = if (mode == Mode.Zen) PowerUpKind.entries.filter {
+            it != PowerUpKind.Shield && it != PowerUpKind.Revive
+        } else PowerUpKind.entries
         powerUps += PowerUp(rnd() * TAU, kinds[(rnd() * kinds.size).toInt().coerceIn(kinds.indices)])
     }
 

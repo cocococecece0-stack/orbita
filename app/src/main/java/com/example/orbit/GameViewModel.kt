@@ -27,6 +27,9 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     fun refresh() { revision++ }
 
+    /** Показанный тост больше не должен оживать при рекомпозиции. */
+    fun consumeReward() { lastReward = null }
+
     fun selectMode(id: String) {
         if (Content.modes.none { it.id == id }) return
         store.data.selectedMode = id

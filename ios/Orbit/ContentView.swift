@@ -15,80 +15,83 @@ struct ContentView: View {
     @State private var screen: Screen? = .hub
     @State private var frame: UInt64 = 0
     @State private var toast: String?
+    @State private var toastIsRun = false
+    @State private var toastWork: DispatchWorkItem?
     @State private var confirmReset = false
+    @State private var showAbandonConfirm = false
     @State private var exportText = ""
     @State private var importText = ""
     @State private var importResult = ""
+    @State private var importSucceeded = false
     @State private var statMode = "classic"
+    @State private var lastSummary: RewardSummary?
+    @State private var timerSeconds = 0
+    @State private var lastFrameDate = Date()
 
     @Environment(\.scenePhase) private var scenePhase
-    @State private var timer = Timer.publish(every: 1.0 / 60.0, on: .main, in: .common).autoconnect()
 
     private var save: SaveData { store.data }
     private var mode: Mode { Mode.from(save.selectedMode) }
     private var sector: SectorDef { Content.sector(save.selectedSector) }
+    private var isModalShown: Bool { engine.paused || engine.status == .gameOver }
 
     var body: some View {
         GeometryReader { geo in
-            ZStack {
-                Color(hex: 0x05030F).ignoresSafeArea()
+            TimelineView(.animation) { timeline in
+                ZStack {
+                    Color(hex: 0x05030F).ignoresSafeArea()
 
-                if screen == nil {
-                    Canvas { context, size in
-                        engine.draw(context: &context, size: size, tick: Int(engine.frameTick),
-                                    art: art, shipSprite: save.equippedShip,
-                                    planetStyle: save.equippedPlanet, trailStyle: save.equippedTrail)
-                    }
-                    .ignoresSafeArea()
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        guard engine.status == .playing, !engine.paused else { return }
-                        engine.tap()
-                    }
-                    .onAppear { engine.resize(geo.size) }
-                    .onChange(of: geo.size) { engine.resize($0) }
+                    if screen == nil {
+                        Canvas { context, size in
+                            engine.draw(context: &context, size: size, tick: Int(engine.frameTick),
+                                        art: art, shipSprite: save.equippedShip,
+                                        planetStyle: save.equippedPlanet, trailStyle: save.equippedTrail,
+                                        colorblind: save.settings.colorblind,
+                                        reducedMotion: save.settings.reducedMotion)
+                        }
+                        .ignoresSafeArea()
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            guard engine.status == .playing, !engine.paused else { return }
+                            engine.tap()
+                        }
+                        .onAppear { engine.resize(geo.size) }
+                        .onChange(of: geo.size) { engine.resize($0) }
 
-                    hud
-                    gameOverlays
-                } else {
-                    Canvas { context, size in
-                        art.drawMenu(in: &context, size: size, style: save.equippedPlanet * 2, tick: Int(frame))
-                    }
-                    .ignoresSafeArea()
+                        // HUD скрыт на паузе и на экране результата, чтобы чипы не перекрывали затемнение.
+                        if engine.status == .playing && !engine.paused && !showAbandonConfirm {
+                            hud
+                        }
+                        gameOverlays
+                    } else {
+                        Canvas { context, size in
+                            art.drawMenuBackground(in: &context, size: size,
+                                                   style: save.equippedPlanet * 2,
+                                                   tick: Int(frame),
+                                                   reducedMotion: save.settings.reducedMotion)
+                        }
+                        .ignoresSafeArea()
 
-                    Group {
-                        switch screen {
-                        case .hub: hubScreen
-                        case .missions: missionsScreen
-                        case .hangar: hangarScreen
-                        case .shop: shopScreen
-                        case .achievements: achievementsScreen
-                        case .stats: statsScreen
-                        case .settings: settingsScreen
-                        case nil: EmptyView()
+                        Group {
+                            switch screen {
+                            case .hub: hubScreen
+                            case .missions: missionsScreen
+                            case .hangar: hangarScreen
+                            case .shop: shopScreen
+                            case .achievements: achievementsScreen
+                            case .stats: statsScreen
+                            case .settings: settingsScreen
+                            case nil: EmptyView()
+                            }
                         }
                     }
-                }
 
-                if let toast {
-                    VStack {
-                        Spacer()
-                        Text(toast)
-                            .font(.system(size: 12, weight: .semibold))
-                            .multilineTextAlignment(.center)
-                            .foregroundColor(Palette.orb)
-                            .padding(.horizontal, 18).padding(.vertical, 12)
-                            .background(RoundedRectangle(cornerRadius: 18).fill(Color(hex: 0x0B1A2E).opacity(0.95)))
-                            .padding(.bottom, 20)
-                            .transition(.opacity)
-                    }
-                    .animation(.easeInOut, value: toast)
+                    toastView
+                }
+                .onChange(of: timeline.date) { date in
+                    onFrame(date)
                 }
             }
-        }
-        .onReceive(timer) { _ in
-            frame &+= 1
-            engine.tick(dt: 1.0 / 60.0)
         }
         .onReceive(store.objectWillChange) { syncEngine() }
         .onAppear {
@@ -104,10 +107,30 @@ struct ContentView: View {
                 sound.resumeMusic()
             }
         }
+        .alert("Прервать забег и сохранить результат?", isPresented: $showAbandonConfirm) {
+            Button("ПРОДОЛЖИТЬ", role: .cancel) { }
+            Button("В ХАБ", role: .destructive) { abandonAndGoHub() }
+        }
+    }
+
+    /// Реальное время кадра (не фиксированный 1/60), игровая логика идёт только в активном забеге.
+    private func onFrame(_ date: Date) {
+        let dt = min(max(date.timeIntervalSince(lastFrameDate), 0), 0.05)
+        lastFrameDate = date
+        if screen == nil {
+            guard engine.status == .playing, !engine.paused else { return }
+            engine.tick(dt: CGFloat(dt))
+            let seconds = engine.timeLeft > 0 ? Int(ceil(engine.timeLeft)) : 0
+            if seconds != timerSeconds { timerSeconds = seconds }
+        } else {
+            frame &+= 1
+        }
     }
 
     private func syncEngine() {
-        engine.setBest(save.bestByMode[mode.id] ?? 0)
+        // Во время забега не перезаписываем engine.best сохранённым значением:
+        // иначе переключение звука в HUD «откатывает» рекорд текущей сессии.
+        if engine.status != .playing { engine.setBest(save.bestByMode[mode.id] ?? 0) }
         engine.skinColor = shipColor(save.equippedShip, save.settings.colorblind)
         engine.setReducedMotion(save.settings.reducedMotion)
         engine.setUpgrades(store.upgrades())
@@ -116,14 +139,30 @@ struct ContentView: View {
 
     private func startRun() {
         let seed = mode == .daily ? Content.seedFor(save.dailyDate) : (Int(Date().timeIntervalSince1970) & 0x7fffffff)
+        engine.setBest(save.bestByMode[mode.id] ?? 0)
         syncEngine()
         engine.startRun(mode, sector: save.selectedSector, seed: seed)
+        timerSeconds = engine.timeLeft > 0 ? Int(ceil(engine.timeLeft)) : 0
         screen = nil
         sound.startMusic(engine.sectorId)
         haptic(.heavy)
     }
 
     private func goHub() {
+        if engine.status == .playing {
+            showAbandonConfirm = true
+            return
+        }
+        navigateHub()
+    }
+
+    private func abandonAndGoHub() {
+        // onRunEnd сам фиксирует результат прерванного забега — повторной отправки нет.
+        if engine.status == .playing { engine.abandonRun() }
+        navigateHub()
+    }
+
+    private func navigateHub() {
         engine.toReady()
         sound.stopMusic()
         screen = .hub
@@ -180,14 +219,10 @@ struct ContentView: View {
                 timestamp: Int64(Date().timeIntervalSince1970 * 1000)
             )
             let summary = store.submitRun(record, achieved: engine.achievedIds(), foundSecrets: engine.secretIds())
-            var parts = ["+\(summary.credits) жетонов"]
-            if summary.levelUps > 0 { parts.append("Новый уровень x\(summary.levelUps)") }
-            parts.append(contentsOf: summary.achievements)
-            parts.append(contentsOf: summary.secrets)
-            parts.append(contentsOf: summary.missions)
-            if !summary.seasonTiers.isEmpty { parts.append("Награды сезона: \(summary.seasonTiers.count)") }
-            toast = parts.joined(separator: "  ·  ")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 4.2) { toast = nil }
+            lastSummary = summary
+            // Полный состав награды показан в карточке результата; тост не нужен поверх модалки.
+            guard screen == nil, !engine.paused, engine.status != .gameOver else { return }
+            showToast("Награда: +\(summary.credits) жетонов", isRun: true)
         }
     }
 
@@ -202,7 +237,7 @@ struct ContentView: View {
         VStack(spacing: 0) {
             HStack(alignment: .top) {
                 statBlock("СЧЁТ", "\(engine.score)", engine.multiplier > 1 ? "x\(engine.multiplier)" : nil, Palette.player)
-                Spacer()
+                Spacer(minLength: 6)
                 HStack(spacing: 8) {
                     roundButton(save.settings.muted ? "×" : "♪") {
                         store.updateSettings { $0.muted.toggle() }
@@ -210,16 +245,19 @@ struct ContentView: View {
                     roundButton("II") { engine.pause(); sound.pauseMusic() }
                     roundButton("⌂") { goHub() }
                 }
-                Spacer()
-                statBlock("РЕКОРД", "\(max(save.bestByMode[mode.id] ?? 0, engine.best))", nil, Palette.orb, end: true)
+                Spacer(minLength: 6)
+                let savedBest = save.bestByMode[mode.id] ?? 0
+                let liveBest = engine.status == .playing ? engine.best : 0
+                statBlock("РЕКОРД", "\(max(savedBest, liveBest))", nil, Palette.orb, end: true)
             }
 
-            if engine.timeLeft > 0 || engine.combo > 0 {
-                HStack(spacing: 6) {
-                    if engine.timeLeft > 0 { chip("\(Int(ceil(engine.timeLeft)))с", Palette.slow) }
-                    if engine.combo > 0 { chip("КОМБО \(engine.combo)", Palette.player) }
-                }
-                .padding(.top, 8)
+            if engine.timeLeft > 0 {
+                timerChip(timerSeconds)
+                    .padding(.top, 8)
+            }
+            if engine.combo > 0 {
+                chip("КОМБО \(engine.combo)", Palette.player)
+                    .padding(.top, 8)
             }
 
             let chips = activeChips()
@@ -259,7 +297,9 @@ struct ContentView: View {
     private func statBlock(_ label: String, _ value: String, _ extra: String?, _ color: Color, end: Bool = false) -> some View {
         VStack(alignment: end ? .trailing : .leading, spacing: 2) {
             Text(label).font(.system(size: 10)).tracking(3).foregroundColor(.white.opacity(0.5))
+                .lineLimit(1).minimumScaleFactor(0.8)
             Text(value).font(.system(size: 30, weight: .black)).foregroundColor(.white)
+                .lineLimit(1).minimumScaleFactor(0.8)
             if let extra { Text(extra).font(.system(size: 12, weight: .bold)).foregroundColor(color) }
         }
     }
@@ -280,6 +320,16 @@ struct ContentView: View {
             .background(Capsule().fill(color.opacity(0.18))).foregroundColor(color)
     }
 
+    private func timerChip(_ seconds: Int) -> some View {
+        Text("\(seconds)с")
+            .font(.system(size: 10, weight: .semibold))
+            .monospacedDigit()
+            .frame(minWidth: 56)
+            .padding(.horizontal, 10).padding(.vertical, 4)
+            .background(Capsule().fill(Palette.slow.opacity(0.18)))
+            .foregroundColor(Palette.slow)
+    }
+
     private func banner(_ text: String, _ color: Color, _ alpha: Double = 1) -> some View {
         Text(text).font(.system(size: 13, weight: .bold)).tracking(4)
             .foregroundColor(color.opacity(alpha)).frame(maxWidth: .infinity)
@@ -293,10 +343,12 @@ struct ContentView: View {
             modal {
                 title("ПАУЗА", Palette.player)
                 bodyText("Полёт приостановлен")
-                Spacer().frame(height: 20)
-                wideButton("ПРОДОЛЖИТЬ") { engine.resume(); sound.resumeMusic() }
-                wideButton("ЗАНОВО", accent: Palette.slow) { startRun() }
-                wideButton("В ХАБ", accent: .gray) { goHub() }
+                Spacer().frame(height: 16)
+                VStack(spacing: 12) {
+                    wideButton("ПРОДОЛЖИТЬ") { engine.resume(); sound.resumeMusic() }
+                    outlineButton("ЗАНОВО", accent: Palette.slow) { startRun() }
+                    outlineButton("В ХАБ") { goHub() }
+                }
             }
         } else if engine.status == .gameOver {
             modal {
@@ -309,100 +361,154 @@ struct ContentView: View {
                     Text("Рекорд: \(save.bestByMode[mode.id] ?? 0)").font(.system(size: 12)).foregroundColor(.gray)
                 }
                 Spacer().frame(height: 8)
-                bodyText("Уровень \(engine.level) · Сферы \(engine.orbsCollected) · Комбо x\(engine.maxCombo) · " +
-                         "Уклонения \(engine.stats.dodges) · Боссы \(engine.stats.bossKills)")
-                Spacer().frame(height: 10)
-                panel {
-                    sectionTitle("НАГРАДА")
-                    bodyText("+\(save.credits) жетонов всего · Уровень \(save.playerLevel)", Palette.orb)
+                VStack(alignment: .leading, spacing: 3) {
+                    bodyText("Уровень \(engine.level)")
+                    bodyText("Сферы \(engine.orbsCollected)")
+                    bodyText("Комбо x\(engine.maxCombo)")
+                    bodyText("Уклонения \(engine.stats.dodges)")
+                    bodyText("Боссы \(engine.stats.bossKills)")
                 }
-                Spacer().frame(height: 18)
-                wideButton("ЕЩЁ РАЗ") { startRun() }
-                wideButton("В ХАБ", accent: .gray) { goHub() }
+                Spacer().frame(height: 12)
+                rewardCard(lastSummary)
+                Spacer().frame(height: 16)
+                VStack(spacing: 12) {
+                    wideButton("ЕЩЁ РАЗ") { startRun() }
+                    outlineButton("В ХАБ") { goHub() }
+                }
             }
         }
+    }
+
+    private func rewardCard(_ summary: RewardSummary?) -> some View {
+        panel {
+            sectionTitle("НАГРАДА")
+            let parts = rewardParts(summary ?? RewardSummary())
+            if parts.isEmpty {
+                bodyText("Награда не начислена", Palette.orb)
+            } else {
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(parts, id: \.self) { part in
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Text("•").foregroundColor(Palette.orb)
+                            bodyText(part, Palette.orb)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Единый формат награды: жетоны → XP/уровень → достижения → секреты → задания → сезон.
+    private func rewardParts(_ summary: RewardSummary) -> [String] {
+        var parts: [String] = []
+        if summary.credits > 0 { parts.append("+\(summary.credits) жетонов") }
+        if summary.xp > 0 { parts.append("+\(summary.xp) XP") }
+        if summary.levelUps > 0 { parts.append("Уровень игрока +\(summary.levelUps)") }
+        if !summary.achievements.isEmpty { parts.append("Достижения: \(summary.achievements.joined(separator: ", "))") }
+        if !summary.secrets.isEmpty { parts.append("Секреты: \(summary.secrets.joined(separator: ", "))") }
+        if !summary.missions.isEmpty { parts.append("Задания: \(summary.missions.joined(separator: ", "))") }
+        if !summary.seasonTiers.isEmpty { parts.append("Награды сезона: \(summary.seasonTiers.count)") }
+        return parts.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
     // MARK: - Hub
 
     private var hubScreen: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Canvas { context, size in
-                        art.drawPlanetPreview(in: &context, index: save.equippedPlanet,
-                                              center: CGPoint(x: size.width / 2, y: size.height / 2),
-                                              radius: min(size.width, size.height) / 2, tick: Int(frame))
-                    }
-                    .frame(width: 56, height: 56)
-                    VStack(alignment: .leading) {
-                        Text("ОРБИТА").font(.system(size: 28, weight: .black)).tracking(8).foregroundColor(Palette.player)
-                        Text("СЕЗОН \(save.seasonId) · УРОВЕНЬ \(save.playerLevel)")
-                            .font(.system(size: 10)).tracking(2).foregroundColor(.gray)
-                    }
-                    Spacer()
-                    VStack(alignment: .trailing) {
-                        Text("◆ \(save.credits)").font(.system(size: 17, weight: .bold)).foregroundColor(Palette.orb)
-                        if save.dailyStreak > 0 {
-                            Text("\(save.dailyStreak) ДНЕЙ").font(.system(size: 10)).foregroundColor(Palette.danger)
-                        }
-                    }
-                }
-
-                bar(Float(save.xp % Content.xpPerLevel) / Float(Content.xpPerLevel),
-                    Palette.player, "XP \(save.xp % Content.xpPerLevel) / \(Content.xpPerLevel)")
-                bar(Float(save.seasonXp) / Float(Content.seasonTiers.last!.xp),
-                    Palette.slow, "СЕЗОН \(save.seasonXp) / \(Content.seasonTiers.last!.xp)")
-
-                sectionTitle("РЕЖИМ")
-                HStack(spacing: 6) {
-                    ForEach(Content.modes, id: \.id) { m in
-                        choiceChip(m.title, m.id == mode.id) { store.selectMode(m.id) }
-                    }
-                }
-                bodyText(mode.detail)
-
-                sectionTitle("СЕКТОР")
-                ScrollView(.horizontal, showsIndicators: false) {
+        GeometryReader { geo in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 8) {
-                        ForEach(Content.sectors, id: \.id) { s in
-                            let unlocked = save.playerLevel >= s.unlockLevel || save.visitedSectors.contains(s.id)
-                            choiceChip(unlocked ? s.name : "🔒 \(s.name)", s.id == sector.id, disabled: !unlocked) {
-                                store.selectSector(s.id)
+                        Canvas { context, size in
+                            art.drawPlanetPreview(in: &context, index: save.equippedPlanet,
+                                                  center: CGPoint(x: size.width / 2, y: size.height / 2),
+                                                  radius: 28, tick: Int(frame),
+                                                  colorblind: save.settings.colorblind,
+                                                  reducedMotion: save.settings.reducedMotion)
+                        }
+                        .frame(width: 56, height: 56)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("ОРБИТА").font(.system(size: 26, weight: .black)).tracking(4)
+                                .foregroundColor(Palette.player)
+                                .lineLimit(1).minimumScaleFactor(0.8).fixedSize(horizontal: false, vertical: true)
+                            Text("СЕЗОН \(save.seasonId) · УРОВЕНЬ \(save.playerLevel)")
+                                .font(.system(size: 9)).tracking(1).foregroundColor(.gray)
+                                .lineLimit(1).minimumScaleFactor(0.8)
+                        }
+                        Spacer(minLength: 6)
+                        VStack(alignment: .trailing, spacing: 4) {
+                            creditsChip
+                            if save.dailyStreak > 0 {
+                                Text("\(save.dailyStreak) \(daysWord(save.dailyStreak))")
+                                    .font(.system(size: 9, weight: .bold)).foregroundColor(Palette.danger)
+                                    .lineLimit(1).minimumScaleFactor(0.8)
                             }
                         }
                     }
-                }
-                bodyText("\(sector.subtitle) · Рекорд \(save.bestByMode[mode.id] ?? 0)")
 
-                Spacer().frame(height: 6)
-                wideButton("НАЧАТЬ ПОЛЁТ  ▸") { startRun() }
-                let defs = Content.missionsFor(save.dailyDate)
-                let done = defs.enumerated().filter { save.dailyProgress[$0.offset] >= $0.element.goal }.count
-                wideButton("ЗАДАНИЯ ДНЯ  \(done)/3", accent: Palette.slow) { open(.missions) }
+                    let levelXp = xpInLevel(save.xp)
+                    bar(clamped(Float(levelXp) / Float(Content.xpPerLevel)), Palette.player,
+                        "УРОВЕНЬ \(save.playerLevel) · XP \(levelXp) / \(Content.xpPerLevel)")
+                    bar(clamped(Float(save.seasonXp) / Float(Content.seasonTiers.last!.xp)), Palette.slow,
+                        "СЕЗОН \(save.seasonXp) / \(Content.seasonTiers.last!.xp)")
 
-                let tiles: [(String, String, Screen)] = [
-                    ("АНГАР", "Корабли и улучшения", .hangar),
-                    ("МАГАЗИН", "Предметы за жетоны", .shop),
-                    ("ДОСТИЖЕНИЯ", "Награды и секреты", .achievements),
-                    ("СТАТИСТИКА", "Рекорды и история", .stats),
-                    ("НАСТРОЙКИ", "Звук и сохранение", .settings),
-                ]
-                ForEach(0..<tiles.count/2, id: \.self) { i in
-                    HStack(spacing: 10) {
-                        navTile(tiles[i*2].0, tiles[i*2].1) { open(tiles[i*2].2) }
-                        navTile(tiles[i*2+1].0, tiles[i*2+1].1) { open(tiles[i*2+1].2) }
+                    sectionTitle("РЕЖИМ")
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 62), spacing: 6)], spacing: 6) {
+                        ForEach(Content.modes, id: \.id) { m in
+                            choiceChip(m.shortTitle, m.id == mode.id) { store.selectMode(m.id) }
+                                .frame(maxWidth: .infinity)
+                        }
                     }
+                    bodyText(mode.detail)
+
+                    sectionTitle("СЕКТОР")
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(Content.sectors, id: \.id) { s in
+                                let unlocked = save.playerLevel >= s.unlockLevel || save.visitedSectors.contains(s.id)
+                                choiceChip(unlocked ? s.name : "🔒 \(s.name)", s.id == sector.id, disabled: !unlocked) {
+                                    store.selectSector(s.id)
+                                }
+                            }
+                        }
+                        // Внутренние отступы возвращают первый чип в поле зрения и не обрезают последний.
+                        .padding(.horizontal, 20)
+                    }
+                    .padding(.horizontal, -20)
+                    bodyText("\(sector.subtitle) · Рекорд \(save.bestByMode[mode.id] ?? 0)")
+
+                    Spacer().frame(height: 6)
+                    wideButton("НАЧАТЬ ПОЛЁТ  ▸") { startRun() }
+                    bodyText("Тап во время полёта меняет направление.")
+                    Spacer().frame(height: 12)
+                    let defs = Content.missionsFor(save.dailyDate)
+                    let done = defs.enumerated().filter { save.dailyProgress[$0.offset] >= $0.element.goal }.count
+                    outlineButton("ЗАДАНИЯ ДНЯ  \(done)/3", accent: Palette.slow) { open(.missions) }
+
+                    Spacer().frame(height: 16)
+                    let tiles: [(String, String, Screen)] = [
+                        ("АНГАР", "Корабли и улучшения", .hangar),
+                        ("МАГАЗИН", "Предметы за жетоны", .shop),
+                        ("ДОСТИЖЕНИЯ", "Награды и секреты", .achievements),
+                        ("СТАТИСТИКА", "Рекорды и история", .stats),
+                        ("НАСТРОЙКИ", "Звук и сохранение", .settings),
+                    ]
+                    ForEach(0..<tiles.count/2, id: \.self) { i in
+                        HStack(spacing: 10) {
+                            navTile(tiles[i*2].0, tiles[i*2].1) { open(tiles[i*2].2) }
+                            navTile(tiles[i*2+1].0, tiles[i*2+1].1) { open(tiles[i*2+1].2) }
+                        }
+                    }
+                    HStack(spacing: 10) {
+                        navTile(tiles[4].0, tiles[4].1) { open(tiles[4].2) }
+                        Spacer()
+                    }
+                    Spacer().frame(height: 20)
                 }
-                HStack(spacing: 10) {
-                    navTile(tiles[4].0, tiles[4].1) { open(tiles[4].2) }
-                    Spacer()
-                }
-                bodyText("Тап во время полёта меняет направление.")
-                Spacer().frame(height: 20)
+                .padding(.horizontal, 20)
+                .padding(.top, 18)
+                .padding(.bottom, geo.safeAreaInsets.bottom + 16)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 18)
+            .scrollDismissesKeyboard(.interactively)
         }
     }
 
@@ -418,7 +524,8 @@ struct ContentView: View {
                 panel {
                     Text(m.title).font(.system(size: 15, weight: .bold)).foregroundColor(done ? Palette.player : .white)
                     Spacer().frame(height: 4)
-                    bar(Float(value) / Float(m.goal), done ? Palette.player : Palette.slow, "\(value) / \(m.goal)")
+                    bar(clamped(Float(value) / Float(m.goal)), done ? Palette.player : Palette.slow,
+                        "\(value) / \(m.goal)")
                     Spacer().frame(height: 8)
                     HStack {
                         Text("+\(m.reward) жетонов").font(.system(size: 12)).foregroundColor(Palette.orb)
@@ -440,11 +547,11 @@ struct ContentView: View {
                         Spacer()
                         Text("+\(tier.reward) ◈").font(.system(size: 13)).foregroundColor(Palette.orb)
                     }
-                    bodyText(save.seasonClaimed[i] ? "ПОЛУЧЕНО" :
-                        (save.seasonXp >= tier.xp ? "Награда начислится после забега" : "Ещё \(tier.xp - save.seasonXp) XP"))
+                    bar(clamped(Float(save.seasonXp) / Float(tier.xp)), Palette.slow,
+                        save.seasonClaimed[i] ? "ПОЛУЧЕНО" : "Сезон \(save.seasonXp) / \(tier.xp) XP")
                 }
             }
-            bodyText("Серия заданий: \(save.dailyStreak) дней · Дзен-забегов: \(save.zenRuns)")
+            bodyText("Серия заданий: \(save.dailyStreak) \(daysWord(save.dailyStreak).lowercased()) · Дзен-забегов: \(save.zenRuns)")
         }
     }
 
@@ -456,7 +563,9 @@ struct ContentView: View {
                 Canvas { context, size in
                     art.drawPlanetPreview(in: &context, index: save.equippedPlanet,
                                           center: CGPoint(x: size.width / 2, y: size.height / 2),
-                                          radius: 78, tick: Int(frame))
+                                          radius: 64, tick: Int(frame),
+                                          colorblind: save.settings.colorblind,
+                                          reducedMotion: save.settings.reducedMotion)
                 }
                 if let image = UIImage(named: "ship_\(save.equippedShip)") {
                     Image(uiImage: image).resizable().frame(width: 96, height: 96)
@@ -512,7 +621,7 @@ struct ContentView: View {
     // MARK: - Shop
 
     private var shopScreen: some View {
-        scrollScreen("МАГАЗИН", "Баланс: ◆ \(save.credits)") {
+        scrollScreen("МАГАЗИН", "Баланс: ◆ \(compactCredits(save.credits))") {
             let cats: [(String, String)] = [("ship", "КОРАБЛИ"), ("trail", "ШЛЕЙФЫ"),
                                             ("planet", "ФОНЫ"), ("upgrade", "УЛУЧШЕНИЯ")]
             ForEach(cats.indices, id: \.self) { ci in
@@ -593,10 +702,12 @@ struct ContentView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(Content.modes, id: \.id) { m in
-                        choiceChip(m.title, statMode == m.id) { statMode = m.id }
+                        choiceChip(m.shortTitle, statMode == m.id) { statMode = m.id }
                     }
                 }
+                .padding(.horizontal, 20)
             }
+            .padding(.horizontal, -20)
             panel {
                 let top = save.topByMode[statMode] ?? []
                 if top.isEmpty { bodyText("В этом режиме ещё нет забегов.") }
@@ -626,6 +737,24 @@ struct ContentView: View {
 
     private var settingsScreen: some View {
         scrollScreen("НАСТРОЙКИ", "Прогресс сохраняется автоматически после каждого действия.") {
+            HStack(spacing: 12) {
+                Canvas { context, size in
+                    art.drawPlanetPreview(in: &context, index: save.equippedPlanet,
+                                          center: CGPoint(x: size.width / 2, y: size.height / 2),
+                                          radius: 28, tick: Int(frame),
+                                          colorblind: save.settings.colorblind,
+                                          reducedMotion: save.settings.reducedMotion)
+                }
+                .frame(width: 56, height: 56)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("ТЕКУЩАЯ ПЛАНЕТА").font(.system(size: 10, weight: .bold)).tracking(2)
+                        .foregroundColor(Palette.player.opacity(0.8))
+                    Text(Content.shop.first { $0.category == "planet" && $0.value == save.equippedPlanet }?.title ?? "ТУМАННОСТЬ")
+                        .font(.system(size: 13, weight: .bold)).foregroundColor(.white)
+                }
+                Spacer()
+            }
+
             sectionTitle("ЗВУК")
             panel {
                 Text("Музыка \(Int(save.settings.music * 100))%").font(.system(size: 12)).foregroundColor(.white)
@@ -649,24 +778,66 @@ struct ContentView: View {
             sectionTitle("СОХРАНЕНИЕ")
             panel {
                 bodyText("Код экспорта содержит контроль целостности. Импорт заменяет текущий прогресс.")
-                wideButton("ЭКСПОРТИРОВАТЬ КОД", accent: Palette.slow) { exportText = store.exportCode() }
+                outlineButton("ЭКСПОРТИРОВАТЬ КОД", accent: Palette.slow) { exportText = store.exportCode() }
                 if !exportText.isEmpty {
-                    TextField("", text: $exportText).textFieldStyle(.roundedBorder).font(.system(size: 10))
+                    Spacer().frame(height: 10)
+                    Text("КОД ЭКСПОРТА").font(.system(size: 10, weight: .bold)).tracking(2)
+                        .foregroundColor(Palette.player.opacity(0.8))
+                    HStack(spacing: 8) {
+                        TextField("", text: $exportText)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 10, design: .monospaced))
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                            .disabled(true)
+                        smallButton("КОПИРОВАТЬ") {
+                            UIPasteboard.general.string = exportText
+                            showToast("Код скопирован")
+                        }
+                    }
                 }
-                TextField("ORB1-...", text: $importText).textFieldStyle(.roundedBorder).font(.system(size: 12))
-                wideButton("ИМПОРТИРОВАТЬ") {
-                    importResult = store.importCode(importText) ? "Прогресс восстановлен" : "Код недействителен"
+                Spacer().frame(height: 10)
+                Text("КОД ИМПОРТА").font(.system(size: 10, weight: .bold)).tracking(2)
+                    .foregroundColor(Palette.player.opacity(0.8))
+                TextField("ORB1-...", text: $importText)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 12, design: .monospaced))
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                wideButton("ИМПОРТИРОВАТЬ", accent: Palette.slow) {
+                    importSucceeded = store.importCode(importText)
+                    importResult = importSucceeded ? "Прогресс восстановлен" : "Код недействителен"
+                    importText = ""
                 }
-                if !importResult.isEmpty { bodyText(importResult, Palette.orb) }
+                if !importResult.isEmpty {
+                    bodyText(importResult, importSucceeded ? Palette.player : Palette.danger)
+                }
             }
             sectionTitle("ОПАСНАЯ ЗОНА")
-            if !confirmReset {
-                wideButton("СБРОСИТЬ ПРОГРЕСС", accent: Palette.danger) { confirmReset = true }
-            } else {
-                bodyText("Точно удалить все рекорды и предметы?", Palette.danger)
-                wideButton("ДА, СБРОСИТЬ", accent: Palette.danger) { store.reset(); confirmReset = false }
-                wideButton("ОТМЕНА", accent: .gray) { confirmReset = false }
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundColor(Palette.danger)
+                    Text("ОПАСНАЯ ЗОНА").font(.system(size: 12, weight: .bold)).tracking(2)
+                        .foregroundColor(Palette.danger)
+                }
+                bodyText("Сброс удалит все рекорды, предметы и достижения без возможности восстановления.",
+                         Palette.danger.opacity(0.9))
+                if !confirmReset {
+                    outlineButton("СБРОСИТЬ ПРОГРЕСС", accent: Palette.danger) { confirmReset = true }
+                } else {
+                    bodyText("Точно удалить все рекорды и предметы?", Palette.danger)
+                    HStack(spacing: 12) {
+                        wideButton("ДА, СБРОСИТЬ", accent: Palette.danger) {
+                            store.reset()
+                            confirmReset = false
+                        }
+                        outlineButton("ОТМЕНА", accent: .gray) { confirmReset = false }
+                    }
+                }
             }
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: 16).fill(Color(hex: 0x2A0A18).opacity(0.98)))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Palette.danger.opacity(0.4), lineWidth: 1))
             bodyText("Орбита 3.5 · Локальная игра без рекламы и сети")
         }
     }
@@ -675,22 +846,41 @@ struct ContentView: View {
 
     private func scrollScreen<Content: View>(_ title: String, _ subtitle: String,
                                              @ViewBuilder content: () -> Content) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    VStack(alignment: .leading) {
-                        Text(title).font(.system(size: 26, weight: .black)).tracking(4).foregroundColor(Palette.player)
-                        Text("◆ \(save.credits)").font(.system(size: 12)).foregroundColor(Palette.orb)
+        GeometryReader { geo in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .center, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(title).font(.system(size: 22, weight: .black)).tracking(2)
+                                .foregroundColor(Palette.player)
+                                .lineLimit(2).minimumScaleFactor(0.8)
+                                .fixedSize(horizontal: false, vertical: true)
+                            creditsChip
+                        }
+                        Spacer(minLength: 6)
+                        smallButton("← ХАБ", true) { goHub() }.fixedSize()
                     }
-                    Spacer()
-                    smallButton("← ХАБ", true) { goHub() }
+                    bodyText(subtitle)
+                    content()
+                    Spacer().frame(height: 24)
                 }
-                bodyText(subtitle)
-                content()
-                Spacer().frame(height: 24)
+                .padding(.horizontal, 20).padding(.top, 18)
+                .padding(.bottom, geo.safeAreaInsets.bottom + 16)
             }
-            .padding(.horizontal, 20).padding(.top, 18)
+            .scrollDismissesKeyboard(.interactively)
         }
+    }
+
+    private var creditsChip: some View {
+        HStack(spacing: 4) {
+            Text("◆").font(.system(size: 11)).foregroundColor(Palette.orb)
+            Text(compactCredits(save.credits)).font(.system(size: 12, weight: .bold))
+                .monospacedDigit().lineLimit(1).minimumScaleFactor(0.8)
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background(Capsule().fill(Color(hex: 0x0A071C).opacity(0.98)))
+        .overlay(Capsule().stroke(Palette.orb.opacity(0.35), lineWidth: 1))
+        .fixedSize()
     }
 
     private func sectionTitle(_ text: String) -> some View {
@@ -708,32 +898,90 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
-        .background(RoundedRectangle(cornerRadius: 16).fill(Color(hex: 0x0A071C).opacity(0.92)))
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color(hex: 0x0A071C).opacity(0.98)))
     }
 
     private func modal<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        VStack(spacing: 4) {
-            content()
+        GeometryReader { geo in
+            ZStack {
+                Color.black.opacity(0.88).ignoresSafeArea()
+                ScrollView(.vertical) {
+                    VStack(spacing: 12) {
+                        content()
+                    }
+                    .frame(maxWidth: 360)
+                    .padding(24)
+                    .background(RoundedRectangle(cornerRadius: 24).fill(Color(hex: 0x080A1C)))
+                    .overlay(RoundedRectangle(cornerRadius: 24).stroke(Color.white.opacity(0.08), lineWidth: 1))
+                    .padding(.horizontal, 16)
+                    .padding(.top, geo.safeAreaInsets.top + 20)
+                    .padding(.bottom, geo.safeAreaInsets.bottom + 16)
+                    .frame(maxWidth: .infinity, minHeight: geo.size.height, alignment: .center)
+                }
+                .scrollDismissesKeyboard(.interactively)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(maxWidth: 360)
-        .padding(24)
-        .background(RoundedRectangle(cornerRadius: 24).fill(Color(hex: 0x080A1C).opacity(0.96)))
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.black.opacity(0.6))
+    }
+
+    @ViewBuilder
+    private var toastView: some View {
+        if let toast, !(toastIsRun && (screen != nil || isModalShown)) {
+            VStack {
+                Spacer()
+                Text(toast)
+                    .font(.system(size: 12, weight: .semibold))
+                    .multilineTextAlignment(.center)
+                    .foregroundColor(Palette.orb)
+                    .padding(.horizontal, 18).padding(.vertical, 12)
+                    .background(RoundedRectangle(cornerRadius: 18).fill(Color(hex: 0x0B1A2E).opacity(0.98)))
+                    .padding(.bottom, 20)
+                    .transition(.opacity)
+            }
+            .animation(.easeInOut, value: toast)
+        }
+    }
+
+    private func showToast(_ text: String, isRun: Bool = false) {
+        toastWork?.cancel()
+        toast = text
+        toastIsRun = isRun
+        let work = DispatchWorkItem {
+            toast = nil
+            toastIsRun = false
+            toastWork = nil
+        }
+        toastWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4.2, execute: work)
     }
 
     private func title(_ text: String, _ color: Color) -> some View {
         Text(text).font(.system(size: 20, weight: .black)).tracking(3).foregroundColor(color)
             .multilineTextAlignment(.center)
+            .minimumScaleFactor(0.8)
     }
 
     private func wideButton(_ text: String, accent: Color = Palette.player,
                             _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(text).font(.system(size: 13, weight: .bold)).tracking(1)
+                .lineLimit(1).minimumScaleFactor(0.8)
                 .frame(maxWidth: .infinity).padding(.vertical, 14)
-                .background(Capsule().fill(accent.opacity(0.85)))
+                .background(Capsule().fill(accent))
                 .foregroundColor(Color(hex: 0x06131C))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func outlineButton(_ text: String, accent: Color = Palette.player,
+                               _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(text).font(.system(size: 13, weight: .bold)).tracking(1)
+                .lineLimit(1).minimumScaleFactor(0.8)
+                .frame(maxWidth: .infinity).padding(.vertical, 13)
+                .foregroundColor(accent)
+                .background(RoundedRectangle(cornerRadius: 24).fill(Color(hex: 0x0A071C).opacity(0.7)))
+                .overlay(RoundedRectangle(cornerRadius: 24).stroke(accent.opacity(0.7), lineWidth: 1.5))
         }
         .buttonStyle(.plain)
     }
@@ -741,7 +989,7 @@ struct ContentView: View {
     private func smallButton(_ text: String, _ enabled: Bool = true,
                              _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(text).font(.system(size: 10, weight: .bold))
+            Text(text).font(.system(size: 10, weight: .bold)).lineLimit(1)
                 .padding(.horizontal, 10).padding(.vertical, 7)
                 .background(Capsule().fill(enabled ? Palette.player.opacity(0.2) : Color.white.opacity(0.05)))
                 .foregroundColor(enabled ? Palette.player : .gray)
@@ -760,7 +1008,7 @@ struct ContentView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)
-            .background(RoundedRectangle(cornerRadius: 16).fill(Color(hex: 0x0A071C).opacity(0.92)))
+            .background(RoundedRectangle(cornerRadius: 16).fill(Color(hex: 0x0A071C).opacity(0.98)))
         }
         .buttonStyle(.plain)
     }
@@ -781,7 +1029,7 @@ struct ContentView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
-            .background(RoundedRectangle(cornerRadius: 14).fill(Color(hex: 0x0A071C).opacity(0.92)))
+            .background(RoundedRectangle(cornerRadius: 14).fill(Color(hex: 0x0A071C).opacity(0.98)))
         }
         .buttonStyle(.plain)
     }
@@ -790,6 +1038,7 @@ struct ContentView: View {
                             _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label).font(.system(size: 9, weight: .semibold)).tracking(1).lineLimit(1)
+                .minimumScaleFactor(0.8)
                 .padding(.horizontal, 9).padding(.vertical, 8)
                 .background(Capsule().fill(selected ? Palette.player.opacity(0.22) : Color.white.opacity(0.05)))
                 .foregroundColor(disabled ? .gray : (selected ? Palette.player : .white.opacity(0.8)))
@@ -801,20 +1050,23 @@ struct ContentView: View {
     private func metric(_ label: String, _ value: String) -> some View {
         VStack(spacing: 2) {
             Text(label).font(.system(size: 9)).tracking(2).foregroundColor(.gray)
+                .lineLimit(1).minimumScaleFactor(0.8)
             Text(value).font(.system(size: 20, weight: .black)).foregroundColor(.white)
+                .lineLimit(1).minimumScaleFactor(0.8)
         }
         .frame(maxWidth: .infinity)
         .padding(12)
-        .background(RoundedRectangle(cornerRadius: 14).fill(Color(hex: 0x0A071C).opacity(0.92)))
+        .background(RoundedRectangle(cornerRadius: 14).fill(Color(hex: 0x0A071C).opacity(0.98)))
     }
 
     private func bar(_ fraction: Float, _ color: Color, _ label: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label).font(.system(size: 9)).tracking(1).foregroundColor(.gray)
+                .lineLimit(1).minimumScaleFactor(0.8)
             GeometryReader { g in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.white.opacity(0.08))
-                    Capsule().fill(color).frame(width: g.size.width * CGFloat(min(max(fraction, 0), 1)))
+                    Capsule().fill(color).frame(width: g.size.width * CGFloat(clamped(fraction)))
                 }
             }
             .frame(height: 5)
@@ -828,6 +1080,38 @@ struct ContentView: View {
             Toggle("", isOn: binding).labelsHidden().toggleStyle(.switch)
         }
         .padding(.top, 8)
+    }
+
+    // MARK: - Helpers
+
+    private func clamped(_ value: Float) -> Float {
+        guard value.isFinite else { return 0 }
+        return min(max(value, 0), 1)
+    }
+
+    private func xpInLevel(_ xp: Int) -> Int {
+        ((xp % Content.xpPerLevel) + Content.xpPerLevel) % Content.xpPerLevel
+    }
+
+    private func daysWord(_ count: Int) -> String {
+        let mod100 = abs(count) % 100
+        if mod100 >= 11 && mod100 <= 14 { return "ДНЕЙ" }
+        switch abs(count) % 10 {
+        case 1: return "ДЕНЬ"
+        case 2, 3, 4: return "ДНЯ"
+        default: return "ДНЕЙ"
+        }
+    }
+
+    private func compactCredits(_ value: Int) -> String {
+        let locale = Locale(identifier: "en_US_POSIX")
+        let format: (Double, String) -> String = { amount, suffix in
+            let text = String(format: "%.1f", locale: locale, amount)
+            return (text.hasSuffix(".0") ? String(text.dropLast(2)) : text) + suffix
+        }
+        if value >= 1_000_000 { return format(Double(value) / 1_000_000, "m") }
+        if value >= 1_000 { return format(Double(value) / 1_000, "k") }
+        return "\(value)"
     }
 }
 

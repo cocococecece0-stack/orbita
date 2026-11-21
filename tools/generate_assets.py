@@ -51,8 +51,13 @@ def low_noise(seed: int, w: int, h: int) -> list:
     return [r.random() for _ in range(w * h)]
 
 
+def smooth(t: float) -> float:
+    """Smoothstep: убирает изломы производной на узлах решётки (блочный шум)."""
+    return t * t * (3.0 - 2.0 * t)
+
+
 def upscale(field: list, fw: int, fh: int, w: int, h: int) -> list:
-    """Separable bilinear upscale; быстрее, чем хеш-шум на каждый пиксель."""
+    """Плавный value-noise апскейл без крупных блочных артефактов."""
     row = [0.0] * w
     tmp = [0.0] * (w * fh)
     for y in range(fh):
@@ -61,7 +66,7 @@ def upscale(field: list, fw: int, fh: int, w: int, h: int) -> list:
             pos = x * (fw - 1) / max(1, w - 1)
             x0 = int(pos)
             x1 = min(fw - 1, x0 + 1)
-            t = pos - x0
+            t = smooth(pos - x0)
             row[x] = field[base + x0] * (1 - t) + field[base + x1] * t
         tmp[y * w:(y + 1) * w] = row
     out = [0.0] * (w * h)
@@ -69,7 +74,7 @@ def upscale(field: list, fw: int, fh: int, w: int, h: int) -> list:
         pos = y * (fh - 1) / max(1, h - 1)
         y0 = int(pos)
         y1 = min(fh - 1, y0 + 1)
-        t = pos - y0
+        t = smooth(pos - y0)
         a = y0 * w
         b = y1 * w
         d = y * w
@@ -96,11 +101,11 @@ SECTORS = [
 
 
 def gen_backgrounds() -> None:
-    fw, fh = 180, 320
+    fw, fh = 360, 640
     for idx, s in enumerate(SECTORS):
         n1 = upscale(low_noise(1000 + idx, fw, fh), fw, fh, BG_W, BG_H)
-        n2 = upscale(low_noise(2000 + idx, fw // 2, fh // 2), fw // 2, fh // 2, BG_W, BG_H)
-        n3 = upscale(low_noise(3000 + idx, fw // 4, fh // 4), fw // 4, fh // 4, BG_W, BG_H)
+        n2 = upscale(low_noise(2000 + idx, fw // 4, fh // 4), fw // 4, fh // 4, BG_W, BG_H)
+        n3 = upscale(low_noise(3000 + idx, fw // 8, fh // 8), fw // 8, fh // 8, BG_W, BG_H)
         buf = bytearray(BG_W * BG_H * 4)
         rnd = random.Random(9000 + idx)
         stars = [(rnd.random() * BG_W, rnd.random() * BG_H, rnd.random()) for _ in range(320)]
@@ -118,10 +123,10 @@ def gen_backgrounds() -> None:
             grad = ky * ky * 0.6 + ky * 0.4
             for x in range(BG_W):
                 i = y * BG_W + x
-                v = n1[i] * 0.55 + n2[i] * 0.30 + n3[i] * 0.15
-                # Мягкие облачные полосы, вытянутые по горизонтали.
-                band = 0.5 + 0.5 * math.sin(y * 0.011 + v * 7.0)
-                density = max(0.0, v - 0.42) * (0.55 + band * 0.75)
+                v = n1[i] * 0.72 + n2[i] * 0.20 + n3[i] * 0.08
+                # Мягкие облачные полосы без крупного блочного шума.
+                band = 0.5 + 0.5 * math.sin(y * 0.008 + v * 5.0)
+                density = max(0.0, v - 0.50) * (0.40 + band * 0.45)
                 d = i * 4
                 base_r = top[0] * (1 - grad) + bot[0] * grad
                 base_g = top[1] * (1 - grad) + bot[1] * grad
@@ -136,15 +141,7 @@ def gen_backgrounds() -> None:
                 buf[d] = max(buf[d], r)
                 buf[d + 1] = max(buf[d + 1], g)
                 buf[d + 2] = max(buf[d + 2], b)
-        # Акцентная дуга-горизонт внизу — «подпись» сектора.
-        for y in range(int(BG_H * 0.72), BG_H):
-            t = (y - BG_H * 0.72) / (BG_H * 0.28)
-            a = max(0.0, 1 - abs(t - 0.55) * 5.0) * 0.5
-            for x in range(BG_W):
-                d = (y * BG_W + x) * 4
-                buf[d] = clamp(int(buf[d] * (1 - a) + accent[0] * a))
-                buf[d + 1] = clamp(int(buf[d + 1] * (1 - a) + accent[1] * a))
-                buf[d + 2] = clamp(int(buf[d + 2] * (1 - a) + accent[2] * a))
+        # Фон остаётся чистым: акцент сектора рисуется рендером, а не запекается полосой.
         write_png(os.path.join(ANDROID_DRAW, f"bg_{idx}.png"), BG_W, BG_H, buf)
         write_png(os.path.join(IOS_RES, f"bg_{idx}.png"), BG_W, BG_H, buf)
         print(f"  bg_{idx}.png {SECTORS[idx]['name']}")
@@ -190,9 +187,8 @@ def gen_planets() -> None:
                 i = y * size + x
                 v = n[i] * 0.65 + detail[i] * 0.35
                 bands = 0.5 + 0.5 * math.sin(ny * 9 + v * 5)
-                shade = max(0.20, 0.42 + 0.58 * math.sqrt(max(0.0, 1 - nx * nx - ny * ny)))
-                lambert = max(0.0, (-nx * 0.55 - ny * 0.35 + 0.75))
-                shade *= 0.55 + 0.45 * lambert
+                # Нейтральный альбедо-шэйдинг: блик не «гуляет» при вращении текстуры.
+                shade = max(0.38, 0.40 + 0.60 * math.sqrt(max(0.0, 1 - nx * nx - ny * ny)))
                 polar = max(0.0, abs(ny) - 0.72) * 2.4
                 r = base[0] * (0.75 + v * 0.5) * shade + bands * 12 + polar * light[0] * 0.3
                 g = base[1] * (0.75 + v * 0.5) * shade + bands * 8 + polar * light[1] * 0.3
@@ -221,23 +217,25 @@ def sprite_canvas() -> bytearray:
 
 
 def put(buf, x, y, r, g, b, a) -> None:
+    """Простая замена пикселя (альфа уже в 0..1)."""
     if 0 <= x < SPRITE_SIZE and 0 <= y < SPRITE_SIZE:
         d = (y * SPRITE_SIZE + x) * 4
-        if a >= buf[d + 3]:
-            buf[d], buf[d + 1], buf[d + 2], buf[d + 3] = clamp(int(r)), clamp(int(g)), clamp(int(b)), clamp(int(a))
+        buf[d], buf[d + 1], buf[d + 2], buf[d + 3] = clamp(int(r)), clamp(int(g)), clamp(int(b)), clamp(int(a * 255))
 
 
 def blend(buf, x, y, r, g, b, a) -> None:
+    """Корректное src-over: обе альфы в 0..1, иначе тёмные диски вместо цвета."""
     if not (0 <= x < SPRITE_SIZE and 0 <= y < SPRITE_SIZE):
         return
     d = (y * SPRITE_SIZE + x) * 4
-    na = a + buf[d + 3] * (1 - a)
-    if na <= 0:
+    da = buf[d + 3] / 255.0
+    oa = a + da * (1.0 - a)
+    if oa <= 0:
         return
-    buf[d] = clamp(int((r * a + buf[d] * buf[d + 3] * (1 - a)) / na))
-    buf[d + 1] = clamp(int((g * a + buf[d + 1] * buf[d + 3] * (1 - a)) / na))
-    buf[d + 2] = clamp(int((b * a + buf[d + 2] * buf[d + 3] * (1 - a)) / na))
-    buf[d + 3] = clamp(int(na * 255))
+    buf[d] = clamp(int((r * a + buf[d] * da * (1 - a)) / oa))
+    buf[d + 1] = clamp(int((g * a + buf[d + 1] * da * (1 - a)) / oa))
+    buf[d + 2] = clamp(int((b * a + buf[d + 2] * da * (1 - a)) / oa))
+    buf[d + 3] = clamp(int(oa * 255))
 
 
 def disc(buf, cx, cy, rad, color, soft=0.0):
@@ -262,7 +260,7 @@ def gen_sprites() -> None:
     c = SPRITE_SIZE / 2
     for idx, col in enumerate(SHIP_COLORS):
         b = sprite_canvas()
-        disc(b, c, c, 44, (col[0] // 4, col[1] // 4, col[2] // 4), 16)
+        disc(b, c, c, 30, (col[0] // 3, col[1] // 3, col[2] // 3), 16)
         # Корпус: треугольник, повёрнутый вверх, с крыльями и кокпитом.
         for y in range(20, 104):
             for x in range(24, 104):
@@ -281,33 +279,32 @@ def gen_sprites() -> None:
     for idx in range(8):
         b = sprite_canvas()
         rnd = random.Random(6000 + idx)
-        pts = [(rnd.uniform(0.72, 1.18)) for _ in range(9)]
-        for y in range(8, 120):
-            for x in range(8, 120):
+        pts = [(rnd.uniform(0.80, 1.12)) for _ in range(9)]
+        for y in range(4, 124):
+            for x in range(4, 124):
                 ang = math.atan2(y - c, x - c)
                 dist = math.hypot(x - c, y - c)
                 seg = (ang / TAU * 9) % 9
                 i0 = int(seg) % 9
                 frac = seg - int(seg)
-                rr = 40 * (pts[i0] * (1 - frac) + pts[(i0 + 1) % 9] * frac)
+                rr = 50 * (pts[i0] * (1 - frac) + pts[(i0 + 1) % 9] * frac)
                 if dist <= rr:
-                    shade = 0.45 + 0.55 * max(0.0, (-math.cos(ang) * 0.5 - math.sin(ang) * 0.4 + 0.9))
-                    blend(b, x, y, 78 * shade + 40, 62 * shade + 28, 130 * shade + 50, 0.95)
-                    if dist > rr - 4:
-                        blend(b, x, y, 170, 146, 255, 0.9)
-        disc(b, c - 10, c - 12, 8, (30, 22, 56), 4)
-        disc(b, c + 14, c + 8, 6, (30, 22, 56), 3)
+                    shade = 0.78 + 0.22 * max(0.0, (-math.cos(ang) * 0.35 - math.sin(ang) * 0.25 + 0.9))
+                    blend(b, x, y, 232 * shade, 104 * shade + 18, 58 * shade + 16, 0.98)
+                    if dist > rr - 5:
+                        blend(b, x, y, 255, 222, 148, 0.95)
+        disc(b, c - 12, c - 13, 7, (104, 34, 22), 4)
+        disc(b, c + 16, c + 10, 5, (104, 34, 22), 3)
         save_sprite(f"ast_{idx}.png", b)
 
     for idx in range(3):
         b = sprite_canvas()
-        tail_col = [(255, 184, 107), (255, 120, 190), (140, 220, 255)][idx]
-        for i in range(46):
-            x0 = int(c + i * 1.15)
-            disc(b, x0, c, 20 - i * 0.35, (tail_col[0], tail_col[1], tail_col[2]), 8)
-        disc(b, c + 10, c, 24, (255, 244, 208), 8)
-        disc(b, c + 10, c, 14, tail_col, 5)
-        disc(b, c + 10, c, 6, (255, 255, 255), 3)
+        # Хвост рисует рендер по направлению полёта — в PNG только опасное ядро.
+        core_col = [(255, 122, 72), (255, 92, 140), (255, 168, 76)][idx]
+        disc(b, c, c, 28, core_col, 10)
+        disc(b, c, c, 18, (255, 220, 142), 7)
+        disc(b, c - 5, c - 6, 8, (255, 255, 255), 5)
+        ring(b, c, c, 34, 3, (255, 248, 220))
         save_sprite(f"comet_{idx}.png", b)
 
     power_cols = [
@@ -316,7 +313,7 @@ def gen_sprites() -> None:
     ]
     for idx, col in enumerate(power_cols):
         b = sprite_canvas()
-        disc(b, c, c, 44, (col[0] // 6, col[1] // 6, col[2] // 6), 18)
+        disc(b, c, c, 30, (col[0] // 5, col[1] // 5, col[2] // 5), 16)
         for y in range(6, 122):
             for x in range(6, 122):
                 d = abs(x - c) + abs(y - c)
@@ -335,14 +332,15 @@ def gen_sprites() -> None:
     orb_cols = [(255, 200, 80), (255, 246, 190), (140, 255, 220)]
     for idx, col in enumerate(orb_cols):
         b = sprite_canvas()
-        disc(b, c, c, 46, (col[0] // 5, col[1] // 5, col[2] // 5), 18)
+        disc(b, c, c, 32, (col[0] // 6, col[1] // 6, col[2] // 6), 16)
         disc(b, c, c, 27, col, 8)
         disc(b, c - 8, c - 10, 8, (255, 255, 255), 6)
         ring(b, c, c, 34, 2, (255, 255, 255))
         save_sprite(f"orb_{idx}.png", b)
 
     b = sprite_canvas()
-    disc(b, c, c, 50, (255, 255, 255), 34)
+    # Круглый радиальный ореол с прозрачным полем 12 px — без квадратных плашек.
+    disc(b, c, c, 28, (255, 255, 255), 28)
     save_sprite("fx_glow.png", b)
     b = sprite_canvas()
     ring(b, c, c, 46, 6, (255, 255, 255))

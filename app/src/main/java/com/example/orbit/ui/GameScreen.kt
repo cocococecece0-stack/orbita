@@ -3,32 +3,38 @@ package com.example.orbit.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -40,7 +46,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -48,17 +53,24 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -76,12 +88,14 @@ import com.example.orbit.game.GameStatus
 import com.example.orbit.game.Mode
 import com.example.orbit.game.Palette
 import kotlin.math.ceil
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
 private val Neon = Color(0xFF22D3EE)
 private val Amber = Color(0xFFFBBF24)
 private val Pink = Color(0xFFF472B6)
 private val Violet = Color(0xFFA78BFA)
+private val DangerRed = Color(0xFFFF6B6B)
 private val PanelColor = Color(0xE60A071C)
 private val MutedText = Color(0xFF9AA3B8)
 
@@ -102,17 +116,23 @@ fun GameScreen(viewModel: GameViewModel = viewModel()) {
     var screen by remember { mutableStateOf<Screen?>(Screen.Hub) }
     var frame by remember { mutableLongStateOf(0L) }
     var toast by remember { mutableStateOf<String?>(null) }
+    var consumedReward by remember { mutableStateOf<RewardSummary?>(null) }
     var confirmReset by remember { mutableStateOf(false) }
+    var confirmExit by remember { mutableStateOf(false) }
 
     val settings = save.settings
     val selectedMode = Mode.from(save.selectedMode)
     val bestForMode = save.bestByMode[selectedMode.id] ?: 0
 
-    val slowSeconds by remember { derivedStateOf { ceil(engine.slowTimer).toInt() } }
-    val doubleSeconds by remember { derivedStateOf { ceil(engine.doubleTimer).toInt() } }
-    val magnetSeconds by remember { derivedStateOf { ceil(engine.magnetTimer).toInt() } }
-    val phaseSeconds by remember { derivedStateOf { ceil(engine.phaseTimer).toInt() } }
-    val freezeSeconds by remember { derivedStateOf { ceil(engine.freezeTimer).toInt() } }
+    // Движок обновляет эти поля каждый кадр, поэтому пересчёт привязан к frame.
+    val timerSeconds by remember(frame) { derivedStateOf { if (engine.timeLeft > 0f) ceil(engine.timeLeft).toInt() else 0 } }
+    val slowSeconds by remember(frame) { derivedStateOf { ceil(engine.slowTimer).toInt() } }
+    val doubleSeconds by remember(frame) { derivedStateOf { ceil(engine.doubleTimer).toInt() } }
+    val magnetSeconds by remember(frame) { derivedStateOf { ceil(engine.magnetTimer).toInt() } }
+    val phaseSeconds by remember(frame) { derivedStateOf { ceil(engine.phaseTimer).toInt() } }
+    val freezeSeconds by remember(frame) { derivedStateOf { ceil(engine.freezeTimer).toInt() } }
+
+    val hudVisible = screen == null && engine.status == GameStatus.Playing && !engine.paused && !confirmExit
 
     fun haptic(type: HapticFeedbackType) {
         if (viewModel.store.data.settings.haptics) haptics.performHapticFeedback(type)
@@ -126,16 +146,29 @@ fun GameScreen(viewModel: GameViewModel = viewModel()) {
         engine.setReducedMotion(settings.reducedMotion)
         engine.skinColor = shipColor(save.equippedShip, settings.colorblind)
         engine.startRun(selectedMode, save.selectedSector, seed)
+        viewModel.markTutorialSeen()
         screen = null
         sound.startMusic(engine.sectorId)
         haptic(HapticFeedbackType.LongPress)
     }
 
-    fun goHub() {
+    fun finishGoHub() {
+        // abandonRun уже зафиксировал результат; toReady вызываем только после submitRun.
+        engine.setBest(save.bestByMode[selectedMode.id] ?: 0)
         engine.toReady()
         sound.stopMusic()
+        confirmExit = false
         screen = Screen.Hub
         sound.play("ui")
+    }
+
+    fun goHub() {
+        if (screen == null && engine.status == GameStatus.Playing) {
+            confirmExit = true
+            sound.play("ui")
+            return
+        }
+        finishGoHub()
     }
 
     fun openScreen(next: Screen) {
@@ -144,11 +177,16 @@ fun GameScreen(viewModel: GameViewModel = viewModel()) {
     }
 
     SideEffect {
-        engine.setBest(bestForMode)
         engine.skinColor = shipColor(save.equippedShip, settings.colorblind)
         engine.setReducedMotion(settings.reducedMotion)
         engine.setUpgrades(viewModel.upgrades())
         sound.applySettings(settings)
+    }
+
+    // Рекорд синхронизируем из сохранения при старте и после завершения забега,
+    // но не на каждой перерисовке во время игры.
+    LaunchedEffect(bestForMode, engine.status) {
+        if (engine.status != GameStatus.Playing) engine.setBest(bestForMode)
     }
 
     DisposableEffect(sound) { onDispose { sound.release() } }
@@ -196,18 +234,17 @@ fun GameScreen(viewModel: GameViewModel = viewModel()) {
     }
 
     val reward = viewModel.lastReward
-    LaunchedEffect(reward) {
-        if (reward == null) return@LaunchedEffect
-        val parts = mutableListOf<String>()
-        parts += "+${reward.credits} жетонов"
-        if (reward.levelUps > 0) parts += "Новый уровень x${reward.levelUps}"
-        parts += reward.achievements
-        parts += reward.secrets
-        parts += reward.missions
-        if (reward.seasonTiers.isNotEmpty()) parts += "Награды сезона: ${reward.seasonTiers.size}"
-        toast = parts.joinToString("  ·  ")
+    LaunchedEffect(reward, screen, confirmExit) {
+        if (reward == null || reward == consumedReward) return@LaunchedEffect
+        consumedReward = reward
+        // Награда за забег показывается в карточке результата, а не поверх неё тостом.
+        if (screen != null || confirmExit || engine.status == GameStatus.GameOver || engine.paused) return@LaunchedEffect
+        toast = rewardLines(reward).joinToString(" · ")
         delay(4200)
         toast = null
+    }
+    LaunchedEffect(screen, confirmExit, engine.status, engine.paused) {
+        if (screen != null || confirmExit || engine.status == GameStatus.GameOver || engine.paused) toast = null
     }
 
     DisposableEffect(lifecycleOwner, engine, sound) {
@@ -224,45 +261,61 @@ fun GameScreen(viewModel: GameViewModel = viewModel()) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFF05030F))
-            .then(
-                if (screen == null && engine.status == GameStatus.Playing && !engine.paused) {
-                    Modifier.pointerInput(engine) { detectTapGestures { engine.tap() } }
-                } else Modifier,
-            ),
-    ) {
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF05030F))) {
         if (screen == null) {
             Canvas(
                 modifier = Modifier
                     .fillMaxSize()
-                    .onSizeChanged { engine.resize(it.width, it.height) },
+                    .onSizeChanged { engine.resize(it.width, it.height) }
+                    .then(
+                        if (engine.status == GameStatus.Playing && !engine.paused && !confirmExit) {
+                            Modifier.pointerInput(engine) { detectTapGestures { engine.tap() } }
+                        } else Modifier,
+                    ),
             ) {
                 drawGame(
                     engine, frame, art,
                     shipSprite = save.equippedShip,
                     planetStyle = save.equippedPlanet,
                     trailStyle = save.equippedTrail,
+                    colorblind = settings.colorblind,
+                    reducedMotion = settings.reducedMotion,
                 )
             }
-            InGameHud(engine, settings, bestForMode, slowSeconds, doubleSeconds, magnetSeconds, phaseSeconds, freezeSeconds,
-                onPause = { engine.pause(); sound.pauseMusic(); haptic(HapticFeedbackType.TextHandleMove) },
-                onToggleMute = { viewModel.updateSettings { it.muted = !it.muted }; sound.play("ui") },
-                onHome = { goHub() },
-            )
-            GameOverlays(
-                engine = engine,
-                reward = reward,
-                best = bestForMode,
-                onResume = { engine.resume(); sound.resumeMusic() },
-                onRestart = { startRun() },
-                onHome = { goHub() },
-            )
+            if (hudVisible) {
+                InGameHud(engine, settings, bestForMode, timerSeconds, slowSeconds, doubleSeconds, magnetSeconds,
+                    phaseSeconds, freezeSeconds,
+                    onPause = { engine.pause(); sound.pauseMusic(); haptic(HapticFeedbackType.TextHandleMove) },
+                    onToggleMute = { viewModel.updateSettings { it.muted = !it.muted }; sound.play("ui") },
+                    onHome = { goHub() },
+                )
+            }
+            if (!confirmExit) {
+                GameOverlays(
+                    engine = engine,
+                    reward = reward,
+                    best = bestForMode,
+                    onResume = { engine.resume(); sound.resumeMusic() },
+                    onRestart = { startRun() },
+                    onHome = { goHub() },
+                )
+            }
+            if (confirmExit) {
+                ModalCard {
+                    Title("ВЫХОД ИЗ ЗАБЕГА", Amber)
+                    Body("Прервать забег и сохранить результат?")
+                    Spacer(Modifier.height(20.dp))
+                    WideButton("ПРОДОЛЖИТЬ", { confirmExit = false })
+                    Spacer(Modifier.height(12.dp))
+                    SecondaryButton("В ХАБ", {
+                        engine.abandonRun()
+                        finishGoHub()
+                    }, accent = Amber)
+                }
+            }
         } else {
             Canvas(modifier = Modifier.fillMaxSize()) {
-                drawMenuBackground(art, save.equippedPlanet * 2, frame)
+                drawMenuBackground(art, save.equippedPlanet * 2, frame, settings.colorblind, settings.reducedMotion)
             }
             when (screen) {
                 Screen.Hub -> HubScreen(viewModel, engine, art, frame, ::startRun, ::openScreen)
@@ -271,7 +324,7 @@ fun GameScreen(viewModel: GameViewModel = viewModel()) {
                 Screen.Shop -> ShopScreen(viewModel, ::goHub)
                 Screen.Achievements -> AchievementsScreen(viewModel, ::goHub)
                 Screen.Stats -> StatsScreen(viewModel, ::goHub)
-                Screen.Settings -> SettingsScreen(viewModel, confirmReset, { confirmReset = it }, ::goHub)
+                Screen.Settings -> SettingsScreen(viewModel, art, frame, confirmReset, { confirmReset = it }, ::goHub)
                 else -> Unit
             }
         }
@@ -305,6 +358,7 @@ private fun InGameHud(
     engine: GameEngine,
     settings: com.example.orbit.data.GameSettings,
     best: Int,
+    timer: Int,
     slow: Int,
     double: Int,
     magnet: Int,
@@ -322,14 +376,15 @@ private fun InGameHud(
                 RoundButton("II", onPause)
                 RoundButton("⌂", onHome)
             }
-            StatBlock("РЕКОРД", "${maxOf(best, engine.best)}", null, Amber, alignEnd = true)
+            val record = if (engine.status == GameStatus.Playing) maxOf(best, engine.best) else best
+            StatBlock("РЕКОРД", "$record", null, Amber, alignEnd = true)
         }
 
         if (engine.timeLeft > 0f || engine.combo > 0) {
             Spacer(Modifier.height(10.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                 if (engine.timeLeft > 0f) {
-                    EffectChip("${ceil(engine.timeLeft).toInt()}с", Violet)
+                    TimerChip(timer)
                     Spacer(Modifier.width(6.dp))
                 }
                 if (engine.combo > 0) EffectChip("КОМБО ${engine.combo}", Neon)
@@ -366,9 +421,11 @@ private fun InGameHud(
 @Composable
 private fun StatBlock(label: String, value: String, extra: String?, color: Color, alignEnd: Boolean = false) {
     Column(horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start) {
-        Text(label, color = MutedText, fontSize = 10.sp, letterSpacing = 3.sp)
-        Text(value, color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Black)
-        if (extra != null) Text(extra, color = color, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Text(label, color = MutedText, fontSize = 10.sp, letterSpacing = 3.sp, maxLines = 1, softWrap = false)
+        Text(value, color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Black,
+            fontFeatureSettings = "tnum", maxLines = 1, softWrap = false)
+        if (extra != null) Text(extra, color = color, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+            maxLines = 1, softWrap = false)
     }
 }
 
@@ -396,7 +453,22 @@ private fun RoundButton(label: String, onClick: () -> Unit) {
 private fun EffectChip(label: String, color: Color) {
     Surface(color = color.copy(alpha = 0.18f), shape = RoundedCornerShape(50)) {
         Text(label, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), color = color,
-            fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp)
+            fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp,
+            maxLines = 1, softWrap = false)
+    }
+}
+
+/** Таймер фиксированной ширины: табular-цифры не дёргают чип при отсчёте. */
+@Composable
+private fun TimerChip(seconds: Int) {
+    Surface(color = Violet.copy(alpha = 0.18f), shape = RoundedCornerShape(50)) {
+        Text(
+            "$seconds" + "с",
+            modifier = Modifier.widthIn(min = 56.dp).padding(horizontal = 10.dp, vertical = 4.dp),
+            color = Violet, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp,
+            fontFeatureSettings = "tnum", textAlign = TextAlign.Center,
+            maxLines = 1, softWrap = false,
+        )
     }
 }
 
@@ -415,13 +487,16 @@ private fun GameOverlays(
             Body("Полёт приостановлен")
             Spacer(Modifier.height(20.dp))
             WideButton("ПРОДОЛЖИТЬ", onResume)
-            WideButton("ЗАНОВО", onRestart, accent = Violet)
-            WideButton("В ХАБ", onHome, accent = MutedText)
+            Spacer(Modifier.height(12.dp))
+            SecondaryButton("ЗАНОВО", onRestart, accent = Violet)
+            Spacer(Modifier.height(12.dp))
+            SecondaryButton("В ХАБ", onHome, accent = MutedText)
         }
 
         engine.status == GameStatus.GameOver -> ModalCard {
             Title(if (engine.completed) "МАРШРУТ ЗАВЕРШЁН" else "ПОТЕРЯН СИГНАЛ", if (engine.completed) Neon else Pink)
-            Text("${engine.score}", color = Color.White, fontSize = 56.sp, fontWeight = FontWeight.Black)
+            Text("${engine.score}", color = Color.White, fontSize = 56.sp, fontWeight = FontWeight.Black,
+                fontFeatureSettings = "tnum", maxLines = 1, softWrap = false)
             if (engine.isNewRecord) Text("НОВЫЙ РЕКОРД", color = Amber, fontSize = 12.sp, letterSpacing = 3.sp)
             else Text("Рекорд: $best", color = MutedText, fontSize = 12.sp)
             Spacer(Modifier.height(10.dp))
@@ -434,16 +509,15 @@ private fun GameOverlays(
                 Panel {
                     Text("НАГРАДА", color = Neon, fontSize = 10.sp, letterSpacing = 3.sp)
                     Spacer(Modifier.height(6.dp))
-                    StatRow("+${reward.credits} жетонов · +${reward.xp} XP")
-                    if (reward.achievements.isNotEmpty()) StatRow("Достижения: ${reward.achievements.joinToString(", ")}", Amber)
-                    if (reward.secrets.isNotEmpty()) StatRow("Секреты: ${reward.secrets.joinToString(", ")}", Violet)
-                    if (reward.missions.isNotEmpty()) StatRow("Задания: ${reward.missions.joinToString(", ")}", Neon)
-                    if (reward.levelUps > 0) StatRow("Уровень игрока +${reward.levelUps}", Amber)
+                    rewardLines(reward).forEachIndexed { index, line ->
+                        StatRow(line, if (index == 0) Neon else MutedText)
+                    }
                 }
             }
             Spacer(Modifier.height(18.dp))
             WideButton("ЕЩЁ РАЗ", onRestart)
-            WideButton("В ХАБ", onHome, accent = MutedText)
+            Spacer(Modifier.height(12.dp))
+            SecondaryButton("В ХАБ", onHome, accent = MutedText)
         }
     }
 }
@@ -460,44 +534,57 @@ private fun HubScreen(
     onOpen: (Screen) -> Unit,
 ) {
     val save = viewModel.store.data
+    val settings = save.settings
     val mode = Mode.from(save.selectedMode)
     val sector = Content.sector(save.selectedSector)
-    val progress = (save.xp % Content.xpPerLevel) / Content.xpPerLevel.toFloat()
-    val seasonProgress = (save.seasonXp.toFloat() / Content.seasonTiers.last().xp).coerceIn(0f, 1f)
+    val xpInLevel = Math.floorMod(save.xp, Content.xpPerLevel)
+    val progress = (xpInLevel.toFloat() / Content.xpPerLevel.toFloat()).coerceIn(0f, 1f)
+    val seasonProgress = (save.seasonXp.toFloat() / Content.seasonTiers.last().xp.coerceAtLeast(1)).coerceIn(0f, 1f)
     val missions = Content.missionsFor(save.dailyDate)
 
     Column(
-        modifier = Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState())
+        modifier = Modifier.fillMaxSize().statusBarsPadding().imePadding().navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 18.dp),
     ) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Canvas(modifier = Modifier.size(56.dp)) {
-                drawPreviewPlanet(art, save.equippedPlanet, androidx.compose.ui.geometry.Offset(size.width / 2, size.height / 2), 26.dp.toPx(), frame)
+                drawPreviewPlanet(art, save.equippedPlanet, Offset(size.width / 2, size.height / 2),
+                    28.dp.toPx(), frame, settings.colorblind, settings.reducedMotion)
             }
             Spacer(Modifier.width(10.dp))
-            Column {
-                Text("ОРБИТА", color = Neon, fontSize = 30.sp, fontWeight = FontWeight.Black, letterSpacing = 8.sp)
-                Text("СЕЗОН ${save.seasonId} · УРОВЕНЬ ${save.playerLevel}", color = MutedText, fontSize = 10.sp, letterSpacing = 2.sp)
+            Column(Modifier.weight(1f)) {
+                Text("ОРБИТА", color = Neon, fontSize = 26.sp, fontWeight = FontWeight.Black,
+                    letterSpacing = 3.sp, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                Text("СЕЗОН ${save.seasonId} · УРОВЕНЬ ${save.playerLevel}", color = MutedText,
+                    fontSize = 9.sp, letterSpacing = 1.sp, maxLines = 1, softWrap = false,
+                    overflow = TextOverflow.Ellipsis)
             }
-            Spacer(Modifier.weight(1f))
             Column(horizontalAlignment = Alignment.End) {
-                Text("◆ ${save.credits}", color = Amber, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                if (save.dailyStreak > 0) Text("${save.dailyStreak} ДНЕЙ", color = Pink, fontSize = 10.sp)
+                Text("◆ ${compactCurrency(save.credits)}", color = Amber, fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                if (save.dailyStreak > 0) Text("${save.dailyStreak} ${daysWord(save.dailyStreak, capitalize = true)}",
+                    color = Pink, fontSize = 10.sp, maxLines = 1, softWrap = false)
             }
         }
         Spacer(Modifier.height(14.dp))
-        Bar(progress, Neon, "XP ${save.xp % Content.xpPerLevel} / ${Content.xpPerLevel}")
+        Bar(progress, Neon, "XP $xpInLevel / ${Content.xpPerLevel}")
         Spacer(Modifier.height(6.dp))
         Bar(seasonProgress, Violet, "СЕЗОН ${save.seasonXp} / ${Content.seasonTiers.last().xp}")
 
         Spacer(Modifier.height(20.dp))
         SectionTitle("РЕЖИМ")
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            maxItemsInEachRow = 3,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             Content.modes.forEach { m ->
                 ChoiceChip(
-                    label = m.title,
+                    label = m.short,
                     selected = m.id == mode.id,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.widthIn(min = 96.dp),
                     onClick = { viewModel.selectMode(m.id) },
                 )
             }
@@ -507,7 +594,12 @@ private fun HubScreen(
 
         Spacer(Modifier.height(16.dp))
         SectionTitle("СЕКТОР")
-        Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(
+                rememberScrollState(),
+                contentPadding = PaddingValues(end = 20.dp),
+            ),
+        ) {
             Content.sectors.forEach { s ->
                 val unlocked = save.playerLevel >= s.unlockLevel || save.visitedSectors.contains(s.id)
                 ChoiceChip(
@@ -528,8 +620,11 @@ private fun HubScreen(
         val missionsDone = missions.indices.count { i ->
             save.dailyProgress.getOrNull(i)?.let { v -> v >= missions[i].goal } == true
         }
-        WideButton("ЗАДАНИЯ ДНЯ  $missionsDone/3",
-            { onOpen(Screen.Missions) }, accent = Violet)
+        SecondaryButton("ЗАДАНИЯ ДНЯ  $missionsDone/3", { onOpen(Screen.Missions) }, accent = Violet)
+        if (!save.tutorialSeen) {
+            Spacer(Modifier.height(10.dp))
+            Body("Подсказка: тап во время полёта меняет направление.", Neon.copy(alpha = 0.85f))
+        }
         Spacer(Modifier.height(20.dp))
 
         val tiles = listOf(
@@ -548,9 +643,6 @@ private fun HubScreen(
             }
             Spacer(Modifier.height(10.dp))
         }
-
-        Spacer(Modifier.height(8.dp))
-        Body("Тап во время полёта меняет направление. ${engine.stats.dodges} уклонений в прошлом забеге.", MutedText)
         Spacer(Modifier.height(20.dp))
     }
 }
@@ -568,7 +660,7 @@ private fun MissionsScreen(viewModel: GameViewModel, onBack: () -> Unit) {
             Panel {
                 Text(m.title, color = if (done) Neon else Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(4.dp))
-                Bar((value.toFloat() / m.goal).coerceIn(0f, 1f), if (done) Neon else Violet, "$value / ${m.goal}")
+                Bar((value.toFloat() / m.goal.coerceAtLeast(1)).coerceIn(0f, 1f), if (done) Neon else Violet, "$value / ${m.goal}")
                 Spacer(Modifier.height(8.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("+${m.reward} жетонов", color = Amber, fontSize = 12.sp)
@@ -598,7 +690,7 @@ private fun MissionsScreen(viewModel: GameViewModel, onBack: () -> Unit) {
             Spacer(Modifier.height(6.dp))
         }
         Spacer(Modifier.height(12.dp))
-        Body("Серия заданий: ${save.dailyStreak} дней · Сыграно дзен-забегов: ${save.zenRuns}")
+        Body("Серия заданий: ${save.dailyStreak} ${daysWord(save.dailyStreak)} · Сыграно дзен-забегов: ${save.zenRuns}")
     }
 }
 
@@ -609,7 +701,8 @@ private fun HangarScreen(viewModel: GameViewModel, art: GameArt, onBack: () -> U
     ScrollScreen("АНГАР", viewModel, onBack, "Все корабли, шлейфы и планеты доступны только локально.") {
         Box(modifier = Modifier.fillMaxWidth().height(170.dp)) {
             Canvas(modifier = Modifier.fillMaxSize()) {
-                drawPreviewPlanet(art, save.equippedPlanet, androidx.compose.ui.geometry.Offset(size.width / 2, size.height / 2), 78.dp.toPx(), 0L)
+                drawPreviewPlanet(art, save.equippedPlanet, Offset(size.width / 2, size.height / 2),
+                    78.dp.toPx(), 0L, save.settings.colorblind, save.settings.reducedMotion)
             }
             Image(
                 painter = painterResource(context.resources.getIdentifier("ship_${save.equippedShip}", "drawable", context.packageName)),
@@ -676,7 +769,7 @@ private fun HangarScreen(viewModel: GameViewModel, art: GameArt, onBack: () -> U
 @Composable
 private fun ShopScreen(viewModel: GameViewModel, onBack: () -> Unit) {
     val save = viewModel.store.data
-    ScrollScreen("МАГАЗИН", viewModel, onBack, "Жетоны зарабатываются в забегах, заданиях и по достижениям. Баланс: ◆ ${save.credits}") {
+    ScrollScreen("МАГАЗИН", viewModel, onBack, "Жетоны зарабатываются в забегах, заданиях и по достижениям. Баланс: ◆ ${compactCurrency(save.credits)}") {
         listOf("ship" to "КОРАБЛИ", "trail" to "ШЛЕЙФЫ", "planet" to "ФОНЫ", "upgrade" to "УЛУЧШЕНИЯ").forEach { (cat, title) ->
             SectionTitle(title)
             Content.shop.filter { it.category == cat }.forEach { item ->
@@ -760,9 +853,14 @@ private fun StatsScreen(viewModel: GameViewModel, onBack: () -> Unit) {
         }
         Spacer(Modifier.height(18.dp))
         SectionTitle("ТАБЛИЦА РЕКОРДОВ")
-        Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(
+                rememberScrollState(),
+                contentPadding = PaddingValues(end = 20.dp),
+            ),
+        ) {
             Content.modes.forEach { m ->
-                ChoiceChip(m.title, modeTab == m.id) {
+                ChoiceChip(m.short, modeTab == m.id) {
                     modeTab = m.id
                     viewModel.refresh()
                 }
@@ -791,12 +889,28 @@ private fun StatsScreen(viewModel: GameViewModel, onBack: () -> Unit) {
 }
 
 @Composable
-private fun SettingsScreen(viewModel: GameViewModel, confirmReset: Boolean, setConfirmReset: (Boolean) -> Unit, onBack: () -> Unit) {
+private fun SettingsScreen(
+    viewModel: GameViewModel,
+    art: GameArt,
+    frame: Long,
+    confirmReset: Boolean,
+    setConfirmReset: (Boolean) -> Unit,
+    onBack: () -> Unit,
+) {
     val save = viewModel.store.data
+    val clipboard = LocalClipboardManager.current
     var exportText by remember { mutableStateOf("") }
     var importText by remember { mutableStateOf("") }
     var importResult by remember { mutableStateOf("") }
     ScrollScreen("НАСТРОЙКИ", viewModel, onBack, "Прогресс сохраняется автоматически после каждого забега и действия.") {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Canvas(modifier = Modifier.size(58.dp)) {
+                drawPreviewPlanet(art, save.equippedPlanet, Offset(size.width / 2, size.height / 2),
+                    28.dp.toPx(), frame, save.settings.colorblind, save.settings.reducedMotion)
+            }
+            Body("Предпросмотр планеты: так выглядят выбранные цвета и анимация.")
+        }
+        Spacer(Modifier.height(14.dp))
         SectionTitle("ЗВУК")
         Panel {
             Text("Музыка ${(save.settings.music * 100).toInt()}%", color = Color.White, fontSize = 12.sp)
@@ -816,28 +930,69 @@ private fun SettingsScreen(viewModel: GameViewModel, confirmReset: Boolean, setC
         SectionTitle("СОХРАНЕНИЕ")
         Panel {
             Body("Код экспорта создаёт код с контролем целостности. Импорт заменяет текущий прогресс.")
-            WideButton("ЭКСПОРТИРОВАТЬ КОД", { exportText = viewModel.exportCode() }, accent = Violet)
-            if (exportText.isNotEmpty()) {
-                OutlinedTextField(value = exportText, onValueChange = {}, readOnly = true, modifier = Modifier.fillMaxWidth(), singleLine = true)
-            }
             Spacer(Modifier.height(8.dp))
-            OutlinedTextField(value = importText, onValueChange = { importText = it }, modifier = Modifier.fillMaxWidth(),
-                singleLine = true, placeholder = { Text("ORB1-...") })
-            Spacer(Modifier.height(6.dp))
+            SecondaryButton("ЭКСПОРТИРОВАТЬ КОД", { exportText = viewModel.exportCode() }, accent = Violet)
+            if (exportText.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = exportText,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("КОД ЭКСПОРТА") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp),
+                )
+                Spacer(Modifier.height(6.dp))
+                SmallButton("КОПИРОВАТЬ", true) { clipboard.setText(AnnotatedString(exportText)) }
+            }
+            Spacer(Modifier.height(14.dp))
+            OutlinedTextField(
+                value = importText,
+                onValueChange = { importText = it },
+                label = { Text("КОД ИМПОРТА") },
+                placeholder = { Text("ORB1-...") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp),
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.None,
+                    autoCorrect = false,
+                    keyboardType = KeyboardType.Text,
+                ),
+            )
+            Spacer(Modifier.height(8.dp))
             WideButton("ИМПОРТИРОВАТЬ", {
                 importResult = if (viewModel.importCode(importText)) "Прогресс восстановлен" else "Код недействителен"
+                importText = ""
             }, accent = Neon)
-            if (importResult.isNotEmpty()) Body(importResult, Amber)
+            if (importResult.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                Body(importResult, Amber)
+            }
         }
         Spacer(Modifier.height(14.dp))
-        SectionTitle("ОПАСНАЯ ЗОНА")
-        if (!confirmReset) WideButton("СБРОСИТЬ ПРОГРЕСС", { setConfirmReset(true) }, accent = Pink)
-        else {
-            Body("Точно удалить все рекорды, предметы и достижения?", Pink)
-            WideButton("ДА, СБРОСИТЬ", { viewModel.resetProgress(); setConfirmReset(false) }, accent = Pink)
-            WideButton("ОТМЕНА", { setConfirmReset(false) }, accent = MutedText)
+        SectionTitle("ОПАСНАЯ ЗОНА", DangerRed)
+        Panel(color = Color(0xFF2A0B16)) {
+            Text("⚠  СБРОС ПРОГРЕССА", color = DangerRed, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            if (!confirmReset) {
+                Body("Удалить все рекорды, предметы и достижения?", DangerRed)
+                Spacer(Modifier.height(10.dp))
+                WideButton("СБРОСИТЬ ПРОГРЕСС", { setConfirmReset(true) }, accent = DangerRed)
+            } else {
+                Body("Точно удалить все рекорды, предметы и достижения?", DangerRed)
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    SecondaryButton("ОТМЕНА", { setConfirmReset(false) }, Modifier.weight(1f), MutedText)
+                    WideButton("ДА, СБРОСИТЬ", {
+                        viewModel.resetProgress()
+                        setConfirmReset(false)
+                    }, modifier = Modifier.weight(1f), accent = DangerRed)
+                }
+            }
         }
-        Spacer(Modifier.height(30.dp))
+        Spacer(Modifier.height(24.dp))
         Body("Орбита 3.5 · Локальная игра без рекламы и сети")
     }
 }
@@ -847,7 +1002,8 @@ private fun SettingsScreen(viewModel: GameViewModel, confirmReset: Boolean, setC
 @Composable
 private fun ScrollScreen(title: String, viewModel: GameViewModel, onBack: () -> Unit, subtitle: String, content: @Composable ColumnScope.() -> Unit) {
     Column(
-        modifier = Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState())
+        modifier = Modifier.fillMaxSize().statusBarsPadding().imePadding().navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 18.dp),
     ) {
         ScreenHeader(title, viewModel, onBack)
@@ -855,7 +1011,7 @@ private fun ScrollScreen(title: String, viewModel: GameViewModel, onBack: () -> 
         Body(subtitle)
         Spacer(Modifier.height(16.dp))
         content()
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(28.dp))
     }
 }
 
@@ -863,16 +1019,18 @@ private fun ScrollScreen(title: String, viewModel: GameViewModel, onBack: () -> 
 private fun ScreenHeader(title: String, viewModel: GameViewModel, onBack: () -> Unit) {
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text(title, color = Neon, fontSize = 26.sp, fontWeight = FontWeight.Black, letterSpacing = 4.sp)
-            Text("◆ ${viewModel.store.data.credits}", color = Amber, fontSize = 12.sp)
+            Text(title, color = Neon, fontSize = 22.sp, fontWeight = FontWeight.Black,
+                letterSpacing = 1.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text("◆ ${compactCurrency(viewModel.store.data.credits)}", color = Amber, fontSize = 12.sp,
+                maxLines = 1, softWrap = false)
         }
         SmallButton("← ХАБ", true, onBack)
     }
 }
 
 @Composable
-private fun SectionTitle(text: String) {
-    Text(text, color = Neon.copy(alpha = 0.8f), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
+private fun SectionTitle(text: String, color: Color = Neon.copy(alpha = 0.8f)) {
+    Text(text, color = color, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
     Spacer(Modifier.height(7.dp))
 }
 
@@ -882,19 +1040,24 @@ private fun Body(text: String, color: Color = MutedText) {
 }
 
 @Composable
-private fun Panel(content: @Composable ColumnScope.() -> Unit) {
-    Surface(color = PanelColor, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+private fun Panel(color: Color = PanelColor, content: @Composable ColumnScope.() -> Unit) {
+    Surface(color = color, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(14.dp), content = content)
     }
 }
 
 @Composable
 private fun ModalCard(content: @Composable ColumnScope.() -> Unit) {
-    Box(modifier = Modifier.fillMaxSize().background(Color(0x9903020A)), contentAlignment = Alignment.Center) {
-        Surface(color = Color(0xF2080A1C), shape = RoundedCornerShape(24.dp), modifier = Modifier.padding(24.dp)) {
+    Box(
+        modifier = Modifier.fillMaxSize().background(Color(0xE303020A))
+            .statusBarsPadding().navigationBarsPadding()
+            .pointerInput(Unit) { detectTapGestures { /* модальный экран не пропускает тапы в игру */ } },
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(color = Color(0xFC080A1C), shape = RoundedCornerShape(24.dp), modifier = Modifier.padding(24.dp)) {
             Column(
                 modifier = Modifier.fillMaxWidth(0.92f).heightIn(max = 600.dp).verticalScroll(rememberScrollState())
-                    .padding(24.dp),
+                    .navigationBarsPadding().padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 content = content,
             )
@@ -904,7 +1067,8 @@ private fun ModalCard(content: @Composable ColumnScope.() -> Unit) {
 
 @Composable
 private fun Title(text: String, color: Color) {
-    Text(text, color = color, fontSize = 20.sp, fontWeight = FontWeight.Black, letterSpacing = 3.sp, textAlign = TextAlign.Center)
+    Text(text, color = color, fontSize = 20.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp,
+        textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
     Spacer(Modifier.height(12.dp))
 }
 
@@ -914,16 +1078,45 @@ private fun StatRow(text: String, color: Color = MutedText) {
 }
 
 @Composable
-private fun WideButton(text: String, onClick: () -> Unit, enabled: Boolean = true, accent: Color = Neon) {
+private fun WideButton(
+    text: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    accent: Color = Neon,
+    modifier: Modifier = Modifier,
+) {
     Button(
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.fillMaxWidth().height(48.dp),
+        modifier = modifier.fillMaxWidth().height(48.dp),
         shape = RoundedCornerShape(14.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = Color(0xFF06131C)),
     ) {
-        Text(text, color = Color(0xFF06131C), fontWeight = FontWeight.Bold, fontSize = 13.sp, letterSpacing = 1.sp)
+        Text(text, fontWeight = FontWeight.Bold, fontSize = 13.sp, letterSpacing = 1.sp,
+            maxLines = 1, softWrap = false)
     }
-    Spacer(Modifier.height(5.dp))
+}
+
+/** Второстепенное действие: тот же размер, но контур и разный визуальный вес. */
+@Composable
+private fun SecondaryButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    accent: Color = Violet,
+    enabled: Boolean = true,
+) {
+    OutlinedButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.fillMaxWidth().height(48.dp),
+        shape = RoundedCornerShape(14.dp),
+        colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.Transparent, contentColor = accent),
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.6f)),
+    ) {
+        Text(text, fontWeight = FontWeight.Bold, fontSize = 13.sp, letterSpacing = 1.sp,
+            maxLines = 1, softWrap = false)
+    }
 }
 
 @Composable
@@ -934,7 +1127,7 @@ private fun SmallButton(text: String, enabled: Boolean = true, onClick: () -> Un
         modifier = Modifier.clickable(enabled = enabled, onClick = onClick),
     ) {
         Text(text, color = if (enabled) Neon else MutedText, fontSize = 10.sp, fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp))
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp), maxLines = 1, softWrap = false)
     }
 }
 
@@ -974,7 +1167,8 @@ private fun Metric(label: String, value: String, modifier: Modifier = Modifier) 
     Surface(color = PanelColor, shape = RoundedCornerShape(14.dp), modifier = modifier) {
         Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(label, color = MutedText, fontSize = 9.sp, letterSpacing = 2.sp)
-            Text(value, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Black)
+            Text(value, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Black,
+                fontFeatureSettings = "tnum", maxLines = 1)
         }
     }
 }
@@ -987,8 +1181,9 @@ private fun ChoiceChip(label: String, selected: Boolean, modifier: Modifier = Mo
         modifier = modifier.clickable(enabled = !locked, onClick = onClick),
     ) {
         Text(label, color = if (locked) MutedText else if (selected) Neon else Color.White.copy(alpha = 0.8f),
-            fontSize = 9.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp,
-            modifier = Modifier.padding(horizontal = 9.dp, vertical = 8.dp), maxLines = 1)
+            fontSize = 9.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp,
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 8.dp), maxLines = 1,
+            softWrap = false, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -1012,6 +1207,44 @@ private fun ToggleRow(text: String, checked: Boolean, onChange: (Boolean) -> Uni
     }
 }
 
+/** Русское склонение дней: 1 ДЕНЬ, 2 ДНЯ, 5 ДНЕЙ. */
+private fun daysWord(days: Int, capitalize: Boolean = false): String {
+    val n = kotlin.math.abs(days) % 100
+    val word = when {
+        n in 11..14 -> "дней"
+        n % 10 == 1 -> "день"
+        n % 10 in 2..4 -> "дня"
+        else -> "дней"
+    }
+    return if (capitalize) word.uppercase() else word
+}
+
+/** Компактный вывод валюты: 12300 → 12.3k, без переносов в шапке. */
+private fun compactCurrency(value: Int): String {
+    val v = value.coerceAtLeast(0)
+    return when {
+        v >= 1_000_000 -> "${(v / 100_000f).roundToInt() / 10f}M"
+        v >= 100_000 -> "${(v / 1000f).roundToInt()}k"
+        v >= 1000 -> "${(v / 100f).roundToInt() / 10f}k"
+        else -> "$v"
+    }
+}
+
+/** Единый формат награды: жетоны → XP/уровень → достижения → секреты → задания → сезон. */
+private fun rewardLines(reward: RewardSummary): List<String> {
+    val lines = mutableListOf<String>()
+    if (reward.credits > 0) lines += "+${reward.credits} жетонов"
+    val progress = mutableListOf<String>()
+    if (reward.xp > 0) progress += "+${reward.xp} XP"
+    if (reward.levelUps > 0) progress += "уровень +${reward.levelUps}"
+    if (progress.isNotEmpty()) lines += progress.joinToString(", ")
+    if (reward.achievements.isNotEmpty()) lines += "Достижения: ${reward.achievements.joinToString(", ")}"
+    if (reward.secrets.isNotEmpty()) lines += "Секреты: ${reward.secrets.joinToString(", ")}"
+    if (reward.missions.isNotEmpty()) lines += "Задания: ${reward.missions.joinToString(", ")}"
+    if (reward.seasonTiers.isNotEmpty()) lines += "Сезон: уровней ${reward.seasonTiers.size}"
+    return lines.filter { it.isNotBlank() }
+}
+
 private fun shipColor(index: Int, colorblind: Boolean): Color {
     if (colorblind) return Color(0xFFFFD654)
     return when (index.coerceIn(0, 7)) {
@@ -1019,6 +1252,3 @@ private fun shipColor(index: Int, colorblind: Boolean): Color {
         4 -> Color(0xFFFBB84F); 5 -> Color(0xFFFF5CCD); 6 -> Color(0xFF78DCFF); else -> Color(0xFF58FFCC)
     }
 }
-
-
-
