@@ -270,7 +270,7 @@ namespace Orbit.Galaxy
             while (placed < GameConfig.Anomalies)
             {
                 Vec2 p;
-                if (!TryFindSpot(Vec2.Zero, SafeRadiusStart * 0.88f, 310f, SafeRadiusStart * 0.93f, out p)) break;
+                if (!TryFindSpot(Vec2.Zero, SafeRadiusStart * 0.97f, 110f, SafeRadiusStart * 0.99f, out p)) break;
                 float radius = Rng.Range(120f, 215f);
                 float pull = Rng.Range(38f, 88f);
                 Add(new Anomaly(NextId(), p, radius, pull, 0f, Rng.Chance(0.35f)));

@@ -279,7 +279,6 @@ namespace Orbit.Galaxy
             }
             Result.BossKills = _bossKills;
             Result.Leaderboard = new List<LeaderboardEntry>(Leaderboard);
-            Result.Highlights = new List<SimEvent>(_highlights);
 
             float economy = 1f;
             if (Profile != null)
@@ -305,6 +304,7 @@ namespace Orbit.Galaxy
             AddHighlight(end);
             AddHighlight(new SimEvent(victory ? SimEventKind.Victory : SimEventKind.Defeat,
                 end.ActorId, PlayerRank, victory ? "ПОБЕДА!" : "ПОРАЖЕНИЕ", end.Position, Time));
+            Result.Highlights = new List<SimEvent>(_highlights);
         }
 
         public Ship FindShipById(int id)
