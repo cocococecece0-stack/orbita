@@ -206,6 +206,7 @@ class GameEngine {
         stormTimer = 20f; flareTimer = 16f; mineTimer = 9f
         portalTimer = 12f; wellTimer = 18f; lastBossLevel = 0; nextBossLevel = 5
         orbSpawnCursor = 0f
+        hazardSpawnCursor = rnd() * TAU
         time = 0f; shake = 0f; reverseFlash = 0f; speedLevel = 0f
         fever = false; completed = false; reviveAvailable = false
         timeLeft = if (mode.seconds > 0) mode.seconds.toFloat() + if (upgradeTime) 8f else 0f else -1f
@@ -688,29 +689,28 @@ class GameEngine {
     private fun spawnAsteroid() {
         val hazards = Content.sector(sectorId).hazards
         val comet = level >= 2 && hazards.contains(HazardKind.Comet) && rnd() < 0.18f
-        val a = makeAsteroid(rnd() * TAU, if (comet) AsteroidKind.Comet else AsteroidKind.Rock)
+        val a = makeAsteroid(nextHazardAngle(), if (comet) AsteroidKind.Comet else AsteroidKind.Rock)
         asteroids += a
     }
 
     private fun spawnStorm() {
         val safe = rnd() * TAU
         repeat((if (mode == Mode.Survival) 6 else 5) + if (seasonDensity > 1.1f) 1 else 0) {
-            var angle = rnd() * TAU
+            var angle = nextHazardAngle()
             var tries = 0
-            while (abs(angDiff(angle, safe)) < 0.8f && tries < 24) { angle = rnd() * TAU; tries++ }
+            while (abs(angDiff(angle, safe)) < 0.8f && tries < 24) { angle = nextHazardAngle(); tries++ }
             asteroids += makeAsteroid(angle, AsteroidKind.Rock)
         }
     }
 
     private fun spawnFlare() {
-        val base = rnd() * TAU
-        repeat(14) { asteroids += makeBolt(norm(base + (rnd() - 0.5f) * 2.6f)) }
+        repeat(14) { asteroids += makeBolt(nextHazardAngle()) }
     }
 
     private fun spawnBoss() {
         lastBossLevel = level
         val kind = Math.floorMod(level / 5, Content.bossNames.size)
-        val b = Boss(rnd() * TAU, 2 + level / 20 + kind, 26f, kind)
+        val b = Boss(nextHazardAngle(), 2 + level / 20 + kind, 26f, kind)
         boss += b
         // Рядом с боссом появляются сферы — ядро реально можно сбить.
         repeat(2) { orbs += Orb(norm(b.angle + (rnd() - 0.5f) * 0.55f), OrbKind.Normal, 0) }
@@ -741,7 +741,7 @@ class GameEngine {
     }
 
     private fun spawnMine() {
-        val a = makeAsteroid(rnd() * TAU, AsteroidKind.Mine)
+        val a = makeAsteroid(nextHazardAngle(), AsteroidKind.Mine)
         a.speed *= 0.35f
         a.life = 16f
         asteroids += a
@@ -853,6 +853,13 @@ class GameEngine {
         return v
     }
 
+    /** Следующая угроза появляется в новой точке круга, а не рядом с предыдущей. */
+    private fun nextHazardAngle(): Float {
+        val a = norm(hazardSpawnCursor + (rnd() - 0.5f) * 0.3f)
+        hazardSpawnCursor = norm(hazardSpawnCursor + 2.3999632f)
+        return a
+    }
+
     private fun distance(x1: Float, y1: Float, x2: Float, y2: Float): Float {
         val dx = x1 - x2; val dy = y1 - y2
         return sqrt(dx * dx + dy * dy)
@@ -897,6 +904,8 @@ class GameEngine {
     private var rngState: Long = 1L
     /** Счётчик «золотого угла»: сферы равномерно распределяются по орбите, а не в одной точке. */
     private var orbSpawnCursor = 0f
+    /** Угол следующей угрозы: метеориты приходят со всех сторон, а не с правого бока. */
+    private var hazardSpawnCursor = 0f
 
     private companion object {
         const val TAU = 6.2831855f

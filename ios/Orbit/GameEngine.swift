@@ -149,6 +149,7 @@ final class GameEngine: ObservableObject {
         stormTimer = 20; flareTimer = 16; mineTimer = 9
         portalTimer = 12; wellTimer = 18; lastBossLevel = 0; nextBossLevel = 5
         orbSpawnCursor = 0
+        hazardSpawnCursor = rnd() * tau
         time = 0; shake = 0; reverseFlash = 0; speedLevel = 0
         fever = false; completed = false; reviveAvailable = false
         timeLeft = mode.seconds > 0 ? CGFloat(mode.seconds) + (upgradeTime ? 8 : 0) : -1
@@ -600,16 +601,16 @@ final class GameEngine: ObservableObject {
     private func spawnAsteroid() {
         let hazards = Content.sector(sectorId).hazards
         let comet = level >= 2 && hazards.contains(.comet) && rnd() < 0.18
-        asteroids.append(makeAsteroid(rnd() * tau, comet ? .comet : .rock))
+        asteroids.append(makeAsteroid(nextHazardAngle(), comet ? .comet : .rock))
     }
 
     private func spawnStorm() {
         let safe = rnd() * tau
         for _ in 0..<((mode == .survival ? 6 : 5) + (seasonDensity > 1.1 ? 1 : 0)) {
-            var angle = rnd() * tau
+            var angle = nextHazardAngle()
             var tries = 0
             while abs(angDiff(angle, safe)) < 0.8 && tries < 24 {
-                angle = rnd() * tau
+                angle = nextHazardAngle()
                 tries += 1
             }
             asteroids.append(makeAsteroid(angle, .rock))
@@ -617,14 +618,13 @@ final class GameEngine: ObservableObject {
     }
 
     private func spawnFlare() {
-        let base = rnd() * tau
-        for _ in 0..<14 { asteroids.append(makeBolt(norm(base + (rnd() - 0.5) * 2.6))) }
+        for _ in 0..<14 { asteroids.append(makeBolt(nextHazardAngle())) }
     }
 
     private func spawnBoss() {
         lastBossLevel = level
         let kind = (level / 5) % Content.bossNames.count
-        let b = Boss(angle: rnd() * tau, hp: 2 + level / 20 + kind, duration: 26, kind: kind)
+        let b = Boss(angle: nextHazardAngle(), hp: 2 + level / 20 + kind, duration: 26, kind: kind)
         boss.append(b)
         // Рядом с боссом появляются сферы — ядро реально можно сбить.
         for _ in 0..<2 { orbs.append(Orb(angle: norm(b.angle + (rnd() - 0.5) * 0.55), kind: .normal, sprite: 0)) }
@@ -651,7 +651,7 @@ final class GameEngine: ObservableObject {
     }
 
     private func spawnMine() {
-        let a = makeAsteroid(rnd() * tau, .mine)
+        let a = makeAsteroid(nextHazardAngle(), .mine)
         a.life = 16
         asteroids.append(a)
     }
@@ -765,6 +765,13 @@ final class GameEngine: ObservableObject {
         return v
     }
 
+    /// Следующая угроза появляется в новой точке круга, а не рядом с предыдущей.
+    private func nextHazardAngle() -> CGFloat {
+        let a = norm(hazardSpawnCursor + (rnd() - 0.5) * 0.3)
+        hazardSpawnCursor = norm(hazardSpawnCursor + 2.3999632)
+        return a
+    }
+
     private func distance(_ x1: CGFloat, _ y1: CGFloat, _ x2: CGFloat, _ y2: CGFloat) -> CGFloat {
         let dx = x1 - x2; let dy = y1 - y2
         return sqrt(dx * dx + dy * dy)
@@ -802,6 +809,8 @@ final class GameEngine: ObservableObject {
     private var rngState: UInt64 = 1
     /// Счётчик «золотого угла»: сферы равномерно распределяются по орбите, а не в одной точке.
     private var orbSpawnCursor: CGFloat = 0
+    /// Угол следующей угрозы: метеориты приходят со всех сторон, а не с правого бока.
+    private var hazardSpawnCursor: CGFloat = 0
 
     private func rnd() -> CGFloat {
         rngState = rngState &* 6364136223846793005 &+ 1442695040888963407
