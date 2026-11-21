@@ -53,7 +53,7 @@ export async function copyText(text: string): Promise<boolean> {
       return true;
     }
   } catch {
-    //_web-фолбэк ниже
+    // Web-фолбэк ниже.
   }
   try {
     if (navigator.clipboard?.writeText) {

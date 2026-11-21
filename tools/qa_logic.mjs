@@ -47,6 +47,19 @@ assert(run1.ghostCount > 0, 'Ghost-траектория не записана');
 assert(run1.effectBits <= 2, 'Активных эффектов больше двух: ' + run1.effectBits);
 console.log('OK Game: 3000 шагов идентичны, ghost записан, эффектов <= 2');
 
+const bonusGame = new Game(0);
+bonusGame.resize(400, 800, 0, 0);
+bonusGame.startRun(555, 'classic');
+const bonusKinds = new Set();
+for (let i = 0; i < 400; i++) {
+  bonusGame['spawnPowerup']();
+  for (const item of bonusGame['powerups'].items) if (item.active) bonusKinds.add(item.kind);
+}
+assert([1, 2, 3, 4, 5, 6, 7].every((kind) => bonusKinds.has(kind)),
+  'Не все семь бонусов выпадают: ' + [...bonusKinds].join(','));
+assert(!bonusKinds.has(8), 'Червоточина выпадает как обычный бонус');
+console.log('OK Bonuses: все семь бонусов выпадают, червоточки отдельным типом');
+
 const date = '2026-11-21';
 assert(same(missionsFor(date), missionsFor(date)), 'Ежедневные задания не детерминированы');
 const daily = freshDailyState(date);

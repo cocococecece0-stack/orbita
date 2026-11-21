@@ -561,7 +561,7 @@ export class Game {
       p.active = false;
       this.powerupsTaken++;
 
-      if (p.kind === 2) {
+      if (p.kind === 8) {
         this.teleportWormhole(list, p);
         continue;
       }
@@ -572,6 +572,13 @@ export class Game {
             this.shieldTimer = 8;
             this.events.emit('shieldOn', 0);
             this.burst(p.x, p.y, 14, SHIELD_C, 80);
+          }
+          break;
+        case 2:
+          if (this.activeCount() < 2) {
+            this.slowLeft = 2.4;
+            this.events.emit('slowOn', 0);
+            this.burst(p.x, p.y, 14, SLOW_C, 80);
           }
           break;
         case 3:
@@ -605,11 +612,7 @@ export class Game {
           }
           break;
         default:
-          if (this.activeCount() < 2) {
-            this.slowLeft = 2.4;
-            this.events.emit('slowOn', 0);
-            this.burst(p.x, p.y, 14, SLOW_C, 80);
-          }
+          break;
       }
     }
   }
@@ -617,7 +620,7 @@ export class Game {
   private teleportWormhole(list: Entity[], from: Entity): void {
     for (let i = 0; i < list.length; i++) {
       const other = list[i];
-      if (!other || other === from || !other.active || other.kind !== 2) continue;
+      if (!other || other === from || !other.active || other.kind !== 8) continue;
       this.angle = Math.atan2(other.y - this.centerY, other.x - this.centerX);
       this.wormholesUsed++;
       other.active = false;
@@ -711,8 +714,8 @@ export class Game {
     const r = this.baseRadius * (this.rng.next() < 0.5 ? 0.62 : 1.0);
     const a = this.rng.next() * TAU;
     const v = this.rng.next();
-    p.kind = v < 0.20 ? 1 : v < 0.36 ? 2 : v < 0.52 ? 3
-      : v < 0.68 ? 4 : v < 0.80 ? 5 : v < 0.91 ? 6 : 7;
+    p.kind = v < 0.16 ? 1 : v < 0.30 ? 2 : v < 0.44 ? 3
+      : v < 0.58 ? 4 : v < 0.70 ? 5 : v < 0.82 ? 6 : v < 0.94 ? 7 : 2;
     p.x = this.centerX + Math.cos(a) * r;
     p.y = this.centerY + Math.sin(a) * r;
     p.vx = 0; p.vy = 0; p.rot = 0; p.spin = 1.4;
@@ -730,7 +733,7 @@ export class Game {
       if (!p) return;
       const ang = a + i * Math.PI;
       const r = this.baseRadius * 1.15;
-      p.kind = 2;
+      p.kind = 8;
       p.x = this.centerX + Math.cos(ang) * r;
       p.y = this.centerY + Math.sin(ang) * r;
       p.vx = 0; p.vy = 0; p.rot = 0; p.spin = i === 0 ? 1.6 : -1.6;
@@ -887,7 +890,7 @@ export class Game {
       const type = p.kind === 1 ? KIND.SHIELD : p.kind === 2 ? KIND.SLOW
         : p.kind === 3 ? KIND.MAGNET : p.kind === 4 ? KIND.DOUBLE
         : p.kind === 5 ? KIND.PHASE : p.kind === 6 ? KIND.FREEZE
-        : p.kind === 7 ? KIND.SECOND : KIND.WORMHOLE;
+        : p.kind === 7 ? KIND.SECOND : p.kind === 8 ? KIND.WORMHOLE : KIND.SLOW;
       n = Game.write(out, n, max, p.x, p.y, p.size, p.rot, p.r, p.g, p.b, 1, type, p.seed, 0.7, 0);
     }
     const pt = this.particles.items;
