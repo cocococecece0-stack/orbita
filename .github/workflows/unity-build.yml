@@ -115,7 +115,6 @@ jobs:
       contents: write
     steps:
       - name: Checkout
-        if: needs.credentials.outputs.available == 'true'
         uses: actions/checkout@v4
 
       - name: Download Android APK
