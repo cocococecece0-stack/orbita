@@ -3,6 +3,7 @@
 Новое направление проекта — **одиночная .io-вдохновлённая космическая арена на Unity**: огромная карта, рост и поглощение, 20–35 локальных ботов с utility AI, эволюции, боссы, живые события и глубокая мета-прогрессия. Никаких серверов, аккаунтов и сетевого PvP — весь мир симулируется локально.
 
 - **Активная ветка:** `galaxy-main`. Код лежит в [`unity/Assets/OrbitGalaxy/`](unity/Assets/OrbitGalaxy/), тесты — в [`unity/Tests/Galaxy/`](unity/Tests/Galaxy/), релизы публикуются по тегам `g*`.
+- **Гайд по игре и разработке:** [`docs/GALAXY_README.md`](docs/GALAXY_README.md).
 - **Аудит и план миграции:** [`docs/GALAXY_MIGRATION.md`](docs/GALAXY_MIGRATION.md). Публичный контракт ядра: [`docs/GALAXY_CONTRACT.md`](docs/GALAXY_CONTRACT.md).
 - **Старая Unity-аркада:** [`unity/Assets/Orbit/`](unity/Assets/Orbit/) заморожена, ветка `unity-main`, теги `u*` и релиз `u4.0.0` остаются без изменений.
 - **Нативная v3.8.0:** последний опубликованный baseline, исходники в `app/` и `ios/Orbit/`; теги `v*`, включая `v4.0`/`v4.1`, не трогаются.

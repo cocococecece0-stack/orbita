@@ -14,7 +14,8 @@ The two cores are isolated by `.asmdef` files; the native Android/iOS v3.8 proje
 `Orbit.Galaxy.Editor.GalaxyBuildScript`, whose player settings give the product a name
 containing `GALAXY`; the legacy bootstrap then stays dormant.
 
-See [`../docs/GALAXY_MIGRATION.md`](../docs/GALAXY_MIGRATION.md) for the migration audit.
+See [`../docs/GALAXY_README.md`](../docs/GALAXY_README.md) for gameplay/controls and
+[`../docs/GALAXY_MIGRATION.md`](../docs/GALAXY_MIGRATION.md) for the migration audit.
 
 ## Legacy Arcade Rush architecture (frozen)
 

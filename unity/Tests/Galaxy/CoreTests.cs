@@ -1117,7 +1117,8 @@ namespace Orbit.Galaxy.Core.Tests
             MatchSimulation match = new MatchSimulation(GameModeKind.Chaos, 13579, Difficulty.Hard,
                 new AccountProfile(), GameConfig.MaxParticipants);
             match.Settings.Respawns = 1000;
-            int steps = (int)(45f / GameConfig.SimulationStep);
+            match.Settings.DurationSeconds = 520f;
+            int steps = (int)(480f / GameConfig.SimulationStep);
             bool sawEventSystem = false;
 
             for (int i = 0; i < steps; i++)
@@ -1131,7 +1132,7 @@ namespace Orbit.Galaxy.Core.Tests
             }
 
             Assert.False(match.Finished);
-            Close(45f, match.Time, 0.1f);
+            Close(480f, match.Time, 0.1f);
             Assert.True(match.Ships.Count >= GameConfig.MaxParticipants);
             Assert.Equal(match.Ships.Count, match.Leaderboard.Count);
 
