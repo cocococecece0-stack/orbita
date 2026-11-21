@@ -1,7 +1,7 @@
 import AVFoundation
 
 /// Plays the synthesized WAV samples bundled in the app.
-final class SoundEngine {
+final class SoundEngine: ObservableObject {
 
     private var players: [String: AVAudioPlayer] = [:]
     private var ambient: AVAudioPlayer?
