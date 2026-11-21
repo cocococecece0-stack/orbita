@@ -34,7 +34,8 @@ private extension GraphicsContext {
     /// UIImage не рисуется GraphicsContext напрямую — оборачиваем в SwiftUI.Image.
     mutating func drawUI(_ image: UIImage, in rect: CGRect,
                          blendMode: BlendMode = .normal, opacity: Double = 1) {
-        draw(Image(uiImage: image), in: rect, blendMode: blendMode, opacity: opacity)
+        let resolved = resolve(Image(uiImage: image))
+        draw(resolved, in: rect, blendMode: blendMode, opacity: opacity)
     }
 }
 
