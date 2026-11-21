@@ -80,7 +80,7 @@ namespace Orbit.Core.Tests
         {
             Assert.Equal(18, Content.Objective(ModeKind.Zen, 0).Target);
             Assert.Equal(18 + 4, Content.Objective(ModeKind.Zen, 1).Target);
-            Assert.Equal(18 + 8 * 4, Content.Objective(ModeKind.Zen, 99).Target);
+            Assert.Equal(18 + 9 * 4, Content.Objective(ModeKind.Zen, 99).Target); // sector clamps to 9
             Assert.Equal(1200, Content.Objective(ModeKind.Sprint, 0).Target);
             Assert.Equal(1200 + 2 * 300, Content.Objective(ModeKind.Sprint, 2).Target);
             Assert.Equal(10, Content.Objective(ModeKind.Stack, 0).Target);
@@ -102,9 +102,9 @@ namespace Orbit.Core.Tests
             Assert.Equal("level", missions[0].Field);
             Assert.Equal(9, missions[0].Goal);
             Assert.Equal(132, missions[0].Reward);
-            Assert.Equal("dodge", missions[1].Field);
-            Assert.Equal(43, missions[1].Goal);
-            Assert.Equal(80, missions[1].Reward);
+            Assert.Equal("nearMisses", missions[1].Field);
+            Assert.Equal(11, missions[1].Goal);
+            Assert.Equal(100, missions[1].Reward);
             Assert.Equal("boss", missions[2].Field);
             Assert.Equal(1, missions[2].Goal);
             Assert.Equal(192, missions[2].Reward);
@@ -124,7 +124,7 @@ namespace Orbit.Core.Tests
             Assert.Equal(4, arena.Next.Count); // native queue length
             var seen = new HashSet<int> { arena.Piece };
             foreach (int id in arena.Next) seen.Add(id);
-            for (int i = 0; i < 3; i++)
+            for (int i = 0; i < 5; i++)
             {
                 arena.HardDrop();
                 seen.Add(arena.Piece);

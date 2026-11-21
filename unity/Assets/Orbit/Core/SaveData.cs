@@ -312,15 +312,9 @@ namespace Orbit.Core
                 string id = FindShopId(category, value);
                 if (id != null && !inventory.Contains(id)) inventory.Add(id);
             }
-            // Preserve the shipped defaults for a category that ended up empty.
+            // Native sanitize() always keeps the free starter item in every category.
             string fallback = category == "ship" ? "ship_cyan" : (category == "trail" ? "trail_spark" : "planet_earth");
-            bool any = false;
-            for (int i = 0; i < inventory.Count; i++)
-            {
-                ShopItem item = FindShopItem(inventory[i]);
-                if (item != null && item.Category == category) { any = true; break; }
-            }
-            if (!any) inventory.Add(fallback);
+            if (!inventory.Contains(fallback)) inventory.Add(fallback);
         }
 
         private void RefreshOwnedCache(string category, List<string> cache)
