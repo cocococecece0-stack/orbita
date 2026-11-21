@@ -1,12 +1,27 @@
 import SwiftUI
-import Combine
+
+/// Unlock thresholds are based on the all-time best score.
+private let shipSkins: [Color] = [
+    Color(hex: 0x22D3EE),
+    Color(hex: 0xFB7185),
+    Color(hex: 0xA3E635),
+    Color(hex: 0xC084FC),
+]
+private let skinThresholds = [0, 150, 400, 800]
 
 struct ContentView: View {
 
     @StateObject private var engine = GameEngine()
     @StateObject private var sound = SoundEngine()
-    @State private var best: Int = UserDefaults.standard.integer(forKey: "bestScore")
-    @State private var muted: Bool = UserDefaults.standard.bool(forKey: "muted")
+
+    @State private var best = UserDefaults.standard.integer(forKey: "bestScore")
+    @State private var muted = UserDefaults.standard.bool(forKey: "muted")
+    @State private var haptics = UserDefaults.standard.object(forKey: "haptics") as? Bool ?? true
+    @State private var skinIndex = UserDefaults.standard.integer(forKey: "skinIndex")
+    @State private var topScores = UserDefaults.standard.array(forKey: "topScores") as? [Int] ?? []
+    @State private var runs = UserDefaults.standard.integer(forKey: "runs")
+    @State private var bestCombo = UserDefaults.standard.integer(forKey: "bestCombo")
+
     @State private var pulse = false
     @Environment(\.scenePhase) private var scenePhase
 
@@ -30,9 +45,21 @@ struct ContentView: View {
             .onAppear {
                 engine.resize(geo.size)
                 engine.best = best
+                engine.skinColor = shipSkins[clampedSkin]
                 engine.onNewRecord = { score in
-                    best = score
-                    UserDefaults.standard.set(score, forKey: "bestScore")
+                    best = max(best, score)
+                    UserDefaults.standard.set(best, forKey: "bestScore")
+                }
+                engine.onRunEnd = { score, orbs, combo in
+                    runs += 1
+                    bestCombo = max(bestCombo, combo)
+                    var top = (topScores + [score]).sorted(by: >)
+                    if top.count > 5 { top = Array(top.prefix(5)) }
+                    topScores = top
+                    UserDefaults.standard.set(runs, forKey: "runs")
+                    UserDefaults.standard.set(bestCombo, forKey: "bestCombo")
+                    UserDefaults.standard.set(top, forKey: "topScores")
+                    _ = orbs
                 }
                 engine.onEvent = handle
                 sound.muted = muted
@@ -53,6 +80,10 @@ struct ContentView: View {
                 sound.pauseAmbient()
             }
         }
+    }
+
+    private var clampedSkin: Int {
+        min(max(skinIndex, 0), shipSkins.count - 1)
     }
 
     // MARK: - HUD
@@ -112,6 +143,18 @@ struct ContentView: View {
                     chip("ДВОЙНЫЕ \(Int(engine.doubleTimer.rounded(.up)))с", Palette.double)
                 }
             }
+
+            if engine.stormWarning > 0 {
+                Text("МЕТЕОРНЫЙ ДОЖДЬ")
+                    .font(.system(size: 13, weight: .bold))
+                    .tracking(4)
+                    .foregroundColor(Palette.danger.opacity(0.4 + 0.6 * min(1, Double(engine.stormWarning) / 1.6)))
+            } else if engine.levelUpFlash > 0 {
+                Text("УРОВЕНЬ \(engine.level)")
+                    .font(.system(size: 15, weight: .bold))
+                    .tracking(5)
+                    .foregroundColor(Palette.orb.opacity(Double(engine.levelUpFlash)))
+            }
         }
         .padding(.horizontal, 20)
         .padding(.top, 6)
@@ -165,67 +208,133 @@ struct ContentView: View {
                 }
             }
         } else if engine.status == .ready {
-            card {
-                VStack(spacing: 0) {
-                    Text("ОРБИТА")
-                        .font(.system(size: 42, weight: .black))
-                        .tracking(10)
-                        .foregroundColor(Palette.player)
-                    Spacer().frame(height: 12)
-                    Text("Уклоняйся от астероидов,\nсобирай сферы и бонусы")
-                        .font(.system(size: 15))
-                        .multilineTextAlignment(.center)
-                        .foregroundColor(.white.opacity(0.75))
-                    Spacer().frame(height: 6)
-                    Text("Тап — сменить направление полёта")
-                        .font(.system(size: 13))
-                        .multilineTextAlignment(.center)
-                        .foregroundColor(.white.opacity(0.45))
-                    if best > 0 {
-                        Spacer().frame(height: 14)
-                        Text("Рекорд: \(best)")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(Palette.orb.opacity(0.9))
-                    }
-                    Spacer().frame(height: 26)
-                    Text("НАЖМИ, ЧТОБЫ НАЧАТЬ")
-                        .font(.system(size: 13, weight: .semibold))
-                        .tracking(2)
-                        .foregroundColor(Palette.player)
-                        .opacity(pulse ? 1 : 0.3)
-                }
-            }
-            .onTapGesture { engine.tap() }
+            readyCard
         } else if engine.status == .gameOver {
-            card {
-                VStack(spacing: 0) {
-                    Text("ИГРА ОКОНЧЕНА")
-                        .font(.system(size: 12, weight: .bold))
-                        .tracking(4)
-                        .foregroundColor(Palette.danger)
-                    Spacer().frame(height: 8)
-                    Text("\(engine.score)")
-                        .font(.system(size: 64, weight: .black))
-                        .foregroundColor(.white)
-                    Spacer().frame(height: 2)
-                    if engine.isNewRecord {
-                        Text("НОВЫЙ РЕКОРД")
-                            .font(.system(size: 13, weight: .bold))
-                            .tracking(2)
-                            .foregroundColor(Palette.orb)
-                    } else {
-                        Text("Рекорд: \(max(best, engine.score))")
-                            .font(.system(size: 14))
-                            .foregroundColor(.white.opacity(0.55))
-                    }
-                    Spacer().frame(height: 6)
-                    Text("УРОВЕНЬ \(engine.level)")
-                        .font(.system(size: 11))
-                        .tracking(3)
-                        .foregroundColor(.white.opacity(0.35))
-                    Spacer().frame(height: 22)
-                    primaryButton("Ещё раз") { engine.start() }
+            gameOverCard
+        }
+    }
+
+    private var readyCard: some View {
+        card {
+            VStack(spacing: 0) {
+                Text("ОРБИТА")
+                    .font(.system(size: 42, weight: .black))
+                    .tracking(10)
+                    .foregroundColor(Palette.player)
+                Spacer().frame(height: 12)
+                Text("Уклоняйся от астероидов,\nсобирай сферы и бонусы")
+                    .font(.system(size: 15))
+                    .multilineTextAlignment(.center)
+                    .foregroundColor(.white.opacity(0.75))
+                Spacer().frame(height: 6)
+                Text("Тап — сменить направление полёта")
+                    .font(.system(size: 13))
+                    .multilineTextAlignment(.center)
+                    .foregroundColor(.white.opacity(0.45))
+                if best > 0 {
+                    Spacer().frame(height: 14)
+                    Text("Рекорд: \(best)")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(Palette.orb.opacity(0.9))
                 }
+
+                Spacer().frame(height: 18)
+                HStack(spacing: 10) {
+                    ForEach(0..<shipSkins.count, id: \.self) { index in
+                        let unlocked = best >= skinThresholds[index]
+                        Circle()
+                            .fill(shipSkins[index])
+                            .frame(width: 26, height: 26)
+                            .overlay(
+                                Circle().stroke(
+                                    index == skinIndex ? Color.white : Color.white.opacity(0.2),
+                                    lineWidth: index == skinIndex ? 2 : 1
+                                )
+                            )
+                            .opacity(unlocked ? 1 : 0.25)
+                            .onTapGesture {
+                                guard unlocked else { return }
+                                skinIndex = index
+                                engine.skinColor = shipSkins[index]
+                                UserDefaults.standard.set(index, forKey: "skinIndex")
+                            }
+                    }
+                }
+
+                if runs > 0 {
+                    Spacer().frame(height: 12)
+                    Text("Забегов: \(runs) · Лучшее комбо: \(bestCombo)")
+                        .font(.system(size: 11))
+                        .foregroundColor(.white.opacity(0.35))
+                }
+
+                Spacer().frame(height: 10)
+                Button {
+                    haptics.toggle()
+                    UserDefaults.standard.set(haptics, forKey: "haptics")
+                } label: {
+                    Text(haptics ? "ВИБРО: ВКЛ" : "ВИБРО: ВЫКЛ")
+                        .font(.system(size: 10))
+                        .tracking(1)
+                        .foregroundColor(.white.opacity(0.4))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                }
+                .buttonStyle(.plain)
+
+                Spacer().frame(height: 20)
+                Text("НАЖМИ, ЧТОБЫ НАЧАТЬ")
+                    .font(.system(size: 13, weight: .semibold))
+                    .tracking(2)
+                    .foregroundColor(Palette.player)
+                    .opacity(pulse ? 1 : 0.3)
+            }
+        }
+        .onTapGesture { engine.tap() }
+    }
+
+    private var gameOverCard: some View {
+        card {
+            VStack(spacing: 0) {
+                Text("ИГРА ОКОНЧЕНА")
+                    .font(.system(size: 12, weight: .bold))
+                    .tracking(4)
+                    .foregroundColor(Palette.danger)
+                Spacer().frame(height: 8)
+                Text("\(engine.score)")
+                    .font(.system(size: 64, weight: .black))
+                    .foregroundColor(.white)
+                Spacer().frame(height: 2)
+                if engine.isNewRecord {
+                    Text("НОВЫЙ РЕКОРД")
+                        .font(.system(size: 13, weight: .bold))
+                        .tracking(2)
+                        .foregroundColor(Palette.orb)
+                } else {
+                    Text("Рекорд: \(max(best, engine.score))")
+                        .font(.system(size: 14))
+                        .foregroundColor(.white.opacity(0.55))
+                }
+                Spacer().frame(height: 6)
+                Text("УРОВЕНЬ \(engine.level) · Сферы: \(engine.orbsCollected) · Комбо x\(engine.maxCombo)")
+                    .font(.system(size: 11))
+                    .tracking(1)
+                    .foregroundColor(.white.opacity(0.35))
+
+                if topScores.count > 1 {
+                    Spacer().frame(height: 14)
+                    Text("ЛУЧШИЕ")
+                        .font(.system(size: 10))
+                        .tracking(3)
+                        .foregroundColor(.white.opacity(0.3))
+                    Spacer().frame(height: 4)
+                    Text(topScores.map { String($0) }.joined(separator: " · "))
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.55))
+                }
+
+                Spacer().frame(height: 22)
+                primaryButton("Ещё раз") { engine.start() }
             }
         }
     }
@@ -282,10 +391,14 @@ struct ContentView: View {
             sound.play("level")
         case .nearMiss:
             haptic(.light)
+        case .storm:
+            sound.play("storm")
+            haptic(.medium)
         }
     }
 
     private func haptic(_ style: UIImpactFeedbackGenerator.FeedbackStyle) {
+        guard haptics else { return }
         UIImpactFeedbackGenerator(style: style).impactOccurred()
     }
 }

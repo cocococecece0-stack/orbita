@@ -22,6 +22,11 @@ enum PowerUpKind: CaseIterable {
     case double
 }
 
+enum AsteroidKind {
+    case rock
+    case comet
+}
+
 enum GameEvent {
     case tap
     case dodge(Int)
@@ -31,6 +36,7 @@ enum GameEvent {
     case crash
     case levelUp(Int)
     case nearMiss
+    case storm
 }
 
 extension Color {
@@ -53,6 +59,7 @@ final class Asteroid {
     let shape: [CGFloat]
     var rotation: CGFloat
     let spin: CGFloat
+    let kind: AsteroidKind
     var dodged = false
     var nearMissed = false
     var dead = false
@@ -64,7 +71,8 @@ final class Asteroid {
         radius: CGFloat,
         shape: [CGFloat],
         rotation: CGFloat,
-        spin: CGFloat
+        spin: CGFloat,
+        kind: AsteroidKind = .rock
     ) {
         self.angle = angle
         self.distance = distance
@@ -73,6 +81,7 @@ final class Asteroid {
         self.shape = shape
         self.rotation = rotation
         self.spin = spin
+        self.kind = kind
     }
 }
 

@@ -38,6 +38,7 @@ extension GameEngine {
             )
         }
         drawPlanet(&world, center: center)
+        drawComboRing(&world, center: center)
         drawOrbitRing(&world, center: center)
         drawTrail(&world)
         drawOrbs(&world, center: center)
@@ -45,6 +46,28 @@ extension GameEngine {
         drawAsteroids(&world, center: center)
         drawPlayer(&world)
         drawParticles(&world)
+
+        if multiplier >= 3 {
+            context.fill(
+                background,
+                with: .radialGradient(
+                    Gradient(colors: [
+                        Color.clear,
+                        skinColor.opacity(Double(multiplier - 2) * 0.07),
+                    ]),
+                    center: center,
+                    startRadius: 0,
+                    endRadius: max(w, h) * 0.72
+                )
+            )
+        }
+        if stormWarning > 0 {
+            let pulse = 0.5 + 0.5 * sin(time * 12)
+            context.fill(
+                background,
+                with: .color(Palette.danger.opacity(Double(stormWarning) * (0.06 + 0.06 * Double(pulse))))
+            )
+        }
 
         if flash > 0 {
             context.fill(
@@ -107,6 +130,25 @@ extension GameEngine {
         )
     }
 
+    private func drawComboRing(_ context: inout GraphicsContext, center: CGPoint) {
+        guard combo > 0 else { return }
+        let ringRadius = planetRadius * 1.28
+        let fraction = min(max(comboTime / 2.5, 0), 1)
+        var arc = Path()
+        arc.addArc(
+            center: center,
+            radius: ringRadius,
+            startAngle: .degrees(-90),
+            endAngle: .degrees(-90 + 360 * fraction),
+            clockwise: false
+        )
+        context.stroke(
+            arc,
+            with: .color(skinColor.opacity(0.5)),
+            style: StrokeStyle(lineWidth: 3, lineCap: .round)
+        )
+    }
+
     private func drawOrbitRing(_ context: inout GraphicsContext, center: CGPoint) {
         context.stroke(
             circlePath(center, orbitRadius),
@@ -120,7 +162,7 @@ extension GameEngine {
             let life = min(max(point.life, 0), 1)
             context.fill(
                 circlePath(CGPoint(x: point.x, y: point.y), playerRadius * (0.4 + life * 0.8)),
-                with: .color(Palette.player.opacity(life * 0.35))
+                with: .color(skinColor.opacity(life * 0.35))
             )
         }
     }
@@ -210,6 +252,10 @@ extension GameEngine {
                 x: center.x + cos(asteroid.angle) * asteroid.distance,
                 y: center.y + sin(asteroid.angle) * asteroid.distance
             )
+            if asteroid.kind == .comet {
+                drawComet(&context, asteroid: asteroid, position: position)
+                continue
+            }
             var path = Path()
             for index in 0..<asteroid.shape.count {
                 let angle = asteroid.rotation + CGFloat(index) * (CGFloat.pi * 2 / CGFloat(asteroid.shape.count))
@@ -227,6 +273,44 @@ extension GameEngine {
         }
     }
 
+    private func drawComet(_ context: inout GraphicsContext, asteroid: Asteroid, position: CGPoint) {
+        let dx = cos(asteroid.angle)
+        let dy = sin(asteroid.angle)
+        let tailStart = CGPoint(
+            x: position.x + dx * asteroid.radius,
+            y: position.y + dy * asteroid.radius
+        )
+        let tailEnd = CGPoint(
+            x: position.x + dx * asteroid.radius * 7,
+            y: position.y + dy * asteroid.radius * 7
+        )
+        var tail = Path()
+        tail.move(to: tailStart)
+        tail.addLine(to: tailEnd)
+        context.stroke(
+            tail,
+            with: .linearGradient(
+                Gradient(colors: [Color(hex: 0xFFB86B).opacity(0.85), Color.clear]),
+                startPoint: tailStart,
+                endPoint: tailEnd
+            ),
+            style: StrokeStyle(lineWidth: asteroid.radius * 0.9, lineCap: .round)
+        )
+        context.fill(
+            circlePath(position, asteroid.radius),
+            with: .radialGradient(
+                Gradient(colors: [Color(hex: 0xFFF1C1), Color(hex: 0xFB7185)]),
+                center: position,
+                startRadius: 0,
+                endRadius: asteroid.radius
+            )
+        )
+        context.fill(
+            circlePath(position, asteroid.radius * 0.35),
+            with: .color(Color(hex: 0xFFE4B5).opacity(0.9))
+        )
+    }
+
     private func drawPlayer(_ context: inout GraphicsContext) {
         let position = CGPoint(x: playerX, y: playerY)
         let alpha = invulnerable > 0 ? 0.4 + 0.6 * abs(sin(time * 22)) : 1
@@ -234,7 +318,7 @@ extension GameEngine {
         context.fill(
             circlePath(position, playerRadius * 4.5),
             with: .radialGradient(
-                Gradient(colors: [Palette.player.opacity(0.35 * alpha), Color.clear]),
+                Gradient(colors: [skinColor.opacity(0.35 * alpha), Color.clear]),
                 center: position,
                 startRadius: 0,
                 endRadius: playerRadius * 4.5
@@ -257,7 +341,7 @@ extension GameEngine {
         if reverseFlash > 0 {
             context.stroke(
                 circlePath(position, playerRadius * (1.5 + (1 - reverseFlash) * 3)),
-                with: .color(Palette.player.opacity(reverseFlash * 0.5)),
+                with: .color(skinColor.opacity(reverseFlash * 0.5)),
                 lineWidth: playerRadius * 0.35
             )
         }
@@ -279,7 +363,7 @@ extension GameEngine {
         ))
         ship.closeSubpath()
 
-        context.fill(ship, with: .color(Palette.player.opacity(alpha)))
+        context.fill(ship, with: .color(skinColor.opacity(alpha)))
         context.fill(circlePath(position, playerRadius * 0.55), with: .color(Color.white.opacity(alpha)))
     }
 

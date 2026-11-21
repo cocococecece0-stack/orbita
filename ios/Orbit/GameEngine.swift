@@ -11,10 +11,15 @@ final class GameEngine: ObservableObject {
     @Published var multiplier = 1
     @Published var level = 1
     @Published var shield = false
+    @Published var orbsCollected = 0
+    @Published var maxCombo = 0
     @Published var frameTick = 0
+
+    var skinColor: Color = Palette.player
 
     var onEvent: ((GameEvent) -> Void)?
     var onNewRecord: ((Int) -> Void)?
+    var onRunEnd: ((Int, Int, Int) -> Void)?
 
     private(set) var width: CGFloat = 0
     private(set) var height: CGFloat = 0
@@ -34,6 +39,8 @@ final class GameEngine: ObservableObject {
     private(set) var invulnerable: CGFloat = 0
     private(set) var slowTimer: CGFloat = 0
     private(set) var doubleTimer: CGFloat = 0
+    private(set) var stormWarning: CGFloat = 0
+    private(set) var comboTime: CGFloat = 0
     private(set) var playerAngle: CGFloat = -CGFloat.pi / 2
     private(set) var direction: CGFloat = 1
 
@@ -49,7 +56,7 @@ final class GameEngine: ObservableObject {
     private var spawnTimer: CGFloat = 0
     private var orbTimer: CGFloat = 0
     private var powerTimer: CGFloat = 0
-    private var comboTime: CGFloat = 0
+    private var stormTimer: CGFloat = 0
     private var speedLevel: CGFloat = 0
 
     var playerX: CGFloat { centerX + cos(playerAngle) * orbitRadius }
@@ -82,9 +89,12 @@ final class GameEngine: ObservableObject {
         multiplier = 1
         level = 1
         shield = false
+        orbsCollected = 0
+        maxCombo = 0
         comboTime = 0
         slowTimer = 0
         doubleTimer = 0
+        stormWarning = 0
         invulnerable = 0
         hitStop = 0
         flash = 0
@@ -95,6 +105,7 @@ final class GameEngine: ObservableObject {
         spawnTimer = 0.7
         orbTimer = 3.5
         powerTimer = 6
+        stormTimer = 22
         time = 0
         shake = 0
         reverseFlash = 0
@@ -155,7 +166,20 @@ final class GameEngine: ObservableObject {
         trail.append(TrailPoint(x: playerX, y: playerY, life: 1))
 
         spawnTimer -= step
-        if spawnTimer <= 0 {
+        if level >= 2 {
+            stormTimer -= step
+            if stormTimer <= 0, stormWarning <= 0 {
+                stormWarning = 1.6
+                stormTimer = 24 + CGFloat.random(in: 0...1) * 12
+                onEvent?(.storm)
+            }
+        }
+        if stormWarning > 0 {
+            stormWarning -= step
+            if stormWarning <= 0 { spawnStorm() }
+        }
+
+        if spawnTimer <= 0, stormWarning <= 0 {
             spawnAsteroid()
             let base = 1.05 - CGFloat(score) * 0.015
             spawnTimer = min(max(base, 0.30), 1.05) * (0.75 + CGFloat.random(in: 0...1) * 0.5)
@@ -206,7 +230,7 @@ final class GameEngine: ObservableObject {
             if !asteroid.dodged, asteroid.distance < orbitRadius - asteroid.radius {
                 asteroid.dodged = true
                 bumpCombo()
-                addPoints(1)
+                addPoints(asteroid.kind == .comet ? 2 : 1)
                 onEvent?(.dodge(combo))
             }
             if asteroid.distance < planetRadius * 0.35 {
@@ -226,6 +250,7 @@ final class GameEngine: ObservableObject {
             let ox = centerX + cos(orb.angle) * orbitRadius
             let oy = centerY + sin(orb.angle) * orbitRadius
             if distance(ox, oy, px, py) < playerRadius * 2.4 {
+                orbsCollected += 1
                 bumpCombo()
                 addPoints(3)
                 burst(ox, oy, count: 14, color: Palette.orb, power: 0.9)
@@ -261,6 +286,7 @@ final class GameEngine: ObservableObject {
         combo += 1
         comboTime = 2.5
         multiplier = min(5, 1 + combo / 3)
+        if combo > maxCombo { maxCombo = combo }
     }
 
     private func addPoints(_ base: Int) {
@@ -300,31 +326,54 @@ final class GameEngine: ObservableObject {
         paused = false
         shake = 1
         hitStop = 0.09
-        burst(playerX, playerY, count: 34, color: Palette.player, power: 1.4)
+        burst(playerX, playerY, count: 34, color: skinColor, power: 1.4)
         burst(playerX, playerY, count: 14, color: Palette.danger, power: 0.9)
         if score > best {
             best = score
             isNewRecord = true
             onNewRecord?(score)
         }
+        onRunEnd?(score, orbsCollected, maxCombo)
         onEvent?(.crash)
     }
 
     private func spawnAsteroid() {
-        let radius = minDim * (0.028 + CGFloat.random(in: 0...1) * 0.02)
-        let speed = minDim * (0.30 + speedLevel * 0.25) * (0.85 + CGFloat.random(in: 0...1) * 0.3)
-        let spawnDistance = sqrt(width * width + height * height) * 0.5 + radius
-        asteroids.append(
-            Asteroid(
-                angle: CGFloat.random(in: 0...tau),
-                distance: spawnDistance,
-                speed: speed,
-                radius: radius,
-                shape: (0..<9).map { _ in 0.78 + CGFloat.random(in: 0...1) * 0.4 },
-                rotation: CGFloat.random(in: 0...tau),
-                spin: (CGFloat.random(in: 0...1) - 0.5) * 1.6
-            )
+        let kind: AsteroidKind = level >= 2 && CGFloat.random(in: 0...1) < 0.18 ? .comet : .rock
+        asteroids.append(makeAsteroid(angle: CGFloat.random(in: 0...tau), kind: kind))
+    }
+
+    private func spawnStorm() {
+        let safeAngle = CGFloat.random(in: 0...tau)
+        for _ in 0..<8 {
+            var angle = CGFloat.random(in: 0...tau)
+            var attempts = 0
+            while angularDistance(angle, safeAngle) < 0.8, attempts < 24 {
+                angle = CGFloat.random(in: 0...tau)
+                attempts += 1
+            }
+            asteroids.append(makeAsteroid(angle: angle, kind: .rock))
+        }
+    }
+
+    private func makeAsteroid(angle: CGFloat, kind: AsteroidKind) -> Asteroid {
+        let baseRadius = minDim * (0.028 + CGFloat.random(in: 0...1) * 0.02)
+        let baseSpeed = minDim * (0.30 + speedLevel * 0.25) * (0.85 + CGFloat.random(in: 0...1) * 0.3)
+        let comet = kind == .comet
+        return Asteroid(
+            angle: angle,
+            distance: sqrt(width * width + height * height) * 0.5 + baseRadius,
+            speed: comet ? baseSpeed * 1.9 : baseSpeed,
+            radius: comet ? baseRadius * 0.7 : baseRadius,
+            shape: (0..<9).map { _ in 0.78 + CGFloat.random(in: 0...1) * 0.4 },
+            rotation: CGFloat.random(in: 0...tau),
+            spin: (CGFloat.random(in: 0...1) - 0.5) * 1.6,
+            kind: kind
         )
+    }
+
+    private func angularDistance(_ a: CGFloat, _ b: CGFloat) -> CGFloat {
+        let diff = abs(a - b).truncatingRemainder(dividingBy: tau)
+        return min(diff, tau - diff)
     }
 
     private func decayVisuals(_ step: CGFloat) {
