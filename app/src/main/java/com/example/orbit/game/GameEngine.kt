@@ -131,6 +131,8 @@ class GameEngine {
     val stars = mutableListOf<Star>()
     val trail = ArrayDeque<TrailPoint>()
     val stats = RunStats()
+    /** Отдельная арена для режима «ШТАБЕЛЬ»: орбитальные сущности в нём не используются. */
+    val blocks = BlockArena()
     /** Индексы мутаций, выбранных в текущем забеге. */
     val perkIds = mutableListOf<Int>()
 
@@ -198,6 +200,7 @@ class GameEngine {
     fun startRun(newMode: Mode, newSector: Int, seed: Int) {
         rngState = (seed.toLong() xor 0x5DEECE66DL) and Long.MAX_VALUE
         mode = newMode
+        blocks.reset { rnd() }
         sectorId = newSector.coerceIn(0, Content.sectors.lastIndex)
         asteroids.clear(); orbs.clear(); powerUps.clear(); wormholes.clear()
         wells.clear(); boss.clear(); particles.clear(); trail.clear()
@@ -244,6 +247,7 @@ class GameEngine {
     /** Тап: меняем направление полёта. Ядро механики не изменилось. */
     fun tap() {
         onEvent(GameEvent.Tap)
+        if (mode == Mode.Stack) return
         when {
             paused -> paused = false
             status == GameStatus.Ready -> start()
@@ -252,6 +256,35 @@ class GameEngine {
                 reverseFlash = 1f
             }
         }
+    }
+
+    private fun canBlockInput(): Boolean =
+        mode == Mode.Stack && status == GameStatus.Playing && !paused && draft == null
+
+    fun blockMove(direction: Int) {
+        if (canBlockInput() && blocks.move(direction)) onEvent(GameEvent.BlockMove(direction))
+    }
+
+    fun blockRotate() {
+        if (canBlockInput() && blocks.rotate()) onEvent(GameEvent.BlockRotate)
+    }
+
+    fun blockHold() {
+        if (!canBlockInput()) return
+        blocks.hold()
+        onEvent(GameEvent.BlockHold)
+        if (blocks.topOut) blockOver()
+    }
+
+    fun blockSoftDrop() {
+        if (canBlockInput()) applyBlockStep(blocks.softDrop())
+    }
+
+    fun blockHardDrop() {
+        if (!canBlockInput()) return
+        val step = blocks.hardDrop()
+        if (step.dropped > 0) onEvent(GameEvent.BlockDrop(step.dropped))
+        applyBlockStep(step)
     }
 
     fun pause() { if (status == GameStatus.Playing) paused = true }
@@ -286,6 +319,15 @@ class GameEngine {
         updateParticles(step)
         updateTrail(step)
         if (!running) return
+        if (mode == Mode.Stack) {
+            applyBlockStep(blocks.update(step))
+            if (status == GameStatus.Playing && !objectiveRewarded && objectiveDone()) {
+                objectiveRewarded = true
+                resonanceFlash = 1f
+                addBlockPoints(200)
+            }
+            return
+        }
         if (draftRound < 6 && time >= nextDraftAt) { openDraft(); return }
         if (hitStop > 0f) { hitStop = max(0f, hitStop - step); return }
         eventCooldown = max(0f, eventCooldown - step)
@@ -629,6 +671,57 @@ class GameEngine {
         if (combo > maxCombo) { maxCombo = combo; stats.maxCombo = combo }
     }
 
+    private fun addBlockPoints(base: Int) {
+        val boosted = max(1, (base * scoreBoost + 0.5f).toInt())
+        val gained = boosted * multiplier * if (doubleTimer > 0f) 2 else 1
+        score = min(Int.MAX_VALUE / 4, score + gained)
+        stats.score = score
+        if (score > bestScore) {
+            bestScore = score
+            if (!isNewRecord) { isNewRecord = true; onNewRecord(score) }
+        }
+    }
+
+    /** Применяет результат шага «ШТАБЕЛЯ» к общему прогрессу забега. */
+    private fun applyBlockStep(step: BlockStep) {
+        if (step.dropped > 0) addBlockPoints(step.dropped * 2)
+        if (step.cleared > 0) {
+            val count = step.cleared.coerceIn(1, 4)
+            stats.orbs += step.cleared
+            orbsCollected += step.cleared
+            combo += 1
+            if (combo > maxCombo) { maxCombo = combo; stats.maxCombo = combo }
+            multiplier = minOf(5, 1 + combo / 3)
+            fever = multiplier >= 4
+            val base = intArrayOf(0, 100, 300, 500, 800)[count] * blocks.level
+            addBlockPoints(base + if (count == 4) 200 else 0)
+            flash = maxOf(flash, 0.55f)
+            if (!reducedMotion) shake = 0.35f
+            onEvent(GameEvent.BlockClear(step.cleared))
+        } else if (step.locked) {
+            combo = 0
+            multiplier = 1
+            fever = false
+        }
+        level = blocks.level
+        stats.level = level
+        if (step.toppedOut) blockOver()
+    }
+
+    private fun blockOver() {
+        if (status == GameStatus.GameOver) return
+        status = GameStatus.GameOver
+        completed = false
+        paused = false
+        draft = null
+        stats.seconds = elapsed.toInt()
+        flash = 1f
+        if (!reducedMotion) shake = 0.7f
+        burst(centerX, centerY, 30, Color(0xFFD8FF3E), 1.2f)
+        onRunEnd(stats)
+        onEvent(GameEvent.BlockTopOut)
+    }
+
     private fun addPoints(base: Int) {
         val factor = if (doubleTimer > 0f) 2 else 1
         val boosted = (base * scoreBoost + 0.5f).toInt().coerceAtLeast(1)
@@ -651,7 +744,11 @@ class GameEngine {
     /** Цель забега: та же формула на обеих платформах. */
     fun objective(): Content.Objective = Content.objective(mode, sectorId)
 
-    fun objectiveValue(): Int = if (objective().field == "orbs") orbsCollected else score
+    fun objectiveValue(): Int = when (objective().field) {
+        "orbs" -> orbsCollected
+        "lines" -> stats.orbs
+        else -> score
+    }
 
     fun objectiveDone(): Boolean = objectiveValue() >= objective().target
 
@@ -956,6 +1053,7 @@ class GameEngine {
         add("boss_1", stats.bossKills >= 1)
         add("boss_5", stats.bossKills >= 5)
         add("worm_5", stats.wormholes >= 5)
+        add("stack_40", mode == Mode.Stack && stats.orbs >= 40)
         add("objective_done", objectiveDone())
         return out
     }

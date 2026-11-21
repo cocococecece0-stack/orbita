@@ -2,7 +2,9 @@ package com.example.orbit.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -20,7 +22,9 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.example.orbit.R
 import com.example.orbit.game.AsteroidKind
+import com.example.orbit.game.BlockArena
 import com.example.orbit.game.GameEngine
+import com.example.orbit.game.Mode
 import com.example.orbit.game.OrbKind
 import com.example.orbit.game.Palette
 import kotlin.math.PI
@@ -47,6 +51,12 @@ private object Contrast {
 private val SectorAccents = listOf(
     Color(0xFF22D3EE), Color(0xFFFF8A3D), Color(0xFFA78BFA), Color(0xFF67E8F9),
     Color(0xFFFBBF24), Color(0xFFF472B6), Color(0xFFFF5C70), Color(0xFF34D399),
+)
+
+/** Цвета тетро-фигур: одинаковые на Android и iOS. */
+private val BlockColors = listOf(
+    Color(0xFF22D3EE), Color(0xFFD8FF3E), Color(0xFFFF5B3D), Color(0xFF8B5CF6),
+    Color(0xFFFFC23D), Color(0xFF3B82F6), Color(0xFFF472B6),
 )
 
 /** Все изображения загружаются один раз и переиспользуются каждым кадром. */
@@ -147,6 +157,11 @@ fun DrawScope.drawGame(
     val visualTime = if (reducedMotion) 0f else engine.time
     val visualTick = if (reducedMotion) 0L else frameTick
 
+    if (engine.mode == Mode.Stack) {
+        drawStackArena(engine, visualTime, reducedMotion)
+        return
+    }
+
     drawBackground(art, engine.sectorId, planetStyle, visualTime, w, h)
 
     engine.stars.forEach { star ->
@@ -216,6 +231,209 @@ fun DrawScope.drawGame(
             radius = max(w, h) * 0.72f,
         ),
     )
+}
+
+/** Яркая арена «ШТАБЕЛЯ»: крупная сетка, толстые фигуры, коридоры и живые боковые панели. */
+private fun DrawScope.drawStackArena(engine: GameEngine, time: Float, reducedMotion: Boolean) {
+    val w = size.width
+    val h = size.height
+    drawRect(
+        brush = Brush.linearGradient(
+            colors = listOf(Color(0xFF0B1022), Color(0xFF17224A), Color(0xFF0B1022)),
+            start = Offset(0f, 0f),
+            end = Offset(w, h),
+        ),
+    )
+
+    // Фоновые «кометы» и полосы скорости: арена должна выглядеть как игра, а не форма.
+    val pulse = if (reducedMotion) 0.5f else 0.5f + 0.5f * sin(time * 1.6f)
+    drawCircle(
+        brush = Brush.radialGradient(
+            colors = listOf(Color(0xFFD8FF3E).copy(alpha = 0.16f + pulse * 0.06f), Color.Transparent),
+            center = Offset(w * 0.12f, h * 0.18f),
+            radius = max(w, h) * 0.42f,
+        ),
+        radius = max(w, h) * 0.42f,
+        center = Offset(w * 0.12f, h * 0.18f),
+    )
+    drawCircle(
+        brush = Brush.radialGradient(
+            colors = listOf(Color(0xFFFF5B3D).copy(alpha = 0.14f), Color.Transparent),
+            center = Offset(w * 0.9f, h * 0.78f),
+            radius = max(w, h) * 0.38f,
+        ),
+        radius = max(w, h) * 0.38f,
+        center = Offset(w * 0.9f, h * 0.78f),
+    )
+    repeat(7) { i ->
+        val y = h * (0.08f + i * 0.13f)
+        drawLine(
+            color = if (i % 2 == 0) Color(0xFFD8FF3E).copy(alpha = 0.07f)
+            else Color(0xFFFF5B3D).copy(alpha = 0.08f),
+            start = Offset(-w * 0.05f, y + h * 0.1f),
+            end = Offset(w * 1.05f, y),
+            strokeWidth = 2.dp.toPx(),
+        )
+    }
+
+    val topPad = h * 0.15f
+    val bottomPad = h * 0.15f
+    val usableH = h - topPad - bottomPad
+    val cell = minOf(w * 0.74f / BlockArena.COLS, usableH / BlockArena.ROWS)
+    val boardW = cell * BlockArena.COLS
+    val boardH = cell * BlockArena.ROWS
+    val left = (w - boardW) / 2f
+    val top = topPad + (usableH - boardH) / 2f
+    val board = Rect(left, top, left + boardW, top + boardH)
+    val radius = CornerRadius(cell * 0.42f)
+
+    drawRoundRect(
+        brush = Brush.linearGradient(
+            colors = listOf(Color(0xFF141B33), Color(0xFF1B2448), Color(0xFF11162A)),
+            start = Offset(left, top),
+            end = Offset(board.right, board.bottom),
+        ),
+        topLeft = board.topLeft,
+        size = board.size,
+        cornerRadius = radius,
+    )
+    for (c in 1 until BlockArena.COLS) {
+        val x = left + c * cell
+        drawLine(Color(0xFFF6F1E4).copy(alpha = 0.055f), Offset(x, top), Offset(x, board.bottom), 1f)
+    }
+    for (r in 1 until BlockArena.ROWS) {
+        val y = top + r * cell
+        drawLine(Color(0xFFF6F1E4).copy(alpha = 0.055f), Offset(left, y), Offset(board.right, y), 1f)
+    }
+
+    val blocks = engine.blocks
+    for (row in 0 until BlockArena.ROWS) {
+        for (col in 0 until BlockArena.COLS) {
+            val value = blocks.cell(col, row)
+            if (value != 0) drawBlockCell(cellRect(left, top, cell, col, row), BlockColors[(value - 1) % BlockColors.size], cell)
+        }
+    }
+
+    val ghostY = blocks.ghostY()
+    if (!blocks.topOut) {
+        blocks.cells(blocks.piece, blocks.rotation).forEach { part ->
+            val row = ghostY + part[1]
+            if (row >= 0) drawBlockCell(cellRect(left, top, cell, blocks.x + part[0], row), Color(0xFFD8FF3E), cell, ghost = true)
+        }
+        blocks.cells(blocks.piece, blocks.rotation).forEach { part ->
+            val row = blocks.y + part[1]
+            if (row >= 0) drawBlockCell(cellRect(left, top, cell, blocks.x + part[0], row), BlockColors[blocks.piece % BlockColors.size], cell)
+        }
+    }
+
+    if (blocks.clearFlash > 0f) {
+        val alpha = (blocks.clearFlash / 0.42f).coerceIn(0f, 1f)
+        for (row in 0 until BlockArena.ROWS) {
+            if (!blocks.clearRows[row]) continue
+            drawRect(
+                color = Color(0xFFD8FF3E).copy(alpha = 0.55f * alpha),
+                topLeft = Offset(left, top + row * cell),
+                size = Size(boardW, cell),
+            )
+        }
+    }
+
+    val sideMargin = left - 10.dp.toPx()
+    if (sideMargin > cell * 1.6f) {
+        val panelW = sideMargin - 6.dp.toPx()
+        val leftPanel = Rect(10.dp.toPx(), top, 10.dp.toPx() + panelW, board.bottom)
+        val rightPanel = Rect(board.right + 6.dp.toPx(), top, w - 10.dp.toPx(), board.bottom)
+        drawRoundRect(Color(0x99111626), leftPanel.topLeft, leftPanel.size, radius)
+        drawRoundRect(Color(0x99111626), rightPanel.topLeft, rightPanel.size, radius)
+        if (blocks.held >= 0) drawMiniPiece(blocks.held, leftPanel.center.x, leftPanel.center.y, cell * 0.62f)
+        blocks.next.take(3).forEachIndexed { i, type ->
+            val cy = rightPanel.top + rightPanel.height * (0.2f + i * 0.29f)
+            drawMiniPiece(type, rightPanel.center.x, cy, cell * 0.58f)
+        }
+    }
+
+    drawRoundRect(
+        color = Color(0xFFD8FF3E).copy(alpha = 0.9f),
+        topLeft = board.topLeft,
+        size = board.size,
+        cornerRadius = radius,
+        style = Stroke(width = 3.dp.toPx()),
+    )
+    if (engine.flash > 0f) {
+        drawRect(Color(0xFFFFF6E8).copy(alpha = engine.flash * 0.18f))
+    }
+}
+
+private fun cellRect(left: Float, top: Float, cell: Float, col: Int, row: Int): Rect =
+    Rect(left + col * cell, top + row * cell, left + (col + 1) * cell, top + (row + 1) * cell)
+
+private fun DrawScope.drawBlockCell(rect: Rect, color: Color, cell: Float, ghost: Boolean = false) {
+    val inset = cell * 0.07f
+    val box = Rect(rect.left + inset, rect.top + inset, rect.right - inset, rect.bottom - inset)
+    val radius = CornerRadius(cell * 0.24f)
+    if (ghost) {
+        drawRoundRect(color.copy(alpha = 0.42f), box.topLeft, box.size, radius, style = Stroke(width = cell * 0.12f))
+        return
+    }
+    drawRoundRect(
+        brush = Brush.linearGradient(
+            colors = listOf(color.copy(alpha = 0.96f), color.copy(alpha = 0.66f)),
+            start = box.topLeft,
+            end = box.bottomRight,
+        ),
+        topLeft = box.topLeft,
+        size = box.size,
+        cornerRadius = radius,
+    )
+    drawRoundRect(
+        color = Color.White.copy(alpha = 0.32f),
+        topLeft = box.topLeft,
+        size = box.size,
+        cornerRadius = radius,
+        style = Stroke(width = max(1f, cell * 0.06f)),
+    )
+}
+
+private fun DrawScope.drawMiniPiece(type: Int, centerX: Float, centerY: Float, cell: Float) {
+    if (type < 0) return
+    val parts = engineCells(type)
+    val cols = (parts.maxOf { it[0] } + 1).coerceAtLeast(1)
+    val rows = (parts.maxOf { it[1] } + 1).coerceAtLeast(1)
+    val ox = centerX - cols * cell / 2f
+    val oy = centerY - rows * cell / 2f
+    parts.forEach { part ->
+        drawBlockCell(
+            Rect(ox + part[0] * cell, oy + part[1] * cell,
+                ox + (part[0] + 1) * cell, oy + (part[1] + 1) * cell),
+            BlockColors[type % BlockColors.size], cell,
+        )
+    }
+}
+
+/** Маленькая локальная копия формы: используется только для мини-превью без доступа к движку. */
+private fun engineCells(type: Int): List<IntArray> {
+    val shapes = listOf(
+        intArrayOf(0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0),
+        intArrayOf(0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0),
+        intArrayOf(0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+        intArrayOf(0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0),
+        intArrayOf(0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0),
+        intArrayOf(0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0),
+        intArrayOf(0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0),
+    )
+    val current = shapes[type.coerceIn(0, shapes.lastIndex)].copyOf()
+    var minX = 4
+    var minY = 4
+    for (yy in 0..3) for (xx in 0..3) {
+        if (current[yy * 4 + xx] == 0) continue
+        minX = minOf(minX, xx)
+        minY = minOf(minY, yy)
+    }
+    val out = mutableListOf<IntArray>()
+    for (yy in 0..3) for (xx in 0..3) {
+        if (current[yy * 4 + xx] != 0) out += intArrayOf(xx - minX, yy - minY)
+    }
+    return out
 }
 
 private fun DrawScope.drawBackground(

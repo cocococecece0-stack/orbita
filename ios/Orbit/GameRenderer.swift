@@ -39,6 +39,12 @@ private enum RenderColors {
     static let bonusGreen = Color(hex: 0x37E39B)
 }
 
+/// Цвета тетро-фигур: одинаковые на Android и iOS.
+private let blockColors: [Color] = [
+    Color(hex: 0x22D3EE), Color(hex: 0xD8FF3E), Color(hex: 0xFF5B3D), Color(hex: 0x8B5CF6),
+    Color(hex: 0xFFC23D), Color(hex: 0x3B82F6), Color(hex: 0xF472B6),
+]
+
 private extension GraphicsContext {
     /// UIImage не рисуется GraphicsContext напрямую — оборачиваем в SwiftUI.Image.
     mutating func drawUI(_ image: UIImage, in rect: CGRect,
@@ -69,13 +75,18 @@ extension GameEngine {
     func draw(context: inout GraphicsContext, size: CGSize, tick: Int, art: GameArt,
               shipSprite: Int, planetStyle: Int, trailStyle: Int,
               colorblind: Bool, reducedMotion: Bool) {
-        guard width > 0, !art.backgrounds.isEmpty else { return }
+        guard width > 0 else { return }
+        // Визуальное время отделено от игровой логики: при reducedMotion все пульсации стоят.
+        let visualTime: CGFloat = reducedMotion ? 0 : time
+        if mode == .stack {
+            drawStackArena(&context, size: size, time: visualTime, reducedMotion: reducedMotion)
+            return
+        }
+        guard !art.backgrounds.isEmpty else { return }
         let center = CGPoint(x: centerX, y: centerY)
         let w = size.width
         let h = size.height
         let full = Path(CGRect(origin: .zero, size: size))
-        // Визуальное время отделено от игровой логики: при reducedMotion все пульсации стоят.
-        let visualTime: CGFloat = reducedMotion ? 0 : time
         let visualTick: Int = reducedMotion ? 0 : tick
 
         drawBackground(&context, art: art, sector: sectorId, style: planetStyle,
@@ -131,6 +142,168 @@ extension GameEngine {
         context.fill(full, with: .radialGradient(
             Gradient(colors: [Color.clear, Color.black.opacity(0.5)]),
             center: center, startRadius: 0, endRadius: max(w, h) * 0.72))
+    }
+
+    /// Яркая арена «ШТАБЕЛЯ»: зеркально совпадает с Android drawStackArena.
+    private func drawStackArena(_ context: inout GraphicsContext, size: CGSize,
+                                time: CGFloat, reducedMotion: Bool) {
+        let w = size.width
+        let h = size.height
+        let full = Path(CGRect(origin: .zero, size: size))
+        context.fill(full, with: .linearGradient(
+            Gradient(colors: [Color(hex: 0x0B1022), Color(hex: 0x17224A), Color(hex: 0x0B1022)]),
+            startPoint: CGPoint(x: 0, y: 0), endPoint: CGPoint(x: w, y: h)))
+
+        let pulse: CGFloat = reducedMotion ? 0.5 : 0.5 + 0.5 * sin(time * 1.6)
+        let glowR = max(w, h) * 0.42
+        context.fill(Path(ellipseIn: CGRect(x: w * 0.12 - glowR, y: h * 0.18 - glowR,
+                                            width: glowR * 2, height: glowR * 2)),
+                     with: .radialGradient(
+                        Gradient(colors: [Color(hex: 0xD8FF3E).opacity(0.16 + Double(pulse) * 0.06), Color.clear]),
+                        center: CGPoint(x: w * 0.12, y: h * 0.18), startRadius: 0, endRadius: glowR))
+        let coralR = max(w, h) * 0.38
+        context.fill(Path(ellipseIn: CGRect(x: w * 0.9 - coralR, y: h * 0.78 - coralR,
+                                            width: coralR * 2, height: coralR * 2)),
+                     with: .radialGradient(
+                        Gradient(colors: [Color(hex: 0xFF5B3D).opacity(0.14), Color.clear]),
+                        center: CGPoint(x: w * 0.9, y: h * 0.78), startRadius: 0, endRadius: coralR))
+        for i in 0..<7 {
+            let y = h * (0.08 + CGFloat(i) * 0.13)
+            let line = Path { path in
+                path.move(to: CGPoint(x: -w * 0.05, y: y + h * 0.1))
+                path.addLine(to: CGPoint(x: w * 1.05, y: y))
+            }
+            let color = i % 2 == 0 ? Color(hex: 0xD8FF3E).opacity(0.07) : Color(hex: 0xFF5B3D).opacity(0.08)
+            context.stroke(line, with: .color(color), lineWidth: 2)
+        }
+
+        let topPad = h * 0.15
+        let bottomPad = h * 0.15
+        let usableH = h - topPad - bottomPad
+        let cell = min(w * 0.74 / CGFloat(BlockArena.cols), usableH / CGFloat(BlockArena.rows))
+        let boardW = cell * CGFloat(BlockArena.cols)
+        let boardH = cell * CGFloat(BlockArena.rows)
+        let left = (w - boardW) / 2
+        let top = topPad + (usableH - boardH) / 2
+        let board = CGRect(x: left, y: top, width: boardW, height: boardH)
+        let radius = cell * 0.42
+
+        context.fill(Path(roundedRect: board, cornerRadius: radius), with: .linearGradient(
+            Gradient(colors: [Color(hex: 0x141B33), Color(hex: 0x1B2448), Color(hex: 0x11162A)]),
+            startPoint: CGPoint(x: left, y: top), endPoint: CGPoint(x: board.maxX, y: board.maxY)))
+        for c in 1..<BlockArena.cols {
+            let x = left + CGFloat(c) * cell
+            let line = Path { path in
+                path.move(to: CGPoint(x: x, y: top))
+                path.addLine(to: CGPoint(x: x, y: board.maxY))
+            }
+            context.stroke(line, with: .color(Color.white.opacity(0.055)), lineWidth: 1)
+        }
+        for r in 1..<BlockArena.rows {
+            let y = top + CGFloat(r) * cell
+            let line = Path { path in
+                path.move(to: CGPoint(x: left, y: y))
+                path.addLine(to: CGPoint(x: board.maxX, y: y))
+            }
+            context.stroke(line, with: .color(Color.white.opacity(0.055)), lineWidth: 1)
+        }
+
+        let arena = blocks
+        for row in 0..<BlockArena.rows {
+            for col in 0..<BlockArena.cols {
+                let value = arena.cell(col, row)
+                if value != 0 {
+                    drawBlockCell(&context, rect: blockRect(left, top, cell, col, row),
+                                  color: blockColors[(value - 1) % blockColors.count], cell: cell)
+                }
+            }
+        }
+
+        if !arena.topOut {
+            let ghost = arena.ghostY()
+            for part in arena.cells(arena.piece, arena.rotation) where ghost + part.1 >= 0 {
+                drawBlockCell(&context, rect: blockRect(left, top, cell, arena.x + part.0, ghost + part.1),
+                              color: Color(hex: 0xD8FF3E), cell: cell, ghost: true)
+            }
+            for part in arena.cells(arena.piece, arena.rotation) where arena.y + part.1 >= 0 {
+                drawBlockCell(&context, rect: blockRect(left, top, cell, arena.x + part.0, arena.y + part.1),
+                              color: blockColors[arena.piece % blockColors.count], cell: cell)
+            }
+        }
+
+        if arena.clearFlash > 0 {
+            let alpha = min(max(arena.clearFlash / 0.42, 0), 1)
+            for row in 0..<BlockArena.rows where arena.clearRows[row] {
+                context.fill(Path(CGRect(x: left, y: top + CGFloat(row) * cell, width: boardW, height: cell)),
+                             with: .color(Color(hex: 0xD8FF3E).opacity(Double(alpha) * 0.55)))
+            }
+        }
+
+        let sideMargin = left - 10
+        if sideMargin > cell * 1.6 {
+            let panelW = sideMargin - 6
+            let leftPanel = CGRect(x: 10, y: top, width: panelW, height: boardH)
+            let rightPanel = CGRect(x: board.maxX + 6, y: top, width: w - 10 - (board.maxX + 6), height: boardH)
+            context.fill(Path(roundedRect: leftPanel, cornerRadius: radius),
+                         with: .color(Color(hex: 0x111626).opacity(0.6)))
+            context.fill(Path(roundedRect: rightPanel, cornerRadius: radius),
+                         with: .color(Color(hex: 0x111626).opacity(0.6)))
+            if arena.held >= 0 {
+                drawMiniPiece(&context, type: arena.held, cx: leftPanel.midX, cy: leftPanel.midY, cell: cell * 0.62)
+            }
+            for (i, type) in arena.next.prefix(3).enumerated() {
+                let cy = rightPanel.minY + rightPanel.height * (0.2 + CGFloat(i) * 0.29)
+                drawMiniPiece(&context, type: type, cx: rightPanel.midX, cy: cy, cell: cell * 0.58)
+            }
+        }
+
+        context.stroke(Path(roundedRect: board, cornerRadius: radius),
+                       with: .color(Color(hex: 0xD8FF3E).opacity(0.9)), lineWidth: 3)
+        if flash > 0 {
+            context.fill(full, with: .color(Color(hex: 0xFFF6E8).opacity(Double(flash) * 0.18)))
+        }
+    }
+
+    private func blockRect(_ left: CGFloat, _ top: CGFloat, _ cell: CGFloat,
+                           _ col: Int, _ row: Int) -> CGRect {
+        CGRect(x: left + CGFloat(col) * cell, y: top + CGFloat(row) * cell,
+               width: cell, height: cell)
+    }
+
+    private func drawBlockCell(_ context: inout GraphicsContext, rect: CGRect,
+                               color: Color, cell: CGFloat, ghost: Bool = false) {
+        let inset = cell * 0.07
+        let box = CGRect(x: rect.minX + inset, y: rect.minY + inset,
+                         width: rect.width - inset * 2, height: rect.height - inset * 2)
+        let radius = cell * 0.24
+        let path = Path(roundedRect: box, cornerRadius: radius)
+        if ghost {
+            context.stroke(path, with: .color(color.opacity(0.42)),
+                           style: StrokeStyle(lineWidth: cell * 0.12))
+            return
+        }
+        context.fill(path, with: .linearGradient(
+            Gradient(colors: [color.opacity(0.96), color.opacity(0.66)]),
+            startPoint: CGPoint(x: box.minX, y: box.minY),
+            endPoint: CGPoint(x: box.maxX, y: box.maxY)))
+        context.stroke(path, with: .color(Color.white.opacity(0.32)),
+                       style: StrokeStyle(lineWidth: max(1, cell * 0.06)))
+    }
+
+    private func drawMiniPiece(_ context: inout GraphicsContext, type: Int,
+                               cx: CGFloat, cy: CGFloat, cell: CGFloat) {
+        guard type >= 0 else { return }
+        let parts = blocks.cells(type, 0)
+        guard let maxX = parts.map({ $0.0 }).max(), let maxY = parts.map({ $0.1 }).max() else { return }
+        let cols = CGFloat(max(maxX + 1, 1))
+        let rows = CGFloat(max(maxY + 1, 1))
+        let ox = cx - cols * cell / 2
+        let oy = cy - rows * cell / 2
+        for part in parts {
+            let rect = CGRect(x: ox + CGFloat(part.0) * cell, y: oy + CGFloat(part.1) * cell,
+                              width: cell, height: cell)
+            drawBlockCell(&context, rect: rect, color: blockColors[type % blockColors.count], cell: cell)
+        }
     }
 
     private func circlePath(_ center: CGPoint, _ radius: CGFloat) -> Path {

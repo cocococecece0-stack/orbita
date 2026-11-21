@@ -40,6 +40,11 @@ struct ContentView: View {
     @State private var lastSummary: RewardSummary?
     @State private var timerSeconds = 0
     @State private var lastFrameDate = Date()
+    @State private var dragStart: CGPoint?
+    @State private var dragPrev: CGPoint?
+    @State private var dragAccumX: CGFloat = 0
+    @State private var dragAccumY: CGFloat = 0
+    @State private var dragHandled = false
 
     @Environment(\.scenePhase) private var scenePhase
 
@@ -64,10 +69,56 @@ struct ContentView: View {
                         }
                         .ignoresSafeArea()
                         .contentShape(Rectangle())
-                        .onTapGesture {
-                            guard engine.status == .playing, !engine.paused, engine.draft == nil else { return }
-                            engine.tap()
-                        }
+                        .gesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { value in
+                                    guard engine.status == .playing, !engine.paused, engine.draft == nil else { return }
+                                    if dragStart == nil {
+                                        dragStart = value.startLocation
+                                        dragPrev = value.startLocation
+                                    }
+                                    let previous = dragPrev ?? value.startLocation
+                                    let dx = value.location.x - previous.x
+                                    let dy = value.location.y - previous.y
+                                    dragPrev = value.location
+                                    guard engine.mode == .stack else { return }
+                                    dragAccumX += dx
+                                    dragAccumY += dy
+                                    while abs(dragAccumX) >= 20 {
+                                        let dir: Int = dragAccumX > 0 ? 1 : -1
+                                        engine.blockMove(dir)
+                                        dragAccumX -= CGFloat(dir) * 20
+                                        dragHandled = true
+                                    }
+                                    while dragAccumY >= 26 {
+                                        engine.blockSoftDrop()
+                                        dragAccumY -= 26
+                                        dragHandled = true
+                                    }
+                                    if dragAccumY <= -44 {
+                                        engine.blockRotate()
+                                        dragAccumY += 44
+                                        dragHandled = true
+                                    }
+                                }
+                                .onEnded { value in
+                                    defer { resetDragState() }
+                                    guard engine.status == .playing, !engine.paused, engine.draft == nil else { return }
+                                    if engine.mode == .stack {
+                                        guard !dragHandled else { return }
+                                        let x = value.startLocation.x
+                                        let y = value.startLocation.y
+                                        let w = geo.size.width
+                                        let h = geo.size.height
+                                        if x < w * 0.22 { engine.blockMove(-1) }
+                                        else if x > w * 0.78 { engine.blockMove(1) }
+                                        else if y > h * 0.74 { engine.blockHardDrop() }
+                                        else { engine.blockRotate() }
+                                    } else if !dragHandled {
+                                        engine.tap()
+                                    }
+                                }
+                        )
                         .onAppear { engine.resize(geo.size) }
                         .onChange(of: geo.size) { engine.resize($0) }
 
@@ -194,6 +245,12 @@ struct ContentView: View {
     private func handle(_ event: GameEvent) {
         switch event {
         case .tap: sound.play("tap"); haptic(.light)
+        case .blockMove: sound.play("tap", rate: 1.18, volume: 0.16)
+        case .blockRotate: sound.play("tap", rate: 1.35, volume: 0.22)
+        case .blockHold: sound.play("powerup", rate: 1.25, volume: 0.35); haptic(.light)
+        case .blockDrop: sound.play("dodge", volume: 0.28); haptic(.light)
+        case .blockClear(let lines): sound.play(lines >= 4 ? "victory" : "reward", volume: 0.8); haptic(.heavy)
+        case .blockTopOut: sound.play("crash"); haptic(.heavy)
         case .dodge(let combo): sound.play("dodge", rate: min(1.9, 1 + Float(combo) * 0.045), volume: 0.45)
         case .orb: sound.play("orb")
         case .goldenOrb: sound.play("reward", rate: 1.2, volume: 0.7); haptic(.light)
@@ -244,6 +301,14 @@ struct ContentView: View {
         }
     }
 
+    private func resetDragState() {
+        dragStart = nil
+        dragPrev = nil
+        dragAccumX = 0
+        dragAccumY = 0
+        dragHandled = false
+    }
+
     private func haptic(_ style: UIImpactFeedbackGenerator.FeedbackStyle) {
         guard save.settings.haptics else { return }
         let resolved: UIImpactFeedbackGenerator.FeedbackStyle
@@ -258,74 +323,116 @@ struct ContentView: View {
     // MARK: - HUD
 
     private var hud: some View {
-        VStack(spacing: 0) {
-            HStack(alignment: .top) {
-                statBlock("СЧЁТ", "\(engine.score)", engine.multiplier > 1 ? "x\(engine.multiplier)" : nil, UI.lime)
-                Spacer(minLength: 6)
-                HStack(spacing: 8) {
-                    roundButton(save.settings.muted ? "×" : "♪") {
-                        store.updateSettings { $0.muted.toggle() }
+        ZStack(alignment: .bottom) {
+            VStack(spacing: 0) {
+                HStack(alignment: .top) {
+                    statBlock("СЧЁТ", "\(engine.score)",
+                              engine.multiplier > 1 ? "x\(engine.multiplier)" : nil,
+                              UI.lime, size: 52, tint: true)
+                    Spacer(minLength: 6)
+                    HStack(spacing: 6) {
+                        roundButton(save.settings.muted ? "×" : "♪") {
+                            store.updateSettings { $0.muted.toggle() }
+                        }
+                        roundButton("II") { engine.pause(); sound.pauseMusic() }
+                        roundButton("⌂") { goHub() }
                     }
-                    roundButton("II") { engine.pause(); sound.pauseMusic() }
-                    roundButton("⌂") { goHub() }
+                    Spacer(minLength: 6)
+                    let savedBest = save.bestByMode[mode.id] ?? 0
+                    let liveBest = engine.status == .playing ? engine.best : 0
+                    statBlock("РЕКОРД", "\(max(savedBest, liveBest))", nil, UI.sun,
+                              end: true, size: 16)
                 }
-                Spacer(minLength: 6)
-                let savedBest = save.bestByMode[mode.id] ?? 0
-                let liveBest = engine.status == .playing ? engine.best : 0
-                statBlock("РЕКОРД", "\(max(savedBest, liveBest))", nil, UI.sun, end: true)
-            }
 
-            if engine.timeLeft > 0 {
-                timerChip(timerSeconds)
+                if engine.timeLeft > 0 {
+                    timerChip(timerSeconds)
+                        .padding(.top, 8)
+                }
+                if engine.combo > 0 {
+                    chip("КОМБО \(engine.combo)", UI.lime)
+                        .padding(.top, 8)
+                }
+
+                let objective = engine.objective()
+                let reached = min(engine.objectiveValue(), objective.target)
+                chip("\(objective.title) \(reached)/\(objective.target)",
+                     engine.objectiveDone() ? UI.mint : UI.sun)
+                    .padding(.top, 6)
+
+                if engine.mode == .stack {
+                    HStack(spacing: 5) {
+                        chip("ЛИНИИ \(engine.blocks.lines)", UI.lime)
+                        chip("УРОВЕНЬ \(engine.level)", UI.sun)
+                    }
+                    .padding(.top, 6)
+                } else {
+                    bar(Float(engine.resonance), UI.lime,
+                        "РЕЗОНАНС \(Int(engine.resonance * 100))%")
+                        .padding(.top, 6)
+                }
+
+                let chips = activeChips()
+                if !chips.isEmpty {
+                    HStack(spacing: 5) {
+                        ForEach(chips.indices, id: \.self) { i in
+                            chip(chips[i].0, chips[i].1)
+                        }
+                    }
                     .padding(.top, 8)
-            }
-            if engine.combo > 0 {
-                chip("КОМБО \(engine.combo)", UI.lime)
-                    .padding(.top, 8)
-            }
-
-            let objective = engine.objective()
-            let reached = min(engine.objectiveValue(), objective.target)
-            chip("\(objective.title) \(reached)/\(objective.target)",
-                 engine.objectiveDone() ? UI.mint : UI.sun)
-                .padding(.top, 6)
-
-            bar(Float(engine.resonance), UI.lime,
-                "РЕЗОНАНС \(Int(engine.resonance * 100))%")
-                .padding(.top, 6)
-
-            let chips = activeChips()
-            if !chips.isEmpty {
-                HStack(spacing: 5) {
-                    ForEach(chips.indices, id: \.self) { i in
-                        chip(chips[i].0, chips[i].1)
-                    }
                 }
-                .padding(.top, 8)
-            }
-            if !engine.perkIds.isEmpty {
-                HStack(spacing: 5) {
-                    ForEach(engine.perkIds.indices, id: \.self) { i in
-                        let perk = Content.perks[engine.perkIds[i]]
-                        chip("\(perk.glyph) \(perk.title)", UI.grape)
+                if !engine.perkIds.isEmpty {
+                    HStack(spacing: 5) {
+                        ForEach(engine.perkIds.indices, id: \.self) { i in
+                            let perk = Content.perks[engine.perkIds[i]]
+                            chip("\(perk.glyph) \(perk.title)", UI.grape)
+                        }
                     }
+                    .padding(.top, 6)
                 }
-                .padding(.top, 6)
+                Spacer()
+                if engine.stormWarning > 0 {
+                    banner("МЕТЕОРНЫЙ ДОЖДЬ", UI.coral)
+                } else if engine.flareWarning > 0 {
+                    banner("СОЛНЕЧНАЯ ВСПЫШКА", UI.sun)
+                } else if engine.resonanceFlash > 0 {
+                    banner("РЕЗОНАНС!", UI.lime, Double(engine.resonanceFlash))
+                } else if engine.levelUpFlash > 0 {
+                    banner("УРОВЕНЬ \(engine.level)", UI.sun, Double(engine.levelUpFlash))
+                }
+                Spacer().frame(height: engine.mode == .stack ? 92 : 60)
             }
-            Spacer()
-            if engine.stormWarning > 0 {
-                banner("МЕТЕОРНЫЙ ДОЖДЬ", UI.coral)
-            } else if engine.flareWarning > 0 {
-                banner("СОЛНЕЧНАЯ ВСПЫШКА", UI.sun)
-            } else if engine.resonanceFlash > 0 {
-                banner("РЕЗОНАНС!", UI.lime, Double(engine.resonanceFlash))
-            } else if engine.levelUpFlash > 0 {
-                banner("УРОВЕНЬ \(engine.level)", UI.sun, Double(engine.levelUpFlash))
-            }
-            Spacer().frame(height: 60)
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+
+            if engine.mode == .stack { stackControls }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
+    }
+
+    private var stackControls: some View {
+        HStack(spacing: 5) {
+            controlKey("◀", UI.lime) { engine.blockMove(-1) }
+            controlKey("⟳", UI.lime) { engine.blockRotate() }
+            controlKey("▶", UI.lime) { engine.blockMove(1) }
+            controlKey("▼", UI.lime) { engine.blockSoftDrop() }
+            controlKey("⇣", UI.sun) { engine.blockHardDrop() }
+            controlKey("HOLD", UI.grape, wide: true) { engine.blockHold() }
+        }
+        .padding(6)
+        .background(RoundedRectangle(cornerRadius: 22).fill(UI.ink.opacity(0.88)))
+        .overlay(RoundedRectangle(cornerRadius: 22).stroke(UI.lime, lineWidth: 2))
+        .padding(.bottom, 8)
+    }
+
+    private func controlKey(_ label: String, _ color: Color, wide: Bool = false,
+                            _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label).font(.system(size: wide ? 10 : 16, weight: .black))
+                .foregroundColor(color).lineLimit(1).minimumScaleFactor(0.8)
+                .frame(width: wide ? 58 : 44, height: 44)
+                .background(RoundedRectangle(cornerRadius: 13).fill(color.opacity(0.18)))
+                .overlay(RoundedRectangle(cornerRadius: 13).stroke(color, lineWidth: 1.5))
+        }
+        .buttonStyle(.plain)
     }
 
     private func activeChips() -> [(String, Color)] {
@@ -339,12 +446,14 @@ struct ContentView: View {
         return out
     }
 
-    private func statBlock(_ label: String, _ value: String, _ extra: String?, _ color: Color, end: Bool = false) -> some View {
+    private func statBlock(_ label: String, _ value: String, _ extra: String?, _ color: Color,
+                           end: Bool = false, size: CGFloat = 30, tint: Bool = false) -> some View {
         VStack(alignment: end ? .trailing : .leading, spacing: 2) {
             Text(label).font(.system(size: 10)).tracking(3).foregroundColor(UI.paper.opacity(0.75))
                 .lineLimit(1).minimumScaleFactor(0.8)
-            Text(value).font(.system(size: 30, weight: .black)).foregroundColor(UI.paper)
-                .lineLimit(1).minimumScaleFactor(0.8)
+            Text(value).font(.system(size: size, weight: .black))
+                .foregroundColor(tint ? color : UI.paper)
+                .lineLimit(1).minimumScaleFactor(0.7)
             if let extra { Text(extra).font(.system(size: 12, weight: .bold)).foregroundColor(color) }
         }
     }
@@ -463,10 +572,17 @@ struct ContentView: View {
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     bodyText("Уровень \(engine.level)")
-                    bodyText("Сферы \(engine.orbsCollected)")
+                    if engine.mode == .stack {
+                        bodyText("Линии \(engine.orbsCollected)")
+                        bodyText("Строк \(engine.blocks.lines)")
+                    } else {
+                        bodyText("Сферы \(engine.orbsCollected)")
+                    }
                     bodyText("Комбо x\(engine.maxCombo)")
-                    bodyText("Уклонения \(engine.stats.dodges)")
-                    bodyText("Боссы \(engine.stats.bossKills)")
+                    if engine.mode != .stack {
+                        bodyText("Уклонения \(engine.stats.dodges)")
+                        bodyText("Боссы \(engine.stats.bossKills)")
+                    }
                 }
                 Spacer().frame(height: 12)
                 rewardCard(lastSummary)
@@ -517,17 +633,23 @@ struct ContentView: View {
         GeometryReader { geo in
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    HStack(spacing: 8) {
-                        Text("ORBITA").font(.system(size: 28, weight: .black)).tracking(-1)
-                            .foregroundColor(UI.ink).lineLimit(1).minimumScaleFactor(0.8)
-                        Text("3.7").font(.system(size: 10, weight: .black)).foregroundColor(UI.paper)
-                            .padding(.horizontal, 7).padding(.vertical, 3)
-                            .background(RoundedRectangle(cornerRadius: 8).fill(UI.coral))
-                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(UI.ink, lineWidth: 1.5))
+                    let best = save.bestByMode[mode.id] ?? 0
+                    let top = save.topByMode[mode.id] ?? []
+                    HStack(spacing: 6) {
+                        Text("ORBITA").font(.system(size: 42, weight: .black)).tracking(-3)
+                            .foregroundColor(UI.ink).lineLimit(1).minimumScaleFactor(0.7)
+                        VStack(spacing: 1) {
+                            Text("3.8").font(.system(size: 10, weight: .black)).foregroundColor(UI.paper)
+                                .padding(.horizontal, 7).padding(.vertical, 3)
+                                .background(RoundedRectangle(cornerRadius: 8).fill(UI.coral))
+                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(UI.ink, lineWidth: 1.5))
+                            Text(mode.shortTitle).font(.system(size: 8, weight: .black)).foregroundColor(UI.ink)
+                                .lineLimit(1).minimumScaleFactor(0.8)
+                        }
                         Spacer(minLength: 4)
                         creditsChip
                         Text("LV \(save.playerLevel)").font(.system(size: 11, weight: .black))
-                            .foregroundColor(UI.lime).padding(.horizontal, 11).padding(.vertical, 6)
+                            .foregroundColor(UI.lime).padding(.horizontal, 10).padding(.vertical, 6)
                             .background(Capsule().fill(UI.ink)).lineLimit(1)
                     }
 
@@ -541,17 +663,23 @@ struct ContentView: View {
                                             tick: Int(frame), colorblind: save.settings.colorblind,
                                             reducedMotion: save.settings.reducedMotion)
                         }
-                        .frame(height: 206)
+                        .frame(height: 252)
                         .background(UI.ink)
-                        .clipShape(RoundedRectangle(cornerRadius: 24))
-                        .overlay(RoundedRectangle(cornerRadius: 24).stroke(UI.lime, lineWidth: 3))
+                        .clipShape(RoundedRectangle(cornerRadius: 26))
+                        .overlay(RoundedRectangle(cornerRadius: 26).stroke(UI.lime, lineWidth: 3))
+
+                        Text("ORBITA").font(.system(size: 82, weight: .black)).tracking(-6)
+                            .foregroundColor(UI.lime.opacity(0.13)).lineLimit(1).minimumScaleFactor(0.6)
+                            .frame(maxWidth: .infinity, alignment: .top).padding(.top, 6)
 
                         VStack(spacing: 0) {
                             HStack(alignment: .top) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("НОВЫЙ РЕЙД").font(.system(size: 11, weight: .black)).tracking(2)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(mode.title).font(.system(size: 19, weight: .black))
+                                        .foregroundColor(UI.paper).lineLimit(1).minimumScaleFactor(0.8)
+                                    Text(seasonMod.0).font(.system(size: 10, weight: .bold))
                                         .foregroundColor(UI.lime)
-                                    Text(seasonMod.0).font(.system(size: 10)).foregroundColor(UI.paper.opacity(0.8))
+                                    Text(sector.name).font(.system(size: 9)).foregroundColor(UI.paper.opacity(0.65))
                                 }
                                 Spacer(minLength: 8)
                                 Text("СЕЗОН \(save.seasonId)").font(.system(size: 10, weight: .black))
@@ -560,19 +688,28 @@ struct ContentView: View {
                             }
                             Spacer(minLength: 0)
                             HStack(alignment: .bottom) {
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text("ЦЕЛЬ ВЫЛЕТА").font(.system(size: 9, weight: .bold)).tracking(2)
+                                VStack(alignment: .leading, spacing: 0) {
+                                    Text("ЦЕЛЬ").font(.system(size: 9, weight: .bold)).tracking(2)
                                         .foregroundColor(UI.paper.opacity(0.7))
-                                    Text(briefing.title).font(.system(size: 14, weight: .black))
+                                    Text(briefing.title).font(.system(size: 12, weight: .black))
                                         .foregroundColor(UI.paper)
-                                    Text("\(briefing.target)").font(.system(size: 30, weight: .black))
+                                    Text("\(briefing.target)").font(.system(size: 54, weight: .black))
                                         .foregroundColor(UI.lime).lineLimit(1).minimumScaleFactor(0.7)
+                                    Text("+120 ◈ за выполнение").font(.system(size: 10, weight: .bold))
+                                        .foregroundColor(UI.sun)
                                 }
                                 Spacer(minLength: 8)
-                                VStack(alignment: .trailing, spacing: 2) {
-                                    Text("+120 ◈").font(.system(size: 18, weight: .black)).foregroundColor(UI.sun)
-                                    Text("за выполнение цели").font(.system(size: 9))
-                                        .foregroundColor(UI.paper.opacity(0.7))
+                                VStack(alignment: .trailing, spacing: 1) {
+                                    Text("ТОП \(mode.shortTitle)").font(.system(size: 9, weight: .bold)).tracking(1)
+                                        .foregroundColor(UI.paper.opacity(0.65))
+                                    if top.isEmpty {
+                                        Text("—").font(.system(size: 20, weight: .black)).foregroundColor(UI.paper)
+                                    } else {
+                                        ForEach(0..<min(3, top.count), id: \.self) { i in
+                                            Text("\(i + 1). \(top[i])").font(.system(size: 16, weight: .black))
+                                                .foregroundColor(i == 0 ? UI.sun : UI.paper)
+                                        }
+                                    }
                                     if save.dailyStreak > 0 {
                                         Text("🔥 \(save.dailyStreak) \(daysWord(save.dailyStreak).lowercased())")
                                             .font(.system(size: 10, weight: .bold)).foregroundColor(UI.coral)
@@ -620,16 +757,25 @@ struct ContentView: View {
                     }
 
                     let nextTier = Content.seasonTiers.first { save.seasonXp < $0.xp }
-                    panel {
-                        Text("ЗАЧЕМ ИГРАТЬ").font(.system(size: 12, weight: .black)).tracking(1)
-                            .foregroundColor(UI.ink)
-                        Spacer().frame(height: 4)
-                        bodyText("Выполни цель забега — +120 жетонов. Закрывай контракты, качай сезон и открывай новые планеты.", UI.ink)
-                        if let tier = nextTier {
-                            Spacer().frame(height: 7)
-                            bar(Float(save.seasonXp) / Float(tier.xp), UI.coral,
-                                "ДО СЛЕДУЮЩЕГО УРОВНЯ СЕЗОНА: \(tier.xp - save.seasonXp) XP")
-                        }
+                    HStack(spacing: 6) {
+                        Text("+120 ◈\nЦЕЛЬ").font(.system(size: 10, weight: .black)).multilineTextAlignment(.center)
+                            .foregroundColor(UI.ink).frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(RoundedRectangle(cornerRadius: 14).fill(UI.sun))
+                            .overlay(RoundedRectangle(cornerRadius: 14).stroke(UI.ink, lineWidth: 1.5))
+                        Text(nextTier == nil ? "СЕЗОН МАКС"
+                             : "СЕЗОН \(save.seasonXp)/\(nextTier!.xp)")
+                            .font(.system(size: 10, weight: .black)).lineLimit(1).minimumScaleFactor(0.8)
+                            .foregroundColor(UI.ink).frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(RoundedRectangle(cornerRadius: 14).fill(UI.lime))
+                            .overlay(RoundedRectangle(cornerRadius: 14).stroke(UI.ink, lineWidth: 1.5))
+                        Text("ЖЕТОНЫ\n\(compactCredits(save.credits)) ◈")
+                            .font(.system(size: 10, weight: .black)).multilineTextAlignment(.center)
+                            .foregroundColor(UI.ink).frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(RoundedRectangle(cornerRadius: 14).fill(UI.paper))
+                            .overlay(RoundedRectangle(cornerRadius: 14).stroke(UI.ink, lineWidth: 1.5))
                     }
 
                     Text("ВЫЛЕТ").font(.system(size: 12, weight: .black)).tracking(1)
@@ -651,9 +797,10 @@ struct ContentView: View {
                             }
                         }
                     }
-                    bodyText("\(sector.subtitle) · Рекорд \(save.bestByMode[mode.id] ?? 0)", UI.ink)
+                    let topLine = top.prefix(3).map { String($0) }.joined(separator: " / ")
+                    bodyText("\(sector.subtitle) · Рекорд \(best) · Топ: \(topLine.isEmpty ? "—" : topLine)", UI.ink)
 
-                    wideButton("ПОЕХАЛИ  ▸") { startRun() }
+                    bigButton("ИГРАТЬ  ▸") { startRun() }
 
                     let docks: [(String, String, Screen)] = [
                         ("★", "ЛИГА", .league), ("◇", "ГАРАЖ", .hangar),
@@ -1110,7 +1257,7 @@ struct ContentView: View {
             .padding(14)
             .background(RoundedRectangle(cornerRadius: 16).fill(Color(hex: 0x2A0A18).opacity(0.98)))
             .overlay(RoundedRectangle(cornerRadius: 16).stroke(UI.coral.opacity(0.4), lineWidth: 1))
-            bodyText("Орбита 3.7 · Локальная игра без рекламы и сети")
+            bodyText("Орбита 3.8 · Локальная игра без рекламы и сети")
         }
     }
 
@@ -1244,6 +1391,18 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity).padding(.vertical, 15)
                 .background(RoundedRectangle(cornerRadius: 16).fill(accent))
                 .overlay(RoundedRectangle(cornerRadius: 16).stroke(UI.ink, lineWidth: 2))
+                .foregroundColor(UI.ink)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func bigButton(_ text: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(text).font(.system(size: 23, weight: .black)).tracking(1)
+                .lineLimit(1).minimumScaleFactor(0.8)
+                .frame(maxWidth: .infinity, minHeight: 64)
+                .background(RoundedRectangle(cornerRadius: 20).fill(UI.lime))
+                .overlay(RoundedRectangle(cornerRadius: 20).stroke(UI.ink, lineWidth: 2))
                 .foregroundColor(UI.ink)
         }
         .buttonStyle(.plain)

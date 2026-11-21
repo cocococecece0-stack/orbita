@@ -72,6 +72,8 @@ final class GameEngine: ObservableObject {
     var stars: [Star] = []
     var trail: [TrailPoint] = []
     var stats = RunStats()
+    /// Отдельная арена для режима «ШТАБЕЛЬ»: орбитальные сущности в нём не используются.
+    let blocks = BlockArena()
 
     private var minDim: CGFloat = 0
     private var spawnTimer: CGFloat = 0
@@ -138,6 +140,7 @@ final class GameEngine: ObservableObject {
     func startRun(_ newMode: Mode, sector newSector: Int, seed: Int) {
         rngState = UInt64(bitPattern: Int64(seed) ^ 0x5DEECE66D) & ~(UInt64(1) << 63)
         mode = newMode
+        blocks.reset { [weak self] in self?.rnd() ?? 0.5 }
         sectorId = max(0, min(newSector, Content.sectors.count - 1))
         asteroids.removeAll(); orbs.removeAll(); powerUps.removeAll()
         wormholes.removeAll(); wells.removeAll(); boss.removeAll()
@@ -177,6 +180,7 @@ final class GameEngine: ObservableObject {
     /// Тап: смена направления. Ядро механики не изменилось.
     func tap() {
         onEvent?(.tap)
+        guard mode != .stack else { return }
         if paused { paused = false; return }
         switch status {
         case .ready: start()
@@ -185,6 +189,36 @@ final class GameEngine: ObservableObject {
             reverseFlash = 1
         case .gameOver: break
         }
+    }
+
+    private func canBlockInput() -> Bool {
+        mode == .stack && status == .playing && !paused && draft == nil
+    }
+
+    func blockMove(_ direction: Int) {
+        if canBlockInput(), blocks.move(direction) { onEvent?(.blockMove(direction)) }
+    }
+
+    func blockRotate() {
+        if canBlockInput(), blocks.rotate() { onEvent?(.blockRotate) }
+    }
+
+    func blockHold() {
+        guard canBlockInput() else { return }
+        blocks.hold()
+        onEvent?(.blockHold)
+        if blocks.topOut { blockOver() }
+    }
+
+    func blockSoftDrop() {
+        if canBlockInput() { applyBlockStep(blocks.softDrop()) }
+    }
+
+    func blockHardDrop() {
+        guard canBlockInput() else { return }
+        let step = blocks.hardDrop()
+        if step.dropped > 0 { onEvent?(.blockDrop(step.dropped)) }
+        applyBlockStep(step)
     }
 
     func pause() { if status == .playing { paused = true } }
@@ -221,6 +255,15 @@ final class GameEngine: ObservableObject {
         updateParticles(step)
         updateTrail(step)
         guard running else { return }
+        if mode == .stack {
+            applyBlockStep(blocks.update(step))
+            if status == .playing && !objectiveRewarded && objectiveDone() {
+                objectiveRewarded = true
+                resonanceFlash = 1
+                addBlockPoints(200)
+            }
+            return
+        }
         if draftRound < 6 && time >= nextDraftAt { openDraft(); return }
         if hitStop > 0 { hitStop = max(0, hitStop - step); return }
         eventCooldown = max(0, eventCooldown - step)
@@ -543,6 +586,59 @@ final class GameEngine: ObservableObject {
         if combo > maxCombo { maxCombo = combo; stats.maxCombo = combo }
     }
 
+    private func addBlockPoints(_ base: Int) {
+        let boosted = max(1, Int(CGFloat(base) * scoreBoost + 0.5))
+        let gained = boosted * multiplier * (doubleTimer > 0 ? 2 : 1)
+        let sum = score.addingReportingOverflow(gained)
+        score = sum.overflow ? Int.max / 4 : min(Int.max / 4, sum.partialValue)
+        stats.score = score
+        if score > best {
+            best = score
+            if !isNewRecord { isNewRecord = true; onNewRecord?(score) }
+        }
+    }
+
+    /// Применяет результат шага «ШТАБЕЛЯ» к общему прогрессу забега.
+    private func applyBlockStep(_ step: BlockStep) {
+        if step.dropped > 0 { addBlockPoints(step.dropped * 2) }
+        if step.cleared > 0 {
+            let count = max(1, min(4, step.cleared))
+            stats.orbs += step.cleared
+            orbsCollected += step.cleared
+            combo += 1
+            if combo > maxCombo { maxCombo = combo; stats.maxCombo = combo }
+            multiplier = min(5, 1 + combo / 3)
+            fever = multiplier >= 4
+            let table = [0, 100, 300, 500, 800]
+            let base = table[count] * blocks.level
+            addBlockPoints(base + (count == 4 ? 200 : 0))
+            flash = max(flash, 0.55)
+            if !reducedMotion { shake = 0.35 }
+            onEvent?(.blockClear(step.cleared))
+        } else if step.locked {
+            combo = 0
+            multiplier = 1
+            fever = false
+        }
+        level = blocks.level
+        stats.level = level
+        if step.toppedOut { blockOver() }
+    }
+
+    private func blockOver() {
+        guard status != .gameOver else { return }
+        status = .gameOver
+        completed = false
+        paused = false
+        draft = nil
+        stats.seconds = Int(elapsed)
+        flash = 1
+        if !reducedMotion { shake = 0.7 }
+        burst(centerX, centerY, count: 30, color: Color(hex: 0xD8FF3E), power: 1.2)
+        onRunEnd?(stats)
+        onEvent?(.blockTopOut)
+    }
+
     private func addPoints(_ base: Int) {
         let boosted = max(1, Int(CGFloat(base) * scoreBoost + 0.5))
         let gained = boosted * multiplier * (doubleTimer > 0 ? 2 : 1)
@@ -565,7 +661,13 @@ final class GameEngine: ObservableObject {
     /// Цель забега: та же формула на обеих платформах.
     func objective() -> Objective { Content.objective(mode, sectorId: sectorId) }
 
-    func objectiveValue() -> Int { objective().field == "orbs" ? orbsCollected : score }
+    func objectiveValue() -> Int {
+        switch objective().field {
+        case "orbs": return orbsCollected
+        case "lines": return stats.orbs
+        default: return score
+        }
+    }
 
     func objectiveDone() -> Bool { objectiveValue() >= objective().target }
 
@@ -866,6 +968,7 @@ final class GameEngine: ObservableObject {
         add("boss_1", stats.bossKills >= 1)
         add("boss_5", stats.bossKills >= 5)
         add("worm_5", stats.wormholes >= 5)
+        add("stack_40", mode == .stack && stats.orbs >= 40)
         add("objective_done", objectiveDone())
         return out
     }

@@ -9,6 +9,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitPointerEvent
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -62,6 +65,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -94,6 +98,7 @@ import com.example.orbit.game.GameEvent
 import com.example.orbit.game.GameStatus
 import com.example.orbit.game.Mode
 import com.example.orbit.game.Palette
+import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -227,6 +232,15 @@ fun GameScreen(viewModel: GameViewModel = viewModel()) {
         engine.onEvent = { event ->
             when (event) {
                 GameEvent.Tap -> { sound.play("tap"); haptic(HapticFeedbackType.TextHandleMove) }
+                is GameEvent.BlockMove -> sound.play("tap", 1.18f, 0.16f)
+                GameEvent.BlockRotate -> sound.play("tap", 1.35f, 0.22f)
+                GameEvent.BlockHold -> { sound.play("powerup", 1.25f, 0.35f); haptic(HapticFeedbackType.TextHandleMove) }
+                is GameEvent.BlockDrop -> { sound.play("dodge", 1f, 0.28f); haptic(HapticFeedbackType.TextHandleMove) }
+                is GameEvent.BlockClear -> {
+                    sound.play(if (event.lines >= 4) "victory" else "reward", 1f, 0.8f)
+                    haptic(HapticFeedbackType.LongPress)
+                }
+                GameEvent.BlockTopOut -> { sound.play("crash"); haptic(HapticFeedbackType.LongPress) }
                 is GameEvent.Dodge -> sound.play("dodge", 1f + event.combo * 0.045f, 0.45f)
                 GameEvent.Orb -> sound.play("orb")
                 is GameEvent.GoldenOrb -> { sound.play("reward", 1.2f, 0.7f); haptic(HapticFeedbackType.TextHandleMove) }
@@ -301,7 +315,57 @@ fun GameScreen(viewModel: GameViewModel = viewModel()) {
                     .onSizeChanged { engine.resize(it.width, it.height) }
                     .then(
                         if (engine.status == GameStatus.Playing && !engine.paused && engine.draft == null && !confirmExit) {
-                            Modifier.pointerInput(engine) { detectTapGestures { engine.tap() } }
+                            Modifier.pointerInput(engine) {
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    var accX = 0f
+                                    var accY = 0f
+                                    var moved = false
+                                    while (true) {
+                                        val event = awaitPointerEvent(PointerEventPass.Main)
+                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                        if (!change.pressed) break
+                                        val dx = change.position.x - change.previousPosition.x
+                                        val dy = change.position.y - change.previousPosition.y
+                                        if (engine.mode == Mode.Stack) {
+                                            accX += dx
+                                            accY += dy
+                                            while (abs(accX) >= 20f) {
+                                                val dir = if (accX > 0f) 1 else -1
+                                                engine.blockMove(dir)
+                                                accX -= dir * 20f
+                                                moved = true
+                                            }
+                                            while (accY >= 26f) {
+                                                engine.blockSoftDrop()
+                                                accY -= 26f
+                                                moved = true
+                                            }
+                                            if (accY <= -44f) {
+                                                engine.blockRotate()
+                                                accY += 44f
+                                                moved = true
+                                            }
+                                        }
+                                    }
+                                    if (!moved) {
+                                        if (engine.mode == Mode.Stack) {
+                                            val x = down.position.x
+                                            val y = down.position.y
+                                            val w = size.width.toFloat()
+                                            val h = size.height.toFloat()
+                                            when {
+                                                x < w * 0.22f -> engine.blockMove(-1)
+                                                x > w * 0.78f -> engine.blockMove(1)
+                                                y > h * 0.74f -> engine.blockHardDrop()
+                                                else -> engine.blockRotate()
+                                            }
+                                        } else {
+                                            engine.tap()
+                                        }
+                                    }
+                                }
+                            }
                         } else Modifier,
                     ),
             ) {
@@ -408,16 +472,19 @@ private fun InGameHud(
     onToggleMute: () -> Unit,
     onHome: () -> Unit,
 ) {
-    Column(modifier = Modifier.fillMaxSize().statusBarsPadding().padding(16.dp)) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            StatBlock("СЧЁТ", "${engine.score}", if (engine.multiplier > 1) "x${engine.multiplier}" else null, Neon)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Box(modifier = Modifier.fillMaxSize().statusBarsPadding().padding(16.dp)) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.SpaceBetween) {
+            StatBlock("СЧЁТ", "${engine.score}", if (engine.multiplier > 1) "x${engine.multiplier}" else null,
+                Neon, valueSize = 52.sp, highlight = true)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 RoundButton(if (settings.muted) "×" else "♪", onToggleMute)
                 RoundButton("II", onPause)
                 RoundButton("⌂", onHome)
             }
             val record = if (engine.status == GameStatus.Playing) maxOf(best, engine.best) else best
-            StatBlock("РЕКОРД", "$record", null, Amber, alignEnd = true)
+            StatBlock("РЕКОРД", "$record", null, Amber, alignEnd = true, valueSize = 16.sp)
         }
 
         if (engine.timeLeft > 0f || engine.combo > 0) {
@@ -442,7 +509,15 @@ private fun InGameHud(
         }
 
         Spacer(Modifier.height(6.dp))
-        Bar(engine.resonance.coerceIn(0f, 1f), Neon, "РЕЗОНАНС ${(engine.resonance * 100f).toInt()}%")
+        if (engine.mode == Mode.Stack) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                EffectChip("ЛИНИИ ${engine.blocks.lines}", Neon)
+                Spacer(Modifier.width(5.dp))
+                EffectChip("УРОВЕНЬ ${engine.level}", Amber)
+            }
+        } else {
+            Bar(engine.resonance.coerceIn(0f, 1f), Neon, "РЕЗОНАНС ${(engine.resonance * 100f).toInt()}%")
+        }
 
         val chips = mutableListOf<Pair<String, Color>>()
         if (engine.shield) chips += "ЩИТ" to Palette.Shield
@@ -478,18 +553,56 @@ private fun InGameHud(
         } else if (engine.levelUpFlash > 0f) {
             Banner("УРОВЕНЬ ${engine.level}", Amber, engine.levelUpFlash)
         }
-        Spacer(Modifier.height(64.dp))
+        Spacer(Modifier.height(if (engine.mode == Mode.Stack) 88.dp else 48.dp))
+    }
+    if (engine.mode == Mode.Stack) {
+        StackControls(Modifier.align(Alignment.BottomCenter), engine)
+    }
     }
 }
 
 @Composable
-private fun StatBlock(label: String, value: String, extra: String?, color: Color, alignEnd: Boolean = false) {
+private fun StatBlock(
+    label: String, value: String, extra: String?, color: Color,
+    alignEnd: Boolean = false, valueSize: androidx.compose.ui.unit.TextUnit = 30.sp,
+    highlight: Boolean = false,
+) {
     Column(horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start) {
         Text(label, color = Paper.copy(alpha = 0.75f), fontSize = 10.sp, letterSpacing = 3.sp,
             maxLines = 1, softWrap = false)
-        Text(value, color = Paper, fontSize = 30.sp, fontWeight = FontWeight.Black,
-            maxLines = 1, softWrap = false)
+        Text(value, color = if (highlight) color else Paper, fontSize = valueSize,
+            fontWeight = FontWeight.Black, maxLines = 1, softWrap = false)
         if (extra != null) Text(extra, color = color, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+            maxLines = 1, softWrap = false)
+    }
+}
+
+@Composable
+private fun StackControls(modifier: Modifier, engine: GameEngine) {
+    Surface(
+        color = Ink.copy(alpha = 0.88f), shape = RoundedCornerShape(22.dp),
+        border = BorderStroke(2.dp, Neon), modifier = modifier,
+    ) {
+        Row(modifier = Modifier.padding(6.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            ControlKey("◀") { engine.blockMove(-1) }
+            ControlKey("⟳") { engine.blockRotate() }
+            ControlKey("▶") { engine.blockMove(1) }
+            ControlKey("▼") { engine.blockSoftDrop() }
+            ControlKey("⇣", accent = Amber) { engine.blockHardDrop() }
+            ControlKey("HOLD", accent = Violet, wide = true) { engine.blockHold() }
+        }
+    }
+}
+
+@Composable
+private fun ControlKey(label: String, accent: Color = Paper, wide: Boolean = false, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier.size(width = if (wide) 58.dp else 44.dp, height = 44.dp)
+            .clip(RoundedCornerShape(13.dp)).background(accent.copy(alpha = 0.18f))
+            .border(1.5.dp, accent, RoundedCornerShape(13.dp)).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, color = accent, fontSize = if (wide) 10.sp else 16.sp, fontWeight = FontWeight.Black,
             maxLines = 1, softWrap = false)
     }
 }
@@ -580,8 +693,12 @@ private fun GameOverlays(
                 }, Violet)
             }
             StatRow(
-                "Уровень ${engine.level} · Сферы ${engine.orbsCollected} · Комбо x${engine.maxCombo} · " +
-                    "Уклонения ${engine.stats.dodges} · Боссы ${engine.stats.bossKills}",
+                "Уровень ${engine.level} · " +
+                    (if (engine.mode == Mode.Stack)
+                        "Линии ${engine.orbsCollected} · Комбо x${engine.maxCombo} · Строк ${engine.blocks.lines}"
+                    else
+                        "Сферы ${engine.orbsCollected} · Комбо x${engine.maxCombo} · " +
+                            "Уклонения ${engine.stats.dodges} · Боссы ${engine.stats.bossKills}"),
             )
             if (reward != null) {
                 Spacer(Modifier.height(12.dp))
@@ -663,6 +780,8 @@ private fun HubScreen(
     val shipTint = shipColor(save.equippedShip, settings.colorblind)
     val briefing = Content.objective(mode, sector.id)
     val nextTier = Content.seasonTiers.firstOrNull { save.seasonXp < it.xp }
+    val best = save.bestByMode[mode.id] ?: 0
+    val top = save.topByMode[mode.id].orEmpty()
 
     Column(
         modifier = Modifier.fillMaxSize().statusBarsPadding().imePadding().navigationBarsPadding()
@@ -670,30 +789,34 @@ private fun HubScreen(
             .padding(horizontal = 16.dp, vertical = 14.dp),
     ) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("ORBITA", color = Ink, fontSize = 28.sp, fontWeight = FontWeight.Black,
-                letterSpacing = (-1).sp, maxLines = 1, softWrap = false)
-            Spacer(Modifier.width(6.dp))
-            Surface(color = Pink, shape = RoundedCornerShape(8.dp), border = BorderStroke(1.5.dp, Ink)) {
-                Text("3.7", color = Paper, fontSize = 10.sp, fontWeight = FontWeight.Black,
-                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp))
+            Text("ORBITA", color = Ink, fontSize = 42.sp, fontWeight = FontWeight.Black,
+                letterSpacing = (-3).sp, maxLines = 1, softWrap = false)
+            Spacer(Modifier.width(5.dp))
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Surface(color = Pink, shape = RoundedCornerShape(8.dp), border = BorderStroke(1.5.dp, Ink)) {
+                    Text("3.8", color = Paper, fontSize = 10.sp, fontWeight = FontWeight.Black,
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp))
+                }
+                Text(mode.short, color = Ink, fontSize = 8.sp, fontWeight = FontWeight.Black,
+                    maxLines = 1, softWrap = false)
             }
             Spacer(Modifier.weight(1f))
             Surface(color = Amber, shape = RoundedCornerShape(50), border = BorderStroke(1.5.dp, Ink)) {
                 Text("◆ ${compactCurrency(save.credits)}", color = Ink, fontSize = 12.sp,
-                    fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp),
+                    fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                     maxLines = 1, softWrap = false)
             }
-            Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.width(5.dp))
             Surface(color = Ink, shape = RoundedCornerShape(50)) {
                 Text("LV ${save.playerLevel}", color = Neon, fontSize = 11.sp, fontWeight = FontWeight.Black,
-                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp), maxLines = 1, softWrap = false)
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), maxLines = 1, softWrap = false)
             }
         }
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(10.dp))
         Box(
-            modifier = Modifier.fillMaxWidth().height(206.dp).clip(RoundedCornerShape(24.dp))
-                .background(Ink).border(3.dp, Neon, RoundedCornerShape(24.dp)),
+            modifier = Modifier.fillMaxWidth().height(252.dp).clip(RoundedCornerShape(26.dp))
+                .background(Ink).border(3.dp, Neon, RoundedCornerShape(26.dp)),
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 drawHubHero(
@@ -706,26 +829,42 @@ private fun HubScreen(
                     reducedMotion = settings.reducedMotion,
                 )
             }
-            Surface(color = Pink, shape = RoundedCornerShape(0.dp, 0.dp, 0.dp, 14.dp)) {
+            Text(
+                "ORBITA", color = Neon.copy(alpha = 0.13f), fontSize = 82.sp,
+                fontWeight = FontWeight.Black, letterSpacing = (-6).sp,
+                maxLines = 1, softWrap = false, modifier = Modifier.align(Alignment.TopCenter).padding(top = 6.dp),
+            )
+            Column(modifier = Modifier.align(Alignment.TopStart).padding(14.dp)) {
+                Text(mode.title, color = Paper, fontSize = 19.sp, fontWeight = FontWeight.Black,
+                    maxLines = 1, softWrap = false)
+                Text(seasonMod.first, color = Neon, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text(sector.name, color = Paper.copy(alpha = 0.65f), fontSize = 9.sp, maxLines = 1)
+            }
+            Surface(color = Pink, shape = RoundedCornerShape(0.dp, 0.dp, 0.dp, 14.dp),
+                modifier = Modifier.align(Alignment.TopEnd)) {
                 Text("СЕЗОН ${save.seasonId}", color = Paper, fontSize = 10.sp, fontWeight = FontWeight.Black,
                     letterSpacing = 1.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
             }
-            Column(modifier = Modifier.align(Alignment.TopStart).padding(14.dp)) {
-                Text("НОВЫЙ РЕЙД", color = Neon, fontSize = 11.sp, fontWeight = FontWeight.Black,
-                    letterSpacing = 2.sp)
-                Text(seasonMod.first, color = Paper.copy(alpha = 0.8f), fontSize = 10.sp)
-            }
             Column(modifier = Modifier.align(Alignment.BottomStart).padding(14.dp)) {
-                Text("ЦЕЛЬ ВЫЛЕТА", color = Paper.copy(alpha = 0.7f), fontSize = 9.sp,
+                Text("ЦЕЛЬ", color = Paper.copy(alpha = 0.7f), fontSize = 9.sp,
                     fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-                Text(briefing.title, color = Paper, fontSize = 14.sp, fontWeight = FontWeight.Black)
-                Text(briefing.target.toString(), color = Neon, fontSize = 30.sp, fontWeight = FontWeight.Black,
-                    maxLines = 1, softWrap = false)
+                Text(briefing.title, color = Paper, fontSize = 12.sp, fontWeight = FontWeight.Black)
+                Text(briefing.target.toString(), color = Neon, fontSize = 54.sp, fontWeight = FontWeight.Black,
+                    lineHeight = 54.sp, maxLines = 1, softWrap = false)
+                Text("+120 ◈ за выполнение", color = Amber, fontSize = 10.sp, fontWeight = FontWeight.Bold)
             }
             Column(modifier = Modifier.align(Alignment.BottomEnd).padding(14.dp),
                 horizontalAlignment = Alignment.End) {
-                Text("+120 ◈", color = Amber, fontSize = 18.sp, fontWeight = FontWeight.Black)
-                Text("за выполнение цели", color = Paper.copy(alpha = 0.7f), fontSize = 9.sp)
+                Text("ТОП ${mode.short}", color = Paper.copy(alpha = 0.65f), fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                if (top.isEmpty()) {
+                    Text("—", color = Paper, fontSize = 20.sp, fontWeight = FontWeight.Black)
+                } else {
+                    top.take(3).forEachIndexed { index, value ->
+                        Text("${index + 1}. $value", color = if (index == 0) Amber else Paper,
+                            fontSize = 16.sp, fontWeight = FontWeight.Black, maxLines = 1)
+                    }
+                }
                 if (save.dailyStreak > 0) Text(
                     "🔥 ${save.dailyStreak} ${daysWord(save.dailyStreak)}",
                     color = Pink, fontSize = 10.sp, fontWeight = FontWeight.Bold,
@@ -769,15 +908,26 @@ private fun HubScreen(
         }
 
         Spacer(Modifier.height(12.dp))
-        Panel {
-            Text("ЗАЧЕМ ИГРАТЬ", color = Ink, fontSize = 12.sp, fontWeight = FontWeight.Black,
-                letterSpacing = 1.sp)
-            Spacer(Modifier.height(4.dp))
-            Body("Выполни цель забега — +120 жетонов. Закрывай контракты, качай сезон и открывай новые планеты.", Ink)
-            if (nextTier != null) {
-                Spacer(Modifier.height(7.dp))
-                Bar((save.seasonXp.toFloat() / nextTier.xp).coerceIn(0f, 1f), Pink,
-                    "ДО СЛЕДУЮЩЕГО УРОВНЯ СЕЗОНА: ${nextTier.xp - save.seasonXp} XP")
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Surface(color = Amber, shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.5.dp, Ink), modifier = Modifier.weight(1f)) {
+                Text("+120 ◈\nЦЕЛЬ", color = Ink, fontSize = 10.sp, fontWeight = FontWeight.Black,
+                    textAlign = TextAlign.Center, modifier = Modifier.padding(vertical = 8.dp), maxLines = 2)
+            }
+            Surface(color = Neon, shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.5.dp, Ink), modifier = Modifier.weight(1.4f)) {
+                Text(
+                    if (nextTier != null) "СЕЗОН ${save.seasonXp}/${nextTier.xp}"
+                    else "СЕЗОН МАКС",
+                    color = Ink, fontSize = 10.sp, fontWeight = FontWeight.Black,
+                    textAlign = TextAlign.Center, modifier = Modifier.padding(vertical = 8.dp), maxLines = 1,
+                )
+            }
+            Surface(color = Paper, shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.5.dp, Ink), modifier = Modifier.weight(1f)) {
+                Text("ЖЕТОНЫ\n${compactCurrency(save.credits)} ◈", color = Ink, fontSize = 10.sp,
+                    fontWeight = FontWeight.Black, textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(vertical = 8.dp), maxLines = 2)
             }
         }
 
@@ -803,10 +953,18 @@ private fun HubScreen(
             }
         }
         Spacer(Modifier.height(5.dp))
-        Body("${sector.subtitle} · Рекорд ${save.bestByMode[mode.id] ?: 0}", Ink)
+        Body("${sector.subtitle} · Рекорд $best · Топ: ${top.take(3).joinToString(" / ").ifEmpty { "—" }}", Ink)
 
-        Spacer(Modifier.height(14.dp))
-        WideButton("ПОЕХАЛИ  ▸", onStart)
+        Spacer(Modifier.height(12.dp))
+        Button(
+            onClick = onStart,
+            modifier = Modifier.fillMaxWidth().height(64.dp),
+            shape = RoundedCornerShape(20.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Neon, contentColor = Ink),
+        ) {
+            Text("ИГРАТЬ  ▸", color = Ink, fontSize = 23.sp, fontWeight = FontWeight.Black,
+                letterSpacing = 1.sp)
+        }
 
         Spacer(Modifier.height(14.dp))
         val docks = listOf(
@@ -1273,7 +1431,7 @@ private fun SettingsScreen(
             }
         }
         Spacer(Modifier.height(24.dp))
-        Body("Орбита 3.7 · Локальная игра без рекламы и сети")
+        Body("Орбита 3.8 · Локальная игра без рекламы и сети")
     }
 }
 

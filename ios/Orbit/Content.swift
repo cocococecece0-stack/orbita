@@ -3,7 +3,7 @@ import Foundation
 /// Статический контент: режимы, сектора, предметы, достижения. Зеркально совпадает с Android Content.kt.
 
 enum Mode: String, CaseIterable {
-    case classic, zen, sprint, survival, daily
+    case classic, zen, sprint, survival, daily, stack
 
     var id: String { rawValue }
 
@@ -14,6 +14,7 @@ enum Mode: String, CaseIterable {
         case .sprint: return "СПРИНТ"
         case .survival: return "ВЫЖИВАНИЕ"
         case .daily: return "ДЕЙЛИ"
+        case .stack: return "ШТАБЕЛЬ"
         }
     }
 
@@ -25,6 +26,7 @@ enum Mode: String, CaseIterable {
         case .sprint: return "СПРИНТ"
         case .survival: return "ВЫЖИВ"
         case .daily: return "ДЕЙЛИ"
+        case .stack: return "ШТАБ"
         }
     }
 
@@ -35,6 +37,7 @@ enum Mode: String, CaseIterable {
         case .sprint: return "60 секунд на максимальный счёт. Удар стоит 3 секунды."
         case .survival: return "Плотность растёт постоянно. Ошибка — конец."
         case .daily: return "Фиксированный сид дня. Общий вызов для всех."
+        case .stack: return "Падающие блоки: закрывай строки, держи серию и не допускай верха."
         }
     }
 
@@ -172,6 +175,7 @@ enum Content {
         switch mode {
         case .zen: return Objective(title: "СОБРАТЬ СФЕР", target: 18 + tier * 4, field: "orbs")
         case .sprint: return Objective(title: "НАБРАТЬ ОЧКОВ", target: 1200 + tier * 300, field: "score")
+        case .stack: return Objective(title: "ЗАКРЫТЬ СТРОК", target: 10 + tier * 3, field: "lines")
         default: return Objective(title: "НАБРАТЬ ОЧКОВ", target: 600 + tier * 200, field: "score")
         }
     }
@@ -227,6 +231,7 @@ enum Content {
         AchievementDef(id: "boss_1", title: "ОХОТНИК", detail: "Уничтожить ядро босса", reward: 180, xp: 90),
         AchievementDef(id: "boss_5", title: "УБИЙЦА ГИГАНТОВ", detail: "5 ядер за один забег", reward: 480, xp: 240),
         AchievementDef(id: "worm_5", title: "ПУТЕШЕСТВЕННИК", detail: "5 червоточин за забег", reward: 130, xp: 65),
+        AchievementDef(id: "stack_40", title: "АРХИТЕКТОР", detail: "40 строк в штабеле", reward: 260, xp: 130),
         AchievementDef(id: "all_modes", title: "УНИВЕРСАЛ", detail: "Сыграть во все режимы", reward: 200, xp: 100),
         AchievementDef(id: "sector_7", title: "ТАЙНАЯ ДОРОГА", detail: "Открыть секрет сектор", reward: 500, xp: 250),
         AchievementDef(id: "daily_7", title: "ДИСЦИПЛИНА", detail: "7 дней подряд с заданиями", reward: 350, xp: 175),

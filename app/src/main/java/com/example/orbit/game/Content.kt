@@ -7,7 +7,8 @@ enum class Mode(val id: String, val title: String, val short: String, val detail
     Zen("zen", "ДЗЕН", "ДЗЕН", "90 секунд без астероидов. Собирай сферы и бонусы.", 90),
     Sprint("sprint", "СПРИНТ", "СПРИНТ", "60 секунд на максимальный счёт. Удар стоит 3 секунды.", 60),
     Survival("survival", "ВЫЖИВАНИЕ", "ВЫЖИВ", "Плотность растёт постоянно. Ошибка — конец.", 0),
-    Daily("daily", "ДЕЙЛИ", "ДЕЙЛИ", "Фиксированный сид дня. Общий вызов для всех.", 0);
+    Daily("daily", "ДЕЙЛИ", "ДЕЙЛИ", "Фиксированный сид дня. Общий вызов для всех.", 0),
+    Stack("stack", "ШТАБЕЛЬ", "ШТАБ", "Падающие блоки: закрывай строки, держи серию и не допускай верха.", 0);
 
     companion object {
         fun from(id: String?): Mode = entries.firstOrNull { it.id == id } ?: Classic
@@ -86,6 +87,7 @@ object Content {
         return when (mode) {
             Mode.Zen -> Objective("СОБРАТЬ СФЕР", 18 + tier * 4, "orbs")
             Mode.Sprint -> Objective("НАБРАТЬ ОЧКОВ", 1200 + tier * 300, "score")
+            Mode.Stack -> Objective("ЗАКРЫТЬ СТРОК", 10 + tier * 3, "lines")
             else -> Objective("НАБРАТЬ ОЧКОВ", 600 + tier * 200, "score")
         }
     }
@@ -141,6 +143,7 @@ object Content {
         Achievement("boss_1", "ОХОТНИК", "Уничтожить ядро босса", 180, 90),
         Achievement("boss_5", "УБИЙЦА ГИГАНТОВ", "5 ядер за один забег", 480, 240),
         Achievement("worm_5", "ПУТЕШЕСТВЕННИК", "5 червоточин за забег", 130, 65),
+        Achievement("stack_40", "АРХИТЕКТОР", "40 строк в штабеле", 260, 130),
         Achievement("all_modes", "УНИВЕРСАЛ", "Сыграть во все режимы", 200, 100),
         Achievement("sector_7", "ТАЙНАЯ ДОРОГА", "Открыть секрет сектор", 500, 250),
         Achievement("daily_7", "ДИСЦИПЛИНА", "7 дней подряд с заданиями", 350, 175),

@@ -28,6 +28,12 @@ enum OrbKind { case normal, golden, artifact }
 
 enum GameEvent {
     case tap
+    case blockMove(Int)
+    case blockRotate
+    case blockHold
+    case blockDrop(Int)
+    case blockClear(Int)
+    case blockTopOut
     case dodge(Int)
     case orb
     case goldenOrb(Int)
