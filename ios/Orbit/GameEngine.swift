@@ -148,6 +148,7 @@ final class GameEngine: ObservableObject {
         spawnTimer = 0.7; orbTimer = 2.2; powerTimer = 5
         stormTimer = 20; flareTimer = 16; mineTimer = 9
         portalTimer = 12; wellTimer = 18; lastBossLevel = 0; nextBossLevel = 5
+        orbSpawnCursor = 0
         time = 0; shake = 0; reverseFlash = 0; speedLevel = 0
         fever = false; completed = false; reviveAvailable = false
         timeLeft = mode.seconds > 0 ? CGFloat(mode.seconds) + (upgradeTime ? 8 : 0) : -1
@@ -373,7 +374,8 @@ final class GameEngine: ObservableObject {
                 if a.dead { continue }
                 onEvent?(.dodge(combo))
             }
-            if a.distance < planetRadius * 0.35 {
+            // Угроза завершает полёт на своей точке орбиты, а не в общем центре.
+            if a.distance <= orbitRadius * 0.95 {
                 burst(ax, ay, count: 6, color: Palette.asteroid, power: 0.45)
                 a.dead = true
             }
@@ -635,7 +637,10 @@ final class GameEngine: ObservableObject {
         let v = rnd()
         let kind: OrbKind = v < 0.04 ? .artifact : (v < 0.20 ? .golden : .normal)
         let sprite = kind == .normal ? 0 : (kind == .golden ? 1 : 2)
-        orbs.append(Orb(angle: rnd() * tau, kind: kind, sprite: sprite))
+        // Золотой угол разносит новые сферы по разным сторонам орбиты.
+        let angle = norm(orbSpawnCursor + (rnd() - 0.5) * 0.35)
+        orbSpawnCursor = norm(orbSpawnCursor + 2.3999632)
+        orbs.append(Orb(angle: angle, kind: kind, sprite: sprite))
     }
 
     private func spawnPowerUp() {
@@ -795,6 +800,8 @@ final class GameEngine: ObservableObject {
     func ghost() -> [CGFloat] { Array(ghostBuffer.prefix(ghostCount)) }
 
     private var rngState: UInt64 = 1
+    /// Счётчик «золотого угла»: сферы равномерно распределяются по орбите, а не в одной точке.
+    private var orbSpawnCursor: CGFloat = 0
 
     private func rnd() -> CGFloat {
         rngState = rngState &* 6364136223846793005 &+ 1442695040888963407

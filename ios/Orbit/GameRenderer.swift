@@ -382,14 +382,16 @@ extension GameEngine {
             let x = centerX + cos(asteroid.angle) * asteroid.distance
             let y = centerY + sin(asteroid.angle) * asteroid.distance
             let center = CGPoint(x: x, y: y)
-            // Тонкий радиальный коридор: угроза летит строго на орбиту и планету.
+            // Тонкий коридор показывает, что угроза летит на свою точку орбиты.
             if asteroid.distance > orbitRadius * 0.9 && asteroid.kind != .bolt {
+                let impact = CGPoint(x: centerX + cos(asteroid.angle) * orbitRadius,
+                                     y: centerY + sin(asteroid.angle) * orbitRadius)
                 var lane = Path()
-                lane.move(to: CGPoint(x: centerX, y: centerY))
+                lane.move(to: impact)
                 lane.addLine(to: center)
                 context.stroke(lane, with: .linearGradient(
                     Gradient(colors: [Color.clear, (colorblind ? RenderColors.hazardHot : Palette.danger).opacity(0.13)]),
-                    startPoint: CGPoint(x: centerX, y: centerY), endPoint: center),
+                    startPoint: impact, endPoint: center),
                     style: StrokeStyle(lineWidth: 1))
             }
             switch asteroid.kind {

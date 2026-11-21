@@ -205,6 +205,7 @@ class GameEngine {
         spawnTimer = 0.7f; orbTimer = 2.2f; powerTimer = 5f
         stormTimer = 20f; flareTimer = 16f; mineTimer = 9f
         portalTimer = 12f; wellTimer = 18f; lastBossLevel = 0; nextBossLevel = 5
+        orbSpawnCursor = 0f
         time = 0f; shake = 0f; reverseFlash = 0f; speedLevel = 0f
         fever = false; completed = false; reviveAvailable = false
         timeLeft = if (mode.seconds > 0) mode.seconds.toFloat() + if (upgradeTime) 8f else 0f else -1f
@@ -440,7 +441,8 @@ class GameEngine {
                 if (a.dead) continue
                 onEvent(GameEvent.Dodge(combo))
             }
-            if (a.distance < planetRadius * 0.35f) {
+            // Угроза завершает полёт на своей точке орбиты, а не в общем центре.
+            if (a.distance <= orbitRadius * 0.95f) {
                 burst(ax, ay, 6, Palette.Asteroid, 0.45f)
                 a.dead = true
             }
@@ -724,7 +726,10 @@ class GameEngine {
             else -> OrbKind.Normal
         }
         val sprite = when (kind) { OrbKind.Normal -> 0; OrbKind.Golden -> 1; OrbKind.Artifact -> 2 }
-        orbs += Orb(rnd() * TAU, kind, sprite)
+        // Золотой угол разносит новые сферы по разным сторонам орбиты.
+        val angle = norm(orbSpawnCursor + (rnd() - 0.5f) * 0.35f)
+        orbSpawnCursor = norm(orbSpawnCursor + 2.3999632f)
+        orbs += Orb(angle, kind, sprite)
     }
 
     private fun spawnPowerUp() {
@@ -890,6 +895,8 @@ class GameEngine {
     }
 
     private var rngState: Long = 1L
+    /** Счётчик «золотого угла»: сферы равномерно распределяются по орбите, а не в одной точке. */
+    private var orbSpawnCursor = 0f
 
     private companion object {
         const val TAU = 6.2831855f

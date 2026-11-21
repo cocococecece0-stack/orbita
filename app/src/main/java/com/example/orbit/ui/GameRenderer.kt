@@ -477,15 +477,19 @@ private fun DrawScope.drawAsteroids(engine: GameEngine, art: GameArt, colorblind
         val x = engine.centerX + cos(asteroid.angle) * asteroid.distance
         val y = engine.centerY + sin(asteroid.angle) * asteroid.distance
         val center = Offset(x, y)
-        // Тонкий радиальный «коридор» показывает, что угрога летит строго на орбиту/планету.
+        // Тонкий коридор показывает, что угроза летит на свою точку орбиты.
         if (asteroid.distance > engine.orbitRadius * 0.9f && asteroid.kind != AsteroidKind.Bolt) {
+            val impact = Offset(
+                engine.centerX + cos(asteroid.angle) * engine.orbitRadius,
+                engine.centerY + sin(asteroid.angle) * engine.orbitRadius,
+            )
             drawLine(
                 brush = Brush.linearGradient(
                     colors = listOf(Color.Transparent, hazard.copy(alpha = 0.13f)),
-                    start = Offset(engine.centerX, engine.centerY),
+                    start = impact,
                     end = center,
                 ),
-                start = Offset(engine.centerX, engine.centerY),
+                start = impact,
                 end = center,
                 strokeWidth = 1.dp.toPx(),
             )
