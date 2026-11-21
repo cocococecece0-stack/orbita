@@ -40,6 +40,7 @@ export class Renderer {
   private cssHeight = 1;
   private insets: SafeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
   private contextLost = false;
+  private view = { width: 1, height: 1 };
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -68,6 +69,18 @@ export class Renderer {
 
   attach(loop: GameLoop): void {
     this.loop = loop;
+  }
+
+  /** Доступ к GL для инстанс-рендера сущностей. */
+  getGl(): WebGL2RenderingContext {
+    return this.gl;
+  }
+
+  /** Текущий размер framebuffer в физических пикселях. */
+  getView(): { width: number; height: number } {
+    this.view.width = this.canvas.width;
+    this.view.height = this.canvas.height;
+    return this.view;
   }
 
   getLoop(): GameLoop | null {
