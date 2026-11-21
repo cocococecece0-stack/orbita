@@ -477,7 +477,7 @@ struct ContentView: View {
                 ForEach(Content.shop.filter { $0.category == "trail" }, id: \.id) { item in
                     let owned = save.inventory.contains(item.id)
                     choiceChip(owned ? item.title : "🔒 \(item.title)", save.equippedTrail == item.value) {
-                        owned ? store.equip(item.id) : _ = store.buy(item.id)
+                        if owned { store.equip(item.id) } else { _ = store.buy(item.id) }
                     }
                 }
             }
@@ -486,7 +486,7 @@ struct ContentView: View {
                 ForEach(Content.shop.filter { $0.category == "planet" }, id: \.id) { item in
                     let owned = save.inventory.contains(item.id)
                     choiceChip(owned ? item.title : "🔒 \(item.title)", save.equippedPlanet == item.value) {
-                        owned ? store.equip(item.id) : _ = store.buy(item.id)
+                        if owned { store.equip(item.id) } else { _ = store.buy(item.id) }
                     }
                 }
             }
@@ -769,7 +769,7 @@ struct ContentView: View {
         let owned = save.inventory.contains(item.id)
         let equipped = save.equippedShip == item.value
         return Button {
-            owned ? store.equip(item.id) : _ = store.buy(item.id)
+            if owned { store.equip(item.id) } else { _ = store.buy(item.id) }
         } label: {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.title).font(.system(size: 12, weight: .bold))

@@ -30,6 +30,14 @@ final class GameArt {
     }
 }
 
+private extension GraphicsContext {
+    /// UIImage не рисуется GraphicsContext напрямую — оборачиваем в SwiftUI.Image.
+    mutating func drawUI(_ image: UIImage, in rect: CGRect,
+                         blendMode: BlendMode = .normal, opacity: Double = 1) {
+        draw(Image(uiImage: image), in: rect, blendMode: blendMode, opacity: opacity)
+    }
+}
+
 extension GameEngine {
 
     func draw(context: inout GraphicsContext, size: CGSize, tick: Int, art: GameArt,
@@ -106,7 +114,7 @@ extension GameEngine {
         let dw = CGFloat(image.size.width) * scale
         let dh = CGFloat(image.size.height) * scale
         let drift = sin(time * 0.12) * 8
-        context.draw(image, in: CGRect(x: (w - dw) / 2 + drift, y: (h - dh) / 2, width: dw, height: dh))
+        context.drawUI(image, in: CGRect(x: (w - dw) / 2 + drift, y: (h - dh) / 2, width: dw, height: dh))
     }
 
     private func drawPlanet(_ context: inout GraphicsContext, art: GameArt, style: Int) {
@@ -121,7 +129,7 @@ extension GameEngine {
         context.drawLayer { layer in
             layer.translateBy(x: center.x, y: center.y)
             layer.rotate(by: .radians(Double(time * 2.2)))
-            layer.draw(image, in: CGRect(x: -diameter / 2, y: -diameter / 2, width: diameter, height: diameter))
+            layer.drawUI(image, in: CGRect(x: -diameter / 2, y: -diameter / 2, width: diameter, height: diameter))
         }
         context.stroke(circlePath(center, planetRadius), with: .color(Color.white.opacity(0.16)),
                        lineWidth: planetRadius * 0.025)
@@ -151,7 +159,7 @@ extension GameEngine {
             let y = centerY + sin(well.angle) * orbitRadius * 0.72
             let radius = planetRadius * (0.8 + 0.12 * sin(well.pulse))
             if let ring = art.ring {
-                context.draw(ring, in: CGRect(x: x - radius, y: y - radius,
+                context.drawUI(ring, in: CGRect(x: x - radius, y: y - radius,
                                               width: radius * 2, height: radius * 2))
             }
             context.fill(circlePath(CGPoint(x: x, y: y), radius), with: .radialGradient(
@@ -169,7 +177,7 @@ extension GameEngine {
                 context.drawLayer { layer in
                     layer.translateBy(x: x, y: y)
                     layer.rotate(by: .radians(Double(worm.pulse * 70)))
-                    layer.draw(ring, in: CGRect(x: -radius, y: -radius, width: radius * 2, height: radius * 2))
+                    layer.drawUI(ring, in: CGRect(x: -radius, y: -radius, width: radius * 2, height: radius * 2))
                 }
             }
             context.fill(circlePath(CGPoint(x: x, y: y), radius * 0.8), with: .radialGradient(
@@ -186,7 +194,7 @@ extension GameEngine {
             let pulse = 1 + 0.14 * sin(boss.time * 5)
             if let glow = art.glow {
                 let glowSize = radius * 3 * pulse
-                context.draw(glow, in: CGRect(x: x - glowSize / 2, y: y - glowSize / 2,
+                context.drawUI(glow, in: CGRect(x: x - glowSize / 2, y: y - glowSize / 2,
                                               width: glowSize, height: glowSize))
             }
             context.fill(circlePath(CGPoint(x: x, y: y), radius * pulse), with: .radialGradient(
@@ -220,7 +228,7 @@ extension GameEngine {
             default: radius = playerRadius * (0.4 + life * 0.8)
             }
             let rect = CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2)
-            context.draw(glow, in: rect, blendMode: .normal, opacity: Double(life * (style == 1 ? 0.5 : 0.35)))
+            context.drawUI(glow, in: rect, blendMode: .normal, opacity: Double(life * (style == 1 ? 0.5 : 0.35)))
             context.fill(circlePath(CGPoint(x: point.x, y: point.y), radius * 0.5),
                          with: .color(color.opacity(Double(life * 0.7))))
         }
@@ -233,11 +241,11 @@ extension GameEngine {
             let y = centerY + sin(orb.angle) * orbitRadius
             let radius = playerRadius * (orb.kind == .artifact ? 2.2 : 1.7) * pulse
             if let glow = art.glow {
-                context.draw(glow, in: CGRect(x: x - radius * 1.8, y: y - radius * 1.8,
+                context.drawUI(glow, in: CGRect(x: x - radius * 1.8, y: y - radius * 1.8,
                                               width: radius * 3.6, height: radius * 3.6), opacity: 0.4)
             }
             let sprite = art.orbs[orb.sprite % art.orbs.count]
-            context.draw(sprite, in: CGRect(x: x - radius, y: y - radius, width: radius * 2, height: radius * 2))
+            context.drawUI(sprite, in: CGRect(x: x - radius, y: y - radius, width: radius * 2, height: radius * 2))
         }
     }
 
@@ -251,7 +259,7 @@ extension GameEngine {
             context.drawLayer { layer in
                 layer.translateBy(x: x, y: y)
                 layer.rotate(by: .radians(Double(sin(power.pulse * 0.5) * 8)))
-                layer.draw(sprite, in: CGRect(x: -radius, y: -radius, width: radius * 2, height: radius * 2))
+                layer.drawUI(sprite, in: CGRect(x: -radius, y: -radius, width: radius * 2, height: radius * 2))
             }
         }
     }
@@ -277,7 +285,7 @@ extension GameEngine {
                     style: StrokeStyle(lineWidth: asteroid.radius * 0.9, lineCap: .round))
                 let sprite = art.comets[asteroid.sprite % art.comets.count]
                 let d = asteroid.radius * 3.6
-                context.draw(sprite, in: CGRect(x: x - d / 2, y: y - d / 2, width: d, height: d))
+                context.drawUI(sprite, in: CGRect(x: x - d / 2, y: y - d / 2, width: d, height: d))
             case .bolt:
                 let dx = cos(asteroid.angle)
                 let dy = sin(asteroid.angle)
@@ -292,7 +300,7 @@ extension GameEngine {
                 context.drawLayer { layer in
                     layer.translateBy(x: x, y: y)
                     layer.rotate(by: .radians(Double(asteroid.rotation)))
-                    layer.draw(sprite, in: CGRect(x: -d / 2, y: -d / 2, width: d, height: d))
+                    layer.drawUI(sprite, in: CGRect(x: -d / 2, y: -d / 2, width: d, height: d))
                 }
                 if asteroid.kind == .mine {
                     context.stroke(circlePath(CGPoint(x: x, y: y), asteroid.radius * 0.75),
@@ -310,7 +318,7 @@ extension GameEngine {
         let alpha = invulnerable > 0 ? 0.4 + 0.6 * abs(sin(time * 22)) : 1
         let halo = playerRadius * 4.5
         if let glow = art.glow {
-            context.draw(glow, in: CGRect(x: position.x - halo, y: position.y - halo,
+            context.drawUI(glow, in: CGRect(x: position.x - halo, y: position.y - halo,
                                           width: halo * 2, height: halo * 2), opacity: Double(0.35 * alpha))
         }
         if shield || phaseTimer > 0 || freezeTimer > 0 {
@@ -331,7 +339,7 @@ extension GameEngine {
         context.drawLayer { layer in
             layer.translateBy(x: position.x, y: position.y)
             layer.rotate(by: .radians(Double(heading + CGFloat.pi / 2)))
-            layer.draw(sprite, in: CGRect(x: -d / 2, y: -d / 2, width: d, height: d), opacity: Double(alpha))
+            layer.drawUI(sprite, in: CGRect(x: -d / 2, y: -d / 2, width: d, height: d), opacity: Double(alpha))
         }
         context.fill(circlePath(position, playerRadius * 0.35), with: .color(Color.white.opacity(alpha)))
     }
@@ -341,7 +349,7 @@ extension GameEngine {
         for particle in particles {
             let life = min(max(particle.life / particle.maxLife, 0), 1)
             let radius = particle.size * (1.4 + life)
-            context.draw(glow, in: CGRect(x: particle.x - radius, y: particle.y - radius,
+            context.drawUI(glow, in: CGRect(x: particle.x - radius, y: particle.y - radius,
                                           width: radius * 2, height: radius * 2), opacity: Double(life * 0.85))
         }
     }
@@ -357,7 +365,7 @@ extension GameArt {
         let dw = CGFloat(image.size.width) * scale
         let dh = CGFloat(image.size.height) * scale
         let shift = sin(Double(tick) * 0.004) * 10
-        context.draw(image, in: CGRect(x: (size.width - dw) / 2 + shift, y: (size.height - dh) / 2,
+        context.drawUI(image, in: CGRect(x: (size.width - dw) / 2 + shift, y: (size.height - dh) / 2,
                                        width: dw, height: dh))
         let full = Path(CGRect(origin: .zero, size: size))
         context.fill(full, with: .radialGradient(
@@ -374,7 +382,7 @@ extension GameArt {
         context.drawLayer { layer in
             layer.translateBy(x: center.x, y: center.y)
             layer.rotate(by: .radians(Double(tick) * 0.01))
-            layer.draw(image, in: CGRect(x: -d / 2, y: -d / 2, width: d, height: d))
+            layer.drawUI(image, in: CGRect(x: -d / 2, y: -d / 2, width: d, height: d))
         }
     }
 }

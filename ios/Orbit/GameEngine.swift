@@ -244,7 +244,7 @@ final class GameEngine: ObservableObject {
         spawnTimer -= step
         if spawnTimer <= 0 && stormWarning <= 0 {
             spawnAsteroid()
-            let base = (1.05 - CGFloat(score) * 0.012) / s.density
+            let base = (1.05 - CGFloat(score) * 0.012) / CGFloat(s.density)
             let floor: CGFloat = mode == .survival ? 0.18 : 0.30
             spawnTimer = min(max(base, floor), 1.05) * (0.75 + rnd() * 0.5)
         }
