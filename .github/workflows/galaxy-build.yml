@@ -16,7 +16,7 @@ jobs:
       - name: Detect Unity credentials
         id: check
         env:
-          HAS_UNITY_CREDENTIALS: ${{ secrets.UNITY_LICENSE != '' || secrets.UNITY_SERIAL != '' }}
+          HAS_UNITY_CREDENTIALS: ${{ secrets.UNITY_LICENSE != '' || (secrets.UNITY_SERIAL != '' && secrets.UNITY_EMAIL != '' && secrets.UNITY_PASSWORD != '') }}
         run: |
           if [ "$HAS_UNITY_CREDENTIALS" = "true" ]; then
             echo "available=true" >> "$GITHUB_OUTPUT"
@@ -133,21 +133,21 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Download Android APK
-        if: needs.credentials.outputs.available == 'true'
+        if: needs.credentials.outputs.available == 'true' && needs.android.result == 'success' && needs.ios.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: orbita-galaxy-android
           path: dist/galaxy/android
 
       - name: Download iOS Xcode project
-        if: needs.credentials.outputs.available == 'true'
+        if: needs.credentials.outputs.available == 'true' && needs.android.result == 'success' && needs.ios.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: orbita-galaxy-ios-xcode
           path: dist/galaxy/ios
 
       - name: Package binary assets
-        if: needs.credentials.outputs.available == 'true'
+        if: needs.credentials.outputs.available == 'true' && needs.android.result == 'success' && needs.ios.result == 'success'
         run: |
           mv dist/galaxy/android/OrbitaGalaxy.apk "dist/orbita-galaxy-${GITHUB_REF_NAME}-debug.apk"
           cd dist/galaxy
@@ -156,7 +156,7 @@ jobs:
           ls -lh orbita-galaxy-*
 
       - name: Publish release with binaries
-        if: needs.credentials.outputs.available == 'true' && needs.tests.result == 'success'
+        if: needs.credentials.outputs.available == 'true' && needs.tests.result == 'success' && needs.android.result == 'success' && needs.ios.result == 'success'
         uses: softprops/action-gh-release@v2
         with:
           name: "ORBITA Galaxy ${{ github.ref_name }}"
@@ -171,25 +171,26 @@ jobs:
             dist/orbita-galaxy-*-ios-xcode.zip
 
       - name: Package source fallback
-        if: needs.credentials.outputs.available != 'true'
+        if: needs.credentials.outputs.available != 'true' || needs.tests.result != 'success' || needs.android.result != 'success' || needs.ios.result != 'success'
         run: |
           git archive --format=zip --prefix="orbita-galaxy-${GITHUB_REF_NAME}-source/" \
             -o "orbita-galaxy-${GITHUB_REF_NAME}-source.zip" HEAD
           ls -lh orbita-galaxy-*-source.zip
 
       - name: Publish source-only release
-        if: needs.credentials.outputs.available != 'true' && needs.tests.result == 'success'
+        if: needs.credentials.outputs.available != 'true' || needs.tests.result != 'success' || needs.android.result != 'success' || needs.ios.result != 'success'
         uses: softprops/action-gh-release@v2
         with:
           name: "ORBITA Galaxy ${{ github.ref_name }} (исходники)"
           body: |
             ORBITA GALAXY — одиночная .io-арена на Unity.
 
-            Бинарные APK/IPA не собраны: в репозитории нет секретов Unity
-            (`UNITY_LICENSE` или `UNITY_SERIAL` + `UNITY_EMAIL` + `UNITY_PASSWORD`).
-            Чистое C#-ядро проверено тестами в GitHub Actions, старые тесты также проходят.
+            Публикуется исходный код: бинарные APK/IPA для этого тега недоступны.
+            Результат тестов ядра: `${{ needs.tests.result }}`, Android: `${{ needs.android.result }}`, iOS: `${{ needs.ios.result }}`.
 
-            После добавления секретов повторный запуск workflow по тому же тегу
+            Для сборки бинарников нужны секреты Unity
+            (`UNITY_LICENSE` или `UNITY_SERIAL` + `UNITY_EMAIL` + `UNITY_PASSWORD`).
+            После их добавления повторный запуск workflow по тому же тегу
             опубликует APK и Xcode-проект.
 
             Нативные `v*`, Unity `u*` и теги `v4.0`/`v4.1` не затрагиваются.
