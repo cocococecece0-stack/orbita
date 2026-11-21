@@ -2,7 +2,8 @@
 """Генератор всего контента «Орбиты»: HD-фоны, текстуры планет, спрайты, музыка и SFX.
 
 Детерминированный, только стандартная библиотека. Каждый файл реально используется
-движком/рендером на обеих платформах. Выход пишется сразу в Android res/ и iOS Resources/.
+движком/рендером на целевых платформах. Выход пишется в Android res/, iOS Resources/
+и в ресурсы Unity-проекта (звук — полная копия нативных WAV).
 """
 import math
 import os
@@ -15,6 +16,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ANDROID_DRAW = os.path.join(ROOT, "app", "src", "main", "res", "drawable-nodpi")
 ANDROID_RAW = os.path.join(ROOT, "app", "src", "main", "res", "raw")
 IOS_RES = os.path.join(ROOT, "ios", "Orbit", "Resources")
+UNITY_AUDIO = os.path.join(ROOT, "unity", "Assets", "Orbit", "Resources", "Audio")
 TAU = 2.0 * math.pi
 
 BG_W, BG_H = 720, 1280
@@ -455,7 +457,7 @@ def gen_music() -> None:
             out[i] *= t
             out[n - 1 - i] *= t
         name = f"music_{idx}.wav"
-        for target in (ANDROID_RAW, IOS_RES):
+        for target in (ANDROID_RAW, IOS_RES, UNITY_AUDIO):
             write_wav(os.path.join(target, name), out)
         print(f"  {name} {MUSIC_SECONDS}s")
 
@@ -520,7 +522,7 @@ def gen_sfx() -> None:
         "gameover": mix(tone(330, 220, 0.5, 3), tone(220, 110, 0.8, 3)),
     }
     for name, samples in sfx.items():
-        for target in (ANDROID_RAW, IOS_RES):
+        for target in (ANDROID_RAW, IOS_RES, UNITY_AUDIO):
             write_wav(os.path.join(target, f"{name}.wav"), samples)
     print(f"  {len(sfx)} SFX")
 

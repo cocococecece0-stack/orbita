@@ -1,0 +1,181 @@
+name: Unity Build
+
+on:
+  push:
+    tags:
+      - "u*"
+  workflow_dispatch:
+
+jobs:
+  credentials:
+    name: Check Unity credentials
+    runs-on: ubuntu-latest
+    outputs:
+      available: ${{ steps.check.outputs.available }}
+    steps:
+      # Secrets cannot be used in job-level `if`, so expose the result as a job output.
+      - name: Detect Unity credentials
+        id: check
+        env:
+          HAS_UNITY_CREDENTIALS: ${{ secrets.UNITY_LICENSE != '' || secrets.UNITY_SERIAL != '' }}
+        run: |
+          if [ "$HAS_UNITY_CREDENTIALS" = "true" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Unity builds are disabled: set UNITY_LICENSE, or UNITY_SERIAL together with UNITY_EMAIL and UNITY_PASSWORD. This release will contain source only."
+          fi
+
+  android:
+    name: Android (Unity)
+    needs: credentials
+    if: needs.credentials.outputs.available == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Cache Unity Library
+        uses: actions/cache@v4
+        with:
+          path: unity/Library
+          key: ${{ runner.os }}-unity-library-${{ hashFiles('unity/Assets/**','unity/Packages/**','unity/ProjectSettings/**') }}
+          restore-keys: |
+            ${{ runner.os }}-unity-library-
+
+      - name: Build Android APK
+        uses: game-ci/unity-builder@v4
+        with:
+          projectPath: unity
+          unityVersion: 2022.3.74f1
+          targetPlatform: Android
+          buildMethod: Orbit.EditorBuild.BuildScript.BuildAndroid
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: orbita-unity-android
+          path: unity/build/Android/Orbit.apk
+          if-no-files-found: error
+
+  ios:
+    name: iOS (Unity)
+    needs: credentials
+    if: needs.credentials.outputs.available == 'true'
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Cache Unity Library
+        uses: actions/cache@v4
+        with:
+          path: unity/Library
+          key: ${{ runner.os }}-unity-library-${{ hashFiles('unity/Assets/**','unity/Packages/**','unity/ProjectSettings/**') }}
+          restore-keys: |
+            ${{ runner.os }}-unity-library-
+
+      - name: Build iOS Xcode project
+        uses: game-ci/unity-builder@v4
+        with:
+          projectPath: unity
+          unityVersion: 2022.3.74f1
+          targetPlatform: iOS
+          buildMethod: Orbit.EditorBuild.BuildScript.BuildIOS
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+
+      - name: Upload Xcode project
+        uses: actions/upload-artifact@v4
+        with:
+          name: orbita-unity-ios-xcode
+          path: unity/build/iOS
+          if-no-files-found: error
+
+  release:
+    name: Publish Unity release
+    # `always()` is required because both build jobs are intentionally skipped
+    # when no Unity credentials are configured; the tag still gets a release.
+    if: startsWith(github.ref, 'refs/tags/u') && always()
+    needs: [credentials, android, ios]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        if: needs.credentials.outputs.available == 'true'
+        uses: actions/checkout@v4
+
+      - name: Download Android APK
+        if: needs.credentials.outputs.available == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: orbita-unity-android
+          path: dist/android
+
+      - name: Download iOS Xcode project
+        if: needs.credentials.outputs.available == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: orbita-unity-ios-xcode
+          path: dist/ios
+
+      - name: Rename and package binary assets
+        if: needs.credentials.outputs.available == 'true'
+        run: |
+          mv dist/android/Orbit.apk "dist/orbita-${GITHUB_REF_NAME}-unity-debug.apk"
+          cd dist
+          zip -qry "orbita-${GITHUB_REF_NAME}-unity-ios-xcode.zip" ios
+          ls -lh
+
+      - name: Publish release with binaries
+        if: needs.credentials.outputs.available == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Орбита ${{ github.ref_name }} (Unity)"
+          body: |
+            Unity-сборка `${{ github.ref_name }}`: Android APK и проект Xcode для iOS.
+            Публикация выполняется CI по тегу `u*`. Нативные релизы `v*` не затрагиваются.
+          draft: false
+          generate_release_notes: true
+          files: |
+            dist/orbita-*-unity-debug.apk
+            dist/orbita-*-unity-ios-xcode.zip
+
+      - name: Package source fallback
+        if: needs.credentials.outputs.available != 'true'
+        run: |
+          git archive --format=zip --prefix="orbita-${GITHUB_REF_NAME}-unity-source/" \
+            -o "orbita-${GITHUB_REF_NAME}-unity-source.zip" HEAD
+          ls -lh orbita-*-unity-source.zip
+
+      - name: Publish source-only release
+        if: needs.credentials.outputs.available != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Орбита ${{ github.ref_name }} (Unity, исходники)"
+          body: |
+            Выпуск Unity-проекта `${{ github.ref_name }}`.
+
+            Бинарные APK/IPA не собраны: в репозитории нет секретов Unity
+            (`UNITY_LICENSE` или `UNITY_SERIAL` + `UNITY_EMAIL` + `UNITY_PASSWORD`).
+            Ядро проверено тестами в GitHub Actions. После добавления секретов
+            повторный запуск workflow по тегу опубликует APK и Xcode-проект.
+
+            Нативные релизы `v*` и теги `v4.0`/`v4.1` не затрагиваются.
+          draft: false
+          generate_release_notes: true
+          files: |
+            orbita-*-unity-source.zip
