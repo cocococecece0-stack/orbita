@@ -22,7 +22,8 @@ class GameEngine {
         private set
     var score by androidx.compose.runtime.mutableIntStateOf(0)
         private set
-    var best by androidx.compose.runtime.mutableIntStateOf(0)
+    private var bestScore by androidx.compose.runtime.mutableIntStateOf(0)
+    val best: Int get() = bestScore
     var isNewRecord by androidx.compose.runtime.mutableStateOf(false)
         private set
     var paused by androidx.compose.runtime.mutableStateOf(false)
@@ -149,7 +150,7 @@ class GameEngine {
 
     fun setSettings(s: GameSettings) { settings = s }
     fun setReducedMotion(value: Boolean) { reducedMotion = value }
-    fun setBest(value: Int) { best = value }
+    fun setBest(value: Int) { bestScore = value }
 
     fun resize(w: Int, h: Int) {
         if (w <= 0 || h <= 0 || (w == lastWidth && h == lastHeight)) return
@@ -536,8 +537,8 @@ class GameEngine {
             levelUpFlash = 1f
             onEvent(GameEvent.LevelUp(level))
         }
-        if (score > best) {
-            best = score
+        if (score > bestScore) {
+            bestScore = score
             if (!isNewRecord) { isNewRecord = true; onNewRecord(score) }
         }
     }

@@ -91,13 +91,13 @@ final class SaveStore: ObservableObject {
     static func computeToday() -> String {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
-        f.timeZone = TimeZone(secondsFromGMT: 0)
+        f.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
         return f.string(from: Date())
     }
 
     static func computeSeasonId() -> String {
         var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(secondsFromGMT: 0)
+        cal.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
         let epoch = cal.date(from: DateComponents(year: 2026, month: 1, day: 5))!
         let days = cal.dateComponents([.day], from: epoch, to: Date()).day ?? 0
         return String(format: "S%02d", max(1, days / 56 + 1))
