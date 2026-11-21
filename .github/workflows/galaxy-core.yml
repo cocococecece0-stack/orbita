@@ -1,0 +1,39 @@
+name: ORBITA Galaxy Core Tests
+
+on:
+  push:
+    branches:
+      - galaxy-main
+    tags:
+      - "g*"
+    paths:
+      - "unity/Assets/OrbitGalaxy/**"
+      - "unity/Tests/Galaxy/**"
+      - "unity/Packages/manifest.json"
+      - ".github/workflows/galaxy-core.yml"
+  pull_request:
+    paths:
+      - "unity/Assets/OrbitGalaxy/**"
+      - "unity/Tests/Galaxy/**"
+      - "unity/Packages/manifest.json"
+      - ".github/workflows/galaxy-core.yml"
+  workflow_dispatch:
+
+jobs:
+  tests:
+    name: Pure C# core
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Galaxy core tests
+        run: dotnet test unity/Tests/Galaxy/Orbit.Galaxy.Core.Tests.csproj --configuration Release --nologo
+
+      - name: Legacy core regression
+        run: dotnet test unity/Tests/Orbit.Core.Tests.csproj --configuration Release --nologo

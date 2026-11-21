@@ -1,0 +1,199 @@
+name: ORBITA Galaxy Build
+
+on:
+  push:
+    tags:
+      - "g*"
+  workflow_dispatch:
+
+jobs:
+  credentials:
+    name: Check Unity credentials
+    runs-on: ubuntu-latest
+    outputs:
+      available: ${{ steps.check.outputs.available }}
+    steps:
+      - name: Detect Unity credentials
+        id: check
+        env:
+          HAS_UNITY_CREDENTIALS: ${{ secrets.UNITY_LICENSE != '' || secrets.UNITY_SERIAL != '' }}
+        run: |
+          if [ "$HAS_UNITY_CREDENTIALS" = "true" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Unity builds are disabled: set UNITY_LICENSE, or UNITY_SERIAL with UNITY_EMAIL and UNITY_PASSWORD. Publishing source only."
+          fi
+
+  tests:
+    name: Core tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Galaxy core tests
+        run: dotnet test unity/Tests/Galaxy/Orbit.Galaxy.Core.Tests.csproj --configuration Release --nologo
+
+      - name: Legacy core regression
+        run: dotnet test unity/Tests/Orbit.Core.Tests.csproj --configuration Release --nologo
+
+  android:
+    name: Android (ORBITA GALAXY)
+    needs: credentials
+    if: needs.credentials.outputs.available == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Cache Unity Library
+        uses: actions/cache@v4
+        with:
+          path: unity/Library
+          key: ${{ runner.os }}-unity-galaxy-library-${{ hashFiles('unity/Assets/**','unity/Packages/**','unity/ProjectSettings/**') }}
+          restore-keys: |
+            ${{ runner.os }}-unity-galaxy-library-
+
+      - name: Build Android APK
+        uses: game-ci/unity-builder@v4
+        with:
+          projectPath: unity
+          unityVersion: 2022.3.74f1
+          targetPlatform: Android
+          buildMethod: Orbit.Galaxy.Editor.GalaxyBuildScript.BuildAndroid
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: orbita-galaxy-android
+          path: unity/build/GalaxyAndroid/OrbitaGalaxy.apk
+          if-no-files-found: error
+
+  ios:
+    name: iOS (ORBITA GALAXY)
+    needs: credentials
+    if: needs.credentials.outputs.available == 'true'
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Cache Unity Library
+        uses: actions/cache@v4
+        with:
+          path: unity/Library
+          key: ${{ runner.os }}-unity-galaxy-library-${{ hashFiles('unity/Assets/**','unity/Packages/**','unity/ProjectSettings/**') }}
+          restore-keys: |
+            ${{ runner.os }}-unity-galaxy-library-
+
+      - name: Build iOS Xcode project
+        uses: game-ci/unity-builder@v4
+        with:
+          projectPath: unity
+          unityVersion: 2022.3.74f1
+          targetPlatform: iOS
+          buildMethod: Orbit.Galaxy.Editor.GalaxyBuildScript.BuildIOS
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+
+      - name: Upload Xcode project
+        uses: actions/upload-artifact@v4
+        with:
+          name: orbita-galaxy-ios-xcode
+          path: unity/build/GalaxyiOS
+          if-no-files-found: error
+
+  release:
+    name: Publish ORBITA Galaxy release
+    if: startsWith(github.ref, 'refs/tags/g') && always()
+    needs: [credentials, tests, android, ios]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Android APK
+        if: needs.credentials.outputs.available == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: orbita-galaxy-android
+          path: dist/galaxy/android
+
+      - name: Download iOS Xcode project
+        if: needs.credentials.outputs.available == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: orbita-galaxy-ios-xcode
+          path: dist/galaxy/ios
+
+      - name: Package binary assets
+        if: needs.credentials.outputs.available == 'true'
+        run: |
+          mv dist/galaxy/android/OrbitaGalaxy.apk "dist/orbita-galaxy-${GITHUB_REF_NAME}-debug.apk"
+          cd dist/galaxy
+          zip -qry "../orbita-galaxy-${GITHUB_REF_NAME}-ios-xcode.zip" ios
+          cd ..
+          ls -lh orbita-galaxy-*
+
+      - name: Publish release with binaries
+        if: needs.credentials.outputs.available == 'true' && needs.tests.result == 'success'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "ORBITA Galaxy ${{ github.ref_name }}"
+          body: |
+            ORBITA GALAXY — одиночная .io-арена на Unity.
+            Бинарники собраны CI по тегу `${{ github.ref_name }}`.
+            Старые релизы `v*` и `u*` не затронуты.
+          draft: false
+          generate_release_notes: true
+          files: |
+            dist/orbita-galaxy-*-debug.apk
+            dist/orbita-galaxy-*-ios-xcode.zip
+
+      - name: Package source fallback
+        if: needs.credentials.outputs.available != 'true'
+        run: |
+          git archive --format=zip --prefix="orbita-galaxy-${GITHUB_REF_NAME}-source/" \
+            -o "orbita-galaxy-${GITHUB_REF_NAME}-source.zip" HEAD
+          ls -lh orbita-galaxy-*-source.zip
+
+      - name: Publish source-only release
+        if: needs.credentials.outputs.available != 'true' && needs.tests.result == 'success'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "ORBITA Galaxy ${{ github.ref_name }} (исходники)"
+          body: |
+            ORBITA GALAXY — одиночная .io-арена на Unity.
+
+            Бинарные APK/IPA не собраны: в репозитории нет секретов Unity
+            (`UNITY_LICENSE` или `UNITY_SERIAL` + `UNITY_EMAIL` + `UNITY_PASSWORD`).
+            Чистое C#-ядро проверено тестами в GitHub Actions, старые тесты также проходят.
+
+            После добавления секретов повторный запуск workflow по тому же тегу
+            опубликует APK и Xcode-проект.
+
+            Нативные `v*`, Unity `u*` и теги `v4.0`/`v4.1` не затрагиваются.
+          draft: false
+          generate_release_notes: true
+          files: |
+            orbita-galaxy-*-source.zip

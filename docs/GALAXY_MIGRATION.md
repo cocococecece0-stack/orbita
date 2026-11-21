@@ -27,7 +27,7 @@
 
 ### Критические риски, найденные аудитом
 
-1. `OrbitBootstrap.Boot` помечен `RuntimeInitializeOnLoadMethod` и запускается в любой сборке, поэтому в Galaxy-сборке нужно отключить его символом `ORBITA_GALAXY`.
+1. `OrbitBootstrap.Boot` помечен `RuntimeInitializeOnLoadMethod` и запускается в любой сборке. Решение: `GalaxyBootstrap` проверяет `Application.productName` и в Galaxy-сборке удаляет старые объекты через кадр; старый исходный файл не меняется.
 2. Имена `Rng`, `ModeDef`, `AchievementDef` существуют и в `Orbit.Core`, и в `Orbit.Galaxy`. Смешивать `using` нельзя; новые файлы используют только `Orbit.Galaxy` или псевдонимы.
 3. Оба ядра попадают в одну сборку без `.asmdef`. Добавляем изоляцию: `Orbit.Galaxy.Core`, `Orbit.Galaxy.Runtime`, `Orbit.Galaxy.Editor`.
 4. Старый тестовый проект не должен подхватывать новые тесты. Новый проект лежит в отдельной папке `unity/Tests/Galaxy/`.

@@ -1,9 +1,22 @@
-# Orbita — Unity rewrite
+# Unity projects: ORBITA GALAXY and frozen Arcade Rush
 
-Parallel Unity implementation of Orbita on the `unity-main` branch. The existing native
-Android/iOS v3.8 project (Gradle + XcodeGen) and its `v*` release pipeline are unchanged.
+This folder currently hosts two Unity codebases sharing the same 2022.3.74f1 project:
 
-## Architecture
+- **`Assets/OrbitGalaxy/`** (branch `galaxy-main`) — the active ORBITA GALAXY single-player
+  .io arena. Namespace `Orbit.Galaxy` for the pure C# core and `Orbit.Galaxy.Unity` for
+  uGUI presentation. Tests: `Tests/Galaxy/Orbit.Galaxy.Core.Tests.csproj`. Releases: `g*`.
+- **`Assets/Orbit/`** (branch `unity-main`) — the frozen Arcade Rush rewrite from
+  `u4.0.0`. Namespace `Orbit.Core` / `Orbit.Unity`. Tests:
+  `Tests/Orbit.Core.Tests.csproj`. Releases: `u*`.
+
+The two cores are isolated by `.asmdef` files; the native Android/iOS v3.8 project and its
+`v*` release pipeline are unchanged. A Galaxy build must be produced with
+`Orbit.Galaxy.Editor.GalaxyBuildScript`, whose player settings give the product a name
+containing `GALAXY`; the legacy bootstrap then stays dormant.
+
+See [`../docs/GALAXY_MIGRATION.md`](../docs/GALAXY_MIGRATION.md) for the migration audit.
+
+## Legacy Arcade Rush architecture (frozen)
 
 - **`Assets/Orbit/Core/`** — pure C# game logic in namespace `Orbit.Core`. It has no
   `UnityEngine` dependency (it only uses `Newtonsoft.Json`), so it can be compiled and
@@ -35,6 +48,15 @@ dotnet test unity/Tests/Orbit.Core.Tests.csproj --configuration Release --nologo
 This is exactly what `.github/workflows/unity-core.yml` runs on pushes to `unity-main`
 and on pull requests that touch `unity/**` or the workflow file itself. The job is named
 **Core tests** and uses `actions/setup-dotnet@v4` with .NET 8.0.x.
+
+Galaxy core tests run separately (the Galaxy core has no Newtonsoft dependency):
+
+```bash
+dotnet test unity/Tests/Galaxy/Orbit.Galaxy.Core.Tests.csproj --configuration Release --nologo
+```
+
+Both suites are executed by `.github/workflows/galaxy-core.yml` on `galaxy-main`, on `g*`
+tags and by `.github/workflows/galaxy-build.yml` before a release is published.
 
 ## Open the project locally
 

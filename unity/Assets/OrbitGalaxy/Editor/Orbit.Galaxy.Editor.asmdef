@@ -1,0 +1,20 @@
+{
+  "name": "Orbit.Galaxy.Editor",
+  "rootNamespace": "Orbit.Galaxy.Editor",
+  "references": [
+    "Orbit.Galaxy.Core",
+    "Orbit.Galaxy.Runtime",
+    "UnityEngine.UI"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

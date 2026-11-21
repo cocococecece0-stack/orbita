@@ -296,7 +296,7 @@ public static class SaveMigration {
 
 ## Изоляция от старой версии (по результатам аудита)
 
-- Новые сборки используют define-символ `ORBITA_GALAXY`. Старый `OrbitBootstrap` нужно отключить этим символом (минимальная правка старого файла), иначе он создаст старый UI в Galaxy-сборке.
+- Старый `OrbitBootstrap` работает в старых сборках. `GalaxyBootstrap` проверяет `Application.productName`: если в названии нет `GALAXY`, он сразу возвращается; в Galaxy-сборке он дополнительно удаляет старые объекты `OrbitRoot/OrbitCanvas/OrbitCamera/OrbitEventSystem` через один кадр. define-символы не используются.
 - Galaxy-ассеты лежат только в `unity/Assets/OrbitGalaxy/**`. Звук — в `unity/Assets/OrbitGalaxy/Resources/GalaxyAudio/` (не в старом `Resources/Audio/`).
 - Сейв: `orbita_galaxy_save_v5.json` / PlayerPrefs-ключ `orbita.galaxy.save.v5`. Старые сохранения `orbita.save.v4` не перезаписываются.
 - Добавить `.asmdef`: `Orbit.Galaxy.Core` (без Unity-ссылок), `Orbit.Galaxy.Runtime` (ссылка на Core + UnityEngine.UI), `Orbit.Galaxy.Editor` (ссылка на Core/Runtime + UnityEditor).
