@@ -40,7 +40,7 @@ final class SoundEngine: NSObject, ObservableObject, AVAudioPlayerDelegate {
 
     func play(_ name: String, rate: Float = 1, volume: Float = 1) {
         guard !settings.muted, let player = players[name] else { return }
-        let v = min(max(volume * settings.sfx, 0), 1)
+        let v = min(max(volume * settings.sfx * profileGain(), 0), 1)
         guard v > 0 else { return }
         player.rate = min(max(rate, 0.5), 2)
         player.volume = v
@@ -88,7 +88,12 @@ final class SoundEngine: NSObject, ObservableObject, AVAudioPlayerDelegate {
     func stopMusic() { started = false; music?.stop(); music = nil }
 
     private func applyMusicVolume() {
-        let v = settings.muted ? 0 : min(max(settings.music * 0.55, 0), 1)
+        let v = settings.muted ? 0 : min(max(settings.music * 0.55 * profileGain(), 0), 1)
         music?.volume = v
+    }
+
+    /// Отдельный звуковой профиль: ночной приглушает громкость, басовый оставляет динамику.
+    private func profileGain() -> Float {
+        settings.audioProfile == "NIGHT" ? 0.65 : 1
     }
 }

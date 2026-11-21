@@ -1,6 +1,6 @@
 import Foundation
 
-/** Полностью локальное сохранение JSON v3: валидация, резервная копия, экспорт/импорт кодом. */
+/** Полностью локальное сохранение JSON v4: валидация, миграция, резервная копия, экспорт/импорт кодом. */
 struct RunRecord {
     var score: Int = 0
     var mode: String = "classic"
@@ -24,10 +24,13 @@ struct GameSettings {
     var haptics = true
     var reducedMotion = false
     var colorblind = false
+    var largeText = false
+    var audioProfile = "BALANCED"
+    var hapticProfile = "CLASSIC"
 }
 
 struct SaveData {
-    var version = 3
+    var version = 4
     var credits = 0
     var xp = 0
     var bestByMode: [String: Int] = [:]
@@ -42,7 +45,7 @@ struct SaveData {
     var seasonId = ""
     var seasonXp = 0
     var seasonClaimed = [false, false, false, false]
-    var inventory = ["ship_cyan", "trail_spark", "planet_nebula"]
+    var inventory = ["ship_cyan", "trail_spark", "planet_earth"]
     var equippedShip = 0
     var equippedTrail = 0
     var equippedPlanet = 0
@@ -68,7 +71,7 @@ struct SaveData {
         seasonXp = seasonXp.clamped(to: 0...SaveData.maxValue)
         dailyStreak = dailyStreak.clamped(to: 0...3650)
         zenRuns = zenRuns.clamped(to: 0...SaveData.maxValue)
-        selectedSector = selectedSector.clamped(to: 0...7)
+        selectedSector = selectedSector.clamped(to: 0...(Content.sectors.count - 1))
         equippedShip = equippedShip.clamped(to: 0...7)
         equippedTrail = equippedTrail.clamped(to: 0...7)
         equippedPlanet = equippedPlanet.clamped(to: 0...7)
@@ -87,7 +90,7 @@ struct SaveData {
             r.wormholes = r.wormholes.clamped(to: 0...SaveData.maxValue)
             r.rareOrbs = r.rareOrbs.clamped(to: 0...SaveData.maxValue)
             r.seconds = r.seconds.clamped(to: 0...100000)
-            r.sector = r.sector.clamped(to: 0...7)
+            r.sector = r.sector.clamped(to: 0...(Content.sectors.count - 1))
             return r
         }
         if dailyProgress.count != 3 { dailyProgress = [0, 0, 0] }
@@ -95,10 +98,18 @@ struct SaveData {
         if seasonClaimed.count != 4 { seasonClaimed = [false, false, false, false] }
         dailyProgress = dailyProgress.map { $0.clamped(to: 0...SaveData.maxValue) }
         upgrades = upgrades.mapValues { $0.clamped(to: 0...1) }
-        visitedSectors.removeAll { !(0...7).contains($0) }
+        let knownItems = Set(Content.shop.map { $0.id })
+        inventory = inventory.filter { knownItems.contains($0) }
+        for id in ["ship_cyan", "trail_spark", "planet_earth"] where !inventory.contains(id) {
+            inventory.append(id)
+        }
+        visitedSectors.removeAll { !(0...Content.sectors.count - 1).contains($0) }
         if !Content.modes.contains(where: { $0.id == selectedMode }) { selectedMode = Mode.classic.id }
+        selectedSector = max(0, min(selectedSector, Content.sectors.count - 1))
         settings.music = settings.music.clamped(to: 0...1)
         settings.sfx = settings.sfx.clamped(to: 0...1)
+        if !["BALANCED", "NIGHT", "BASS"].contains(settings.audioProfile) { settings.audioProfile = "BALANCED" }
+        if !["CLASSIC", "SOFT", "STRONG"].contains(settings.hapticProfile) { settings.hapticProfile = "CLASSIC" }
     }
 }
 
@@ -178,10 +189,12 @@ final class SaveStore: ObservableObject {
         func field(_ o: [String: Any], _ key: String, _ fallback: Int = 0, _ min: Int = 0, _ max: Int = SaveData.maxValue) -> Int {
             read(o[key], fallback, min, max)
         }
-        guard field(obj, "version", 0, 3, 3) == 3 else { return nil }
+        let saveVersion = field(obj, "version", 0, 3, 4)
+        guard (3...4).contains(saveVersion) else { return nil }
         let today = computeToday()
         let season = computeSeasonId()
         var d = SaveData()
+        d.version = 4
         d.credits = field(obj, "credits")
         d.xp = field(obj, "xp")
         if let m = obj["bestByMode"] as? [String: Any] {
@@ -197,7 +210,7 @@ final class SaveStore: ObservableObject {
                 return RunRecord(
                     score: field(r, "score"),
                     mode: r["mode"] as? String ?? "classic",
-                    sector: field(r, "sector", 0, 0, 7),
+                    sector: field(r, "sector", 0, 0, Content.sectors.count - 1),
                     level: field(r, "level", 1, 1, 10000),
                     orbs: field(r, "orbs"),
                     maxCombo: field(r, "maxCombo"),
@@ -221,6 +234,14 @@ final class SaveStore: ObservableObject {
         d.seasonXp = field(obj, "seasonXp")
         d.seasonClaimed = bools(obj["seasonClaimed"], 4)
         if let inv = obj["inventory"] as? [String], !inv.isEmpty { d.inventory = inv }
+        if saveVersion == 3 {
+            // v3 → v4: старые идентификаторы планет заменяются на новые с сохранением ранга.
+            let legacyPlanets = [
+                "planet_nebula": "planet_earth", "planet_graphite": "planet_mars",
+                "planet_solar": "planet_jupiter", "planet_void": "planet_neptune",
+            ]
+            d.inventory = d.inventory.map { legacyPlanets[$0] ?? $0 }
+        }
         d.equippedShip = field(obj, "equippedShip", 0, 0, 7)
         d.equippedTrail = field(obj, "equippedTrail", 0, 0, 7)
         d.equippedPlanet = field(obj, "equippedPlanet", 0, 0, 7)
@@ -230,7 +251,7 @@ final class SaveStore: ObservableObject {
         d.modesPlayed = obj["modesPlayed"] as? [String] ?? []
         d.zenRuns = field(obj, "zenRuns")
         d.selectedMode = obj["selectedMode"] as? String ?? "classic"
-        d.selectedSector = field(obj, "selectedSector", 0, 0, 7)
+        d.selectedSector = field(obj, "selectedSector", 0, 0, Content.sectors.count - 1)
         d.mutedTrack = field(obj, "mutedTrack", -1, -1, 7)
         d.tutorialSeen = obj["tutorialSeen"] as? Bool ?? false
         if let s = obj["settings"] as? [String: Any] {
@@ -240,6 +261,9 @@ final class SaveStore: ObservableObject {
             d.settings.haptics = s["haptics"] as? Bool ?? true
             d.settings.reducedMotion = s["reducedMotion"] as? Bool ?? false
             d.settings.colorblind = s["colorblind"] as? Bool ?? false
+            d.settings.largeText = s["largeText"] as? Bool ?? false
+            d.settings.audioProfile = s["audioProfile"] as? String ?? "BALANCED"
+            d.settings.hapticProfile = s["hapticProfile"] as? String ?? "CLASSIC"
         }
         guard valid else { return nil }
         if d.dailyDate != today {
@@ -282,7 +306,7 @@ final class SaveStore: ObservableObject {
             ])
         }
         let obj: [String: Any] = [
-            "version": 3,
+            "version": 4,
             "credits": d.credits,
             "xp": d.xp,
             "bestByMode": d.bestByMode,
@@ -314,6 +338,8 @@ final class SaveStore: ObservableObject {
                 "music": Double(d.settings.music), "sfx": Double(d.settings.sfx),
                 "muted": d.settings.muted, "haptics": d.settings.haptics,
                 "reducedMotion": d.settings.reducedMotion, "colorblind": d.settings.colorblind,
+                "largeText": d.settings.largeText, "audioProfile": d.settings.audioProfile,
+                "hapticProfile": d.settings.hapticProfile,
             ],
         ]
         return (try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys])) ?? Data()
@@ -343,7 +369,7 @@ final class SaveStore: ObservableObject {
     private func clampRecord(_ r: RunRecord) -> RunRecord {
         var r = r
         r.score = r.score.clamped(to: 0...SaveData.maxValue)
-        r.sector = r.sector.clamped(to: 0...7)
+        r.sector = r.sector.clamped(to: 0...(Content.sectors.count - 1))
         r.level = r.level.clamped(to: 1...10000)
         r.orbs = r.orbs.clamped(to: 0...SaveData.maxValue)
         r.maxCombo = r.maxCombo.clamped(to: 0...SaveData.maxValue)

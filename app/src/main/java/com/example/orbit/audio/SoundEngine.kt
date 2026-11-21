@@ -50,7 +50,7 @@ class SoundEngine(private val context: Context) {
     fun play(name: String, rate: Float = 1f, volume: Float = 1f) {
         if (settings.muted) return
         val id = soundIds[name] ?: return
-        val v = (volume * settings.sfx).coerceIn(0f, 1f)
+        val v = (volume * settings.sfx * profileGain()).coerceIn(0f, 1f)
         if (v <= 0f) return
         pool.play(id, v, v, 1, 0, rate.coerceIn(0.5f, 2f))
     }
@@ -130,8 +130,15 @@ class SoundEngine(private val context: Context) {
     }
 
     private fun applyMusicVolume() {
-        val v = if (settings.muted) 0f else (settings.music * 0.55f).coerceIn(0f, 1f)
+        val v = if (settings.muted) 0f else (settings.music * 0.55f * profileGain()).coerceIn(0f, 1f)
         try { music?.setVolume(v, v) } catch (_: Exception) {}
+    }
+
+    /** Отдельный звуковой профиль: ночной приглушает громкость, басовый оставляет динамику. */
+    private fun profileGain(): Float = when (settings.audioProfile) {
+        "NIGHT" -> 0.65f
+        "BASS" -> 1f
+        else -> 1f
     }
 
     fun release() {

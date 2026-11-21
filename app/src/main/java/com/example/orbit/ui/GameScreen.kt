@@ -45,6 +45,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -65,6 +66,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
@@ -75,6 +77,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -139,7 +142,13 @@ fun GameScreen(viewModel: GameViewModel = viewModel()) {
     val hudVisible = screen == null && engine.status == GameStatus.Playing && !engine.paused && !confirmExit
 
     fun haptic(type: HapticFeedbackType) {
-        if (viewModel.store.data.settings.haptics) haptics.performHapticFeedback(type)
+        if (!viewModel.store.data.settings.haptics) return
+        val resolved = when (viewModel.store.data.settings.hapticProfile) {
+            "SOFT" -> HapticFeedbackType.TextHandleMove
+            "STRONG" -> HapticFeedbackType.LongPress
+            else -> type
+        }
+        haptics.performHapticFeedback(resolved)
     }
 
     fun startRun() {
@@ -148,6 +157,7 @@ fun GameScreen(viewModel: GameViewModel = viewModel()) {
         engine.setUpgrades(viewModel.upgrades())
         engine.setBest(bestForMode)
         engine.setReducedMotion(settings.reducedMotion)
+        engine.setSeasonModifier(Content.seasonModifier(save.seasonId).second)
         engine.skinColor = shipColor(save.equippedShip, settings.colorblind)
         engine.startRun(selectedMode, save.selectedSector, seed)
         viewModel.markTutorialSeen()
@@ -184,6 +194,7 @@ fun GameScreen(viewModel: GameViewModel = viewModel()) {
         engine.skinColor = shipColor(save.equippedShip, settings.colorblind)
         engine.setReducedMotion(settings.reducedMotion)
         engine.setUpgrades(viewModel.upgrades())
+        engine.setSeasonModifier(Content.seasonModifier(save.seasonId).second)
         sound.applySettings(settings)
     }
 
@@ -229,6 +240,7 @@ fun GameScreen(viewModel: GameViewModel = viewModel()) {
                 GameEvent.BossSpawn -> { sound.play("boss"); haptic(HapticFeedbackType.LongPress) }
                 GameEvent.BossHit -> sound.play("boss_hit", 1f, 0.6f)
                 GameEvent.BossDown -> { sound.play("boss_down"); haptic(HapticFeedbackType.LongPress) }
+                GameEvent.Resonance -> { sound.play("reward", 0.9f, 0.8f); haptic(HapticFeedbackType.LongPress) }
                 GameEvent.Finish -> sound.play("victory")
                 GameEvent.Tick -> Unit
             }
@@ -265,6 +277,13 @@ fun GameScreen(viewModel: GameViewModel = viewModel()) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    val currentDensity = LocalDensity.current
+    CompositionLocalProvider(
+        LocalDensity provides Density(
+            currentDensity.density,
+            currentDensity.fontScale * if (settings.largeText) 1.5f else 1f,
+        ),
+    ) {
     Box(modifier = Modifier.fillMaxSize().background(Color(0xFF05030F))) {
         if (screen == null) {
             Canvas(
@@ -353,6 +372,7 @@ fun GameScreen(viewModel: GameViewModel = viewModel()) {
             }
         }
     }
+    }
 }
 
 // ------------------------------------------------------------------ HUD ---
@@ -395,6 +415,9 @@ private fun InGameHud(
             }
         }
 
+        Spacer(Modifier.height(6.dp))
+        Bar(engine.resonance.coerceIn(0f, 1f), Neon, "РЕЗОНАНС ${(engine.resonance * 100f).toInt()}%")
+
         val chips = mutableListOf<Pair<String, Color>>()
         if (engine.shield) chips += "ЩИТ" to Palette.Shield
         if (slow > 0) chips += "ЗАМЕДЛЕНИЕ ${slow}с" to Palette.Slow
@@ -415,6 +438,8 @@ private fun InGameHud(
             Banner("МЕТЕОРНЫЙ ДОЖДЬ", Pink)
         } else if (engine.flareWarning > 0f) {
             Banner("СОЛНЕЧНАЯ ВСПЫШКА", Amber)
+        } else if (engine.resonanceFlash > 0f) {
+            Banner("РЕЗОНАНС!", Neon, engine.resonanceFlash)
         } else if (engine.levelUpFlash > 0f) {
             Banner("УРОВЕНЬ ${engine.level}", Amber, engine.levelUpFlash)
         }
@@ -546,36 +571,75 @@ private fun HubScreen(
     val progress = (xpInLevel.toFloat() / Content.xpPerLevel.toFloat()).coerceIn(0f, 1f)
     val seasonProgress = (save.seasonXp.toFloat() / Content.seasonTiers.last().xp.coerceAtLeast(1)).coerceIn(0f, 1f)
     val missions = Content.missionsFor(save.dailyDate)
+    val seasonMod = Content.seasonModifier(save.seasonId)
+    val shipTint = shipColor(save.equippedShip, settings.colorblind)
 
     Column(
         modifier = Modifier.fillMaxSize().statusBarsPadding().imePadding().navigationBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 18.dp),
     ) {
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Canvas(modifier = Modifier.size(56.dp)) {
-                drawPreviewPlanet(art, save.equippedPlanet, Offset(size.width / 2, size.height / 2),
-                    28.dp.toPx(), frame, settings.colorblind, settings.reducedMotion)
+        Box(
+            modifier = Modifier.fillMaxWidth().height(196.dp).clip(RoundedCornerShape(22.dp))
+                .background(Color.White.copy(alpha = 0.035f))
+                .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(22.dp)),
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                drawHubHero(
+                    art = art,
+                    planetIndex = save.equippedPlanet,
+                    shipSprite = save.equippedShip,
+                    skinColor = shipTint,
+                    tick = frame,
+                    colorblind = settings.colorblind,
+                    reducedMotion = settings.reducedMotion,
+                )
             }
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text("ОРБИТА", color = Neon, fontSize = 26.sp, fontWeight = FontWeight.Black,
-                    letterSpacing = 3.sp, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
-                Text("СЕЗОН ${save.seasonId} · УРОВЕНЬ ${save.playerLevel}", color = MutedText,
-                    fontSize = 9.sp, letterSpacing = 1.sp, maxLines = 1, softWrap = false,
-                    overflow = TextOverflow.Ellipsis)
+            Text(
+                "ОРБИТА", color = Neon, fontSize = 27.sp, fontWeight = FontWeight.Black,
+                letterSpacing = 4.sp, modifier = Modifier.align(Alignment.TopStart).padding(14.dp),
+            )
+            Column(
+                modifier = Modifier.align(Alignment.BottomStart).padding(14.dp),
+            ) {
+                Text(
+                    Content.planetSkins.getOrElse(save.equippedPlanet) { "ЭКЗО" },
+                    color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Black,
+                    letterSpacing = 2.sp, maxLines = 1, softWrap = false,
+                )
+                Text(
+                    "УРОВЕНЬ ${save.playerLevel} · ${sector.name}", color = MutedText,
+                    fontSize = 10.sp, letterSpacing = 1.sp, maxLines = 1, softWrap = false,
+                )
             }
-            Column(horizontalAlignment = Alignment.End) {
-                Text("◆ ${compactCurrency(save.credits)}", color = Amber, fontSize = 16.sp,
+            Column(
+                modifier = Modifier.align(Alignment.BottomEnd).padding(14.dp),
+                horizontalAlignment = Alignment.End,
+            ) {
+                Text("◆ ${compactCurrency(save.credits)}", color = Amber, fontSize = 15.sp,
                     fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
-                if (save.dailyStreak > 0) Text("${save.dailyStreak} ${daysWord(save.dailyStreak, capitalize = true)}",
-                    color = Pink, fontSize = 10.sp, maxLines = 1, softWrap = false)
+                Text("СЕЗОН ${save.seasonId}", color = Pink, fontSize = 10.sp, maxLines = 1, softWrap = false)
+                if (save.dailyStreak > 0) Text(
+                    "${save.dailyStreak} ${daysWord(save.dailyStreak, capitalize = true)}",
+                    color = Pink, fontSize = 9.sp, maxLines = 1, softWrap = false,
+                )
             }
         }
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(12.dp))
         Bar(progress, Neon, "XP $xpInLevel / ${Content.xpPerLevel}")
         Spacer(Modifier.height(6.dp))
         Bar(seasonProgress, Violet, "СЕЗОН ${save.seasonXp} / ${Content.seasonTiers.last().xp}")
+        Spacer(Modifier.height(8.dp))
+        Panel {
+            Text("СЕЗОН: ${seasonMod.first}", color = Amber, fontSize = 10.sp,
+                fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+            val top = save.topByMode[mode.id].orEmpty().take(3)
+            Text(
+                if (top.isEmpty()) "Локальная таблица рекордов пуста — первый забег станет рекордом."
+                else "ТОП-3: ${top.joinToString(" · ")}",
+                color = MutedText, fontSize = 10.sp, maxLines = 1, softWrap = false,
+            )
+        }
 
         Spacer(Modifier.height(20.dp))
         SectionTitle("РЕЖИМ")
@@ -872,6 +936,11 @@ private fun StatsScreen(viewModel: GameViewModel, onBack: () -> Unit) {
             if (top.isEmpty()) Body("В этом режиме ещё нет забегов.")
             else top.forEachIndexed { i, score -> Text("${i + 1}.  $score", color = if (i == 0) Amber else Color.White, fontSize = 14.sp) }
         }
+        Spacer(Modifier.height(8.dp))
+        val statsClipboard = LocalClipboardManager.current
+        SecondaryButton("СКОПИРОВАТЬ КОД РЕКОРДОВ", {
+            statsClipboard.setText(AnnotatedString(viewModel.exportCode()))
+        }, accent = Violet)
         Spacer(Modifier.height(16.dp))
         SectionTitle("ИСТОРИЯ ЗАБЕГОВ")
         save.history.take(12).forEach { r ->
@@ -920,10 +989,34 @@ private fun SettingsScreen(
             ToggleRow("Вибрация", save.settings.haptics) { viewModel.updateSettings { s -> s.haptics = it } }
         }
         Spacer(Modifier.height(14.dp))
+        SectionTitle("ПРОФИЛИ")
+        Panel {
+            Text("ЗВУК", color = MutedText, fontSize = 9.sp, letterSpacing = 2.sp)
+            Spacer(Modifier.height(4.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("BALANCED" to "БАЛАНС", "NIGHT" to "НОЧЬ", "BASS" to "БАС").forEach { (code, label) ->
+                    ChoiceChip(
+                        label, save.settings.audioProfile == code, Modifier.weight(1f),
+                    ) { viewModel.updateSettings { s -> s.audioProfile = code } }
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Text("ВИБРАЦИЯ", color = MutedText, fontSize = 9.sp, letterSpacing = 2.sp)
+            Spacer(Modifier.height(4.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("CLASSIC" to "КЛАССИКА", "SOFT" to "МЯГКАЯ", "STRONG" to "СИЛЬНАЯ").forEach { (code, label) ->
+                    ChoiceChip(
+                        label, save.settings.hapticProfile == code, Modifier.weight(1f),
+                    ) { viewModel.updateSettings { s -> s.hapticProfile = code } }
+                }
+            }
+        }
+        Spacer(Modifier.height(14.dp))
         SectionTitle("ДОСТУПНОСТЬ")
         Panel {
             ToggleRow("Уменьшить анимацию и тряску", save.settings.reducedMotion) { viewModel.updateSettings { s -> s.reducedMotion = it } }
             ToggleRow("Контрастные цвета", save.settings.colorblind) { viewModel.updateSettings { s -> s.colorblind = it } }
+            ToggleRow("Крупный текст", save.settings.largeText) { viewModel.updateSettings { s -> s.largeText = it } }
         }
         Spacer(Modifier.height(14.dp))
         SectionTitle("СОХРАНЕНИЕ")

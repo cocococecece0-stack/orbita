@@ -52,6 +52,9 @@ final class GameEngine: ObservableObject {
     private(set) var stormWarning: CGFloat = 0
     private(set) var flareWarning: CGFloat = 0
     private(set) var comboTime: CGFloat = 0
+    /// Заряд резонанса 0..1: заполняется за навык и очищает орбиту волной.
+    @Published var resonance: CGFloat = 0
+    @Published var resonanceFlash: CGFloat = 0
     private(set) var playerAngle: CGFloat = -CGFloat.pi / 2
     private(set) var direction: CGFloat = 1
     private(set) var speedLevel: CGFloat = 0
@@ -79,6 +82,7 @@ final class GameEngine: ObservableObject {
     private var lastBossLevel = 0
     private var nextBossLevel = 5
     private var eventCooldown: CGFloat = 0
+    private var seasonDensity: CGFloat = 1
     private var elapsed: CGFloat = 0
     private var ghostTimer: CGFloat = 0
     private var reviveAvailable = false
@@ -97,6 +101,7 @@ final class GameEngine: ObservableObject {
 
     func setReducedMotion(_ value: Bool) { reducedMotion = value }
     func setBest(_ value: Int) { best = value }
+    func setSeasonModifier(_ value: CGFloat) { seasonDensity = max(0.5, min(2, value)) }
 
     func setUpgrades(_ flags: [String: Bool]) {
         upgradeShield = flags["upg_shield"] == true
@@ -137,7 +142,8 @@ final class GameEngine: ObservableObject {
         comboTime = 0; slowTimer = 0; doubleTimer = 0
         magnetTimer = 0; phaseTimer = 0; freezeTimer = 0
         invulnerable = 0; hitStop = 0; flash = 0
-        levelUpFlash = 0; shieldFlash = 0; stormWarning = 0; flareWarning = 0
+        levelUpFlash = 0; shieldFlash = 0; resonanceFlash = 0; resonance = 0
+        stormWarning = 0; flareWarning = 0
         playerAngle = -CGFloat.pi / 2; direction = 1
         spawnTimer = 0.7; orbTimer = 2.2; powerTimer = 5
         stormTimer = 20; flareTimer = 16; mineTimer = 9
@@ -269,7 +275,7 @@ final class GameEngine: ObservableObject {
             spawnAsteroid()
             let base = 1.0 - min(0.35, CGFloat(score) * 0.0004)
             let floor: CGFloat = mode == .survival ? 0.40 : 0.55
-            spawnTimer = min(max(base / CGFloat(s.density), floor), 1.1) * (0.85 + rnd() * 0.3)
+            spawnTimer = min(max(base / (CGFloat(s.density) * seasonDensity), floor), 1.1) * (0.85 + rnd() * 0.3)
         }
         orbTimer -= step
         if orbTimer <= 0 { spawnOrb(); orbTimer = 2.8 + rnd() * 2.5 }
@@ -301,8 +307,9 @@ final class GameEngine: ObservableObject {
         if freezeTimer <= 0 {
             for w in wells {
                 w.pulse += step * 2
-                for a in asteroids {
-                    a.angle = norm(a.angle + angDiff(w.angle, a.angle) * w.strength * step * 0.35)
+                // Гравитация ускоряет полёт к орбите, но не сворачивает с радиального курса.
+                for a in asteroids where a.kind != .bolt {
+                    a.speed *= 1 + w.strength * step * 0.10
                 }
             }
         }
@@ -314,9 +321,12 @@ final class GameEngine: ObservableObject {
             b.time += step
             b.hitFlash = max(0, b.hitFlash - step * 4)
             b.charge += step
-            if b.charge >= 2.4 {
+            if b.charge >= 2.4 / (1 + CGFloat(b.kind) * 0.22) {
                 b.charge = 0
-                for k in -1...1 { asteroids.append(makeBolt(norm(b.angle + CGFloat(k) * 0.16))) }
+                let shots = 1 + min(2, max(0, b.kind))
+                for k in -shots...shots {
+                    asteroids.append(makeBolt(norm(b.angle + CGFloat(k) * (0.16 - CGFloat(shots) * 0.02))))
+                }
                 onEvent?(.bossHit)
             }
             if b.time >= b.duration { b.dead = true }
@@ -330,6 +340,7 @@ final class GameEngine: ObservableObject {
         let speedScale: CGFloat = slowTimer > 0 ? 0.45 : (freezeTimer > 0 ? 0 : 1)
         var hit: Asteroid?
         for a in asteroids {
+            if a.dead { continue }
             a.pulse += step * 2
             let prevDistance = a.distance
             if freezeTimer <= 0 { a.distance -= a.speed * speedScale * step }
@@ -348,6 +359,7 @@ final class GameEngine: ObservableObject {
                 a.nearMissed = true
                 stats.nearMisses += 1
                 rewardSkill(1)
+                if a.dead { continue }
                 flash = 1
                 hitStop = reducedMotion ? 0 : 0.02
                 onEvent?(.nearMiss)
@@ -358,6 +370,7 @@ final class GameEngine: ObservableObject {
                 a.dodged = true
                 stats.dodges += 1
                 rewardSkill(1)
+                if a.dead { continue }
                 onEvent?(.dodge(combo))
             }
             if a.distance < planetRadius * 0.35 {
@@ -407,9 +420,12 @@ final class GameEngine: ObservableObject {
                 onEvent?(.wormhole)
             }
         }
+        // Резонанс может сработать при сборе сферы/бонуса уже после основной уборки.
+        asteroids.removeAll { $0.dead }
     }
 
     private func collectOrb(_ o: Orb) {
+        chargeResonance(0.04)
         switch o.kind {
         case .normal:
             stats.orbs += 1; orbsCollected += 1
@@ -464,10 +480,35 @@ final class GameEngine: ObservableObject {
 
     /// Награда за навык: один счётчик на любое событие, чтобы очки не «капали».
     private func rewardSkill(_ base: Int) {
+        chargeResonance(0.08)
         if eventCooldown > 0 { return }
         eventCooldown = 0.45
         bumpCombo()
         addPoints(base)
+    }
+
+    /// Резонанс: волна сбрасывает угрозы у орбиты и даёт бонус за каждую.
+    private func chargeResonance(_ amount: CGFloat) {
+        resonance = min(1, resonance + amount)
+        if resonance >= 1 { triggerResonance() }
+    }
+
+    private func triggerResonance() {
+        resonance = 0
+        resonanceFlash = 1
+        addPoints(80)
+        var cleared = 0
+        for a in asteroids {
+            // Только помечаем: замена массива ломает текущий цикл столкновений.
+            guard !a.dead, a.distance <= orbitRadius * 1.45, a.kind != .bolt else { continue }
+            let x = centerX + cos(a.angle) * a.distance
+            let y = centerY + sin(a.angle) * a.distance
+            burst(x, y, count: 12, color: Palette.orb, power: 0.9)
+            a.dead = true
+            cleared += 1
+        }
+        if cleared > 0 { addPoints(cleared * 12) }
+        onEvent?(.resonance)
     }
 
     private func bumpCombo() {
@@ -562,7 +603,7 @@ final class GameEngine: ObservableObject {
 
     private func spawnStorm() {
         let safe = rnd() * tau
-        for _ in 0..<(mode == .survival ? 6 : 5) {
+        for _ in 0..<((mode == .survival ? 6 : 5) + (seasonDensity > 1.1 ? 1 : 0)) {
             var angle = rnd() * tau
             var tries = 0
             while abs(angDiff(angle, safe)) < 0.8 && tries < 24 {
@@ -580,7 +621,8 @@ final class GameEngine: ObservableObject {
 
     private func spawnBoss() {
         lastBossLevel = level
-        let b = Boss(angle: rnd() * tau, hp: 2 + level / 20, duration: 26)
+        let kind = (level / 5) % Content.bossNames.count
+        let b = Boss(angle: rnd() * tau, hp: 2 + level / 20 + kind, duration: 26, kind: kind)
         boss.append(b)
         // Рядом с боссом появляются сферы — ядро реально можно сбить.
         for _ in 0..<2 { orbs.append(Orb(angle: norm(b.angle + (rnd() - 0.5) * 0.55), kind: .normal, sprite: 0)) }
@@ -605,6 +647,7 @@ final class GameEngine: ObservableObject {
 
     private func spawnMine() {
         let a = makeAsteroid(rnd() * tau, .mine)
+        a.life = 16
         asteroids.append(a)
     }
 
@@ -635,8 +678,10 @@ final class GameEngine: ObservableObject {
     }
 
     private func makeBolt(_ angle: CGFloat) -> Asteroid {
-        Asteroid(angle: angle, distance: orbitRadius * 2.6, speed: minDim * 0.55,
-                 radius: minDim * 0.010, kind: .bolt, sprite: 0)
+        let a = Asteroid(angle: angle, distance: orbitRadius * 2.6, speed: minDim * 0.55,
+                         radius: minDim * 0.010, kind: .bolt, sprite: 0)
+        a.life = 5
+        return a
     }
 
     private func decayVisuals(_ step: CGFloat) {
@@ -645,6 +690,7 @@ final class GameEngine: ObservableObject {
         flash = max(0, flash - step * 3.2)
         levelUpFlash = max(0, levelUpFlash - step * 0.9)
         shieldFlash = max(0, shieldFlash - step * 2.5)
+        resonanceFlash = max(0, resonanceFlash - step * 1.8)
     }
 
     private func burst(_ x: CGFloat, _ y: CGFloat, count: Int, color: Color, power: CGFloat) {

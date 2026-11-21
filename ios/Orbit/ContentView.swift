@@ -93,6 +93,7 @@ struct ContentView: View {
                 }
             }
         }
+        .dynamicTypeSize(save.settings.largeText ? .xxxLarge : .large)
         .onReceive(store.objectWillChange) { syncEngine() }
         .onAppear {
             configureEngine()
@@ -134,6 +135,7 @@ struct ContentView: View {
         engine.skinColor = shipColor(save.equippedShip, save.settings.colorblind)
         engine.setReducedMotion(save.settings.reducedMotion)
         engine.setUpgrades(store.upgrades())
+        engine.setSeasonModifier(Content.seasonModifier(save.seasonId).1)
         sound.applySettings(save.settings)
     }
 
@@ -194,6 +196,7 @@ struct ContentView: View {
         case .bossSpawn: sound.play("boss"); haptic(.heavy)
         case .bossHit: sound.play("boss_hit", volume: 0.6)
         case .bossDown: sound.play("boss_down"); haptic(.heavy)
+        case .resonance: sound.play("reward", rate: 0.9, volume: 0.8); haptic(.heavy)
         case .finish: sound.play("victory")
         case .tick: break
         }
@@ -228,7 +231,13 @@ struct ContentView: View {
 
     private func haptic(_ style: UIImpactFeedbackGenerator.FeedbackStyle) {
         guard save.settings.haptics else { return }
-        UIImpactFeedbackGenerator(style: style).impactOccurred()
+        let resolved: UIImpactFeedbackGenerator.FeedbackStyle
+        switch save.settings.hapticProfile {
+        case "SOFT": resolved = .soft
+        case "STRONG": resolved = .rigid
+        default: resolved = style
+        }
+        UIImpactFeedbackGenerator(style: resolved).impactOccurred()
     }
 
     // MARK: - HUD
@@ -260,6 +269,10 @@ struct ContentView: View {
                     .padding(.top, 8)
             }
 
+            bar(Float(engine.resonance), Palette.player,
+                "РЕЗОНАНС \(Int(engine.resonance * 100))%")
+                .padding(.top, 6)
+
             let chips = activeChips()
             if !chips.isEmpty {
                 HStack(spacing: 5) {
@@ -274,6 +287,8 @@ struct ContentView: View {
                 banner("МЕТЕОРНЫЙ ДОЖДЬ", Palette.danger)
             } else if engine.flareWarning > 0 {
                 banner("СОЛНЕЧНАЯ ВСПЫШКА", Palette.orb)
+            } else if engine.resonanceFlash > 0 {
+                banner("РЕЗОНАНС!", Palette.player, Double(engine.resonanceFlash))
             } else if engine.levelUpFlash > 0 {
                 banner("УРОВЕНЬ \(engine.level)", Palette.orb, Double(engine.levelUpFlash))
             }
@@ -417,32 +432,46 @@ struct ContentView: View {
         GeometryReader { geo in
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    HStack(spacing: 8) {
+                    ZStack(alignment: .topLeading) {
                         Canvas { context, size in
-                            art.drawPlanetPreview(in: &context, index: save.equippedPlanet,
-                                                  center: CGPoint(x: size.width / 2, y: size.height / 2),
-                                                  radius: 28, tick: Int(frame),
-                                                  colorblind: save.settings.colorblind,
-                                                  reducedMotion: save.settings.reducedMotion)
+                            art.drawHubHero(in: &context, size: size, planetIndex: save.equippedPlanet,
+                                            shipSprite: save.equippedShip,
+                                            skinColor: shipColor(save.equippedShip, save.settings.colorblind),
+                                            tick: Int(frame), colorblind: save.settings.colorblind,
+                                            reducedMotion: save.settings.reducedMotion)
                         }
-                        .frame(width: 56, height: 56)
+                        .frame(height: 196)
+                        .background(Color.white.opacity(0.035))
+                        .clipShape(RoundedRectangle(cornerRadius: 22))
+                        .overlay(RoundedRectangle(cornerRadius: 22)
+                            .stroke(Color.white.opacity(0.08), lineWidth: 1))
+
+                        Text("ОРБИТА").font(.system(size: 27, weight: .black)).tracking(4)
+                            .foregroundColor(Palette.player).padding(14)
+
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("ОРБИТА").font(.system(size: 26, weight: .black)).tracking(4)
-                                .foregroundColor(Palette.player)
-                                .lineLimit(1).minimumScaleFactor(0.8).fixedSize(horizontal: false, vertical: true)
-                            Text("СЕЗОН \(save.seasonId) · УРОВЕНЬ \(save.playerLevel)")
-                                .font(.system(size: 9)).tracking(1).foregroundColor(.gray)
+                            Text(Content.planetSkins[max(0, min(save.equippedPlanet,
+                                                              Content.planetSkins.count - 1))])
+                                .font(.system(size: 18, weight: .black)).tracking(2)
+                                .foregroundColor(.white).lineLimit(1).minimumScaleFactor(0.8)
+                            Text("УРОВЕНЬ \(save.playerLevel) · \(sector.name)")
+                                .font(.system(size: 10)).tracking(1).foregroundColor(.gray)
                                 .lineLimit(1).minimumScaleFactor(0.8)
                         }
-                        Spacer(minLength: 6)
-                        VStack(alignment: .trailing, spacing: 4) {
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                        .padding(14)
+
+                        VStack(alignment: .trailing, spacing: 3) {
                             creditsChip
+                            Text("СЕЗОН \(save.seasonId)")
+                                .font(.system(size: 10, weight: .bold)).foregroundColor(Palette.danger)
                             if save.dailyStreak > 0 {
                                 Text("\(save.dailyStreak) \(daysWord(save.dailyStreak))")
                                     .font(.system(size: 9, weight: .bold)).foregroundColor(Palette.danger)
-                                    .lineLimit(1).minimumScaleFactor(0.8)
                             }
                         }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                        .padding(14)
                     }
 
                     let levelXp = xpInLevel(save.xp)
@@ -450,6 +479,18 @@ struct ContentView: View {
                         "УРОВЕНЬ \(save.playerLevel) · XP \(levelXp) / \(Content.xpPerLevel)")
                     bar(clamped(Float(save.seasonXp) / Float(Content.seasonTiers.last!.xp)), Palette.slow,
                         "СЕЗОН \(save.seasonXp) / \(Content.seasonTiers.last!.xp)")
+                    let seasonMod = Content.seasonModifier(save.seasonId)
+                    let top = Array((save.topByMode[mode.id] ?? []).prefix(3))
+                    panel {
+                        Text("СЕЗОН: \(seasonMod.0)")
+                            .font(.system(size: 10, weight: .bold)).tracking(2)
+                            .foregroundColor(Palette.orb)
+                        Text(top.isEmpty
+                             ? "Локальная таблица рекордов пуста — первый забег станет рекордом."
+                             : "ТОП-3: \(top.map(String.init).joined(separator: " · "))")
+                            .font(.system(size: 10)).foregroundColor(.gray)
+                            .lineLimit(1).minimumScaleFactor(0.8)
+                    }
 
                     sectionTitle("РЕЖИМ")
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 62), spacing: 6)], spacing: 6) {
@@ -718,6 +759,10 @@ struct ContentView: View {
                     }
                 }
             }
+            outlineButton("СКОПИРОВАТЬ КОД РЕКОРДОВ", accent: Palette.slow) {
+                UIPasteboard.general.string = store.exportCode()
+                showToast("Код скопирован")
+            }
             sectionTitle("ИСТОРИЯ ЗАБЕГОВ")
             ForEach(save.history.prefix(12), id: \.timestamp) { r in
                 panel {
@@ -749,7 +794,7 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("ТЕКУЩАЯ ПЛАНЕТА").font(.system(size: 10, weight: .bold)).tracking(2)
                         .foregroundColor(Palette.player.opacity(0.8))
-                    Text(Content.shop.first { $0.category == "planet" && $0.value == save.equippedPlanet }?.title ?? "ТУМАННОСТЬ")
+                    Text(Content.shop.first { $0.category == "planet" && $0.value == save.equippedPlanet }?.title ?? "ЗЕМЛЯ")
                         .font(.system(size: 13, weight: .bold)).foregroundColor(.white)
                 }
                 Spacer()
@@ -768,12 +813,34 @@ struct ContentView: View {
                 toggleRow("Вибрация", Binding(get: { save.settings.haptics },
                                               set: { v in store.updateSettings { $0.haptics = v } }))
             }
+            sectionTitle("ПРОФИЛИ")
+            panel {
+                Text("ЗВУК").font(.system(size: 9, weight: .bold)).tracking(2).foregroundColor(.gray)
+                HStack(spacing: 6) {
+                    ForEach(Array([("BALANCED", "БАЛАНС"), ("NIGHT", "НОЧЬ"), ("BASS", "БАС")].enumerated()), id: \.offset) { _, item in
+                        choiceChip(item.1, save.settings.audioProfile == item.0) {
+                            store.updateSettings { $0.audioProfile = item.0 }
+                        }
+                    }
+                }
+                Text("ВИБРАЦИЯ").font(.system(size: 9, weight: .bold)).tracking(2).foregroundColor(.gray)
+                    .padding(.top, 6)
+                HStack(spacing: 6) {
+                    ForEach(Array([("CLASSIC", "КЛАССИКА"), ("SOFT", "МЯГКАЯ"), ("STRONG", "СИЛЬНАЯ")].enumerated()), id: \.offset) { _, item in
+                        choiceChip(item.1, save.settings.hapticProfile == item.0) {
+                            store.updateSettings { $0.hapticProfile = item.0 }
+                        }
+                    }
+                }
+            }
             sectionTitle("ДОСТУПНОСТЬ")
             panel {
                 toggleRow("Уменьшить анимацию и тряску", Binding(get: { save.settings.reducedMotion },
                                                                  set: { v in store.updateSettings { $0.reducedMotion = v } }))
                 toggleRow("Контрастные цвета", Binding(get: { save.settings.colorblind },
                                                        set: { v in store.updateSettings { $0.colorblind = v } }))
+                toggleRow("Крупный текст", Binding(get: { save.settings.largeText },
+                                                   set: { v in store.updateSettings { $0.largeText = v } }))
             }
             sectionTitle("СОХРАНЕНИЕ")
             panel {

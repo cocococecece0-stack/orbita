@@ -40,6 +40,7 @@ sealed interface GameEvent {
     data object BossSpawn : GameEvent
     data object BossHit : GameEvent
     data object BossDown : GameEvent
+    data object Resonance : GameEvent
     data object Finish : GameEvent
     data object Tick : GameEvent
 }
@@ -81,7 +82,7 @@ class GravityWell(val angle: Float, val strength: Float) {
     var pulse = 0f
 }
 
-class Boss(val angle: Float, var hp: Int, val duration: Float) {
+class Boss(val angle: Float, var hp: Int, val duration: Float, val kind: Int = 0) {
     var time = 0f
     var charge = 0f
     var hitFlash = 0f

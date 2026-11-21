@@ -49,6 +49,28 @@ data class SectorDef(
 object Content {
     val modes: List<Mode> = Mode.entries
 
+    /** Названия скинов орбиты/планеты — индекс совпадает с save.equippedPlanet. */
+    val planetSkins = listOf(
+        "ЗЕМЛЯ", "МАРС", "ЮПИТЕР", "НЕПТУН",
+        "ВЕНЕРА", "САТУРН", "ЛУНА", "ЭКЗО",
+    )
+
+    /** Типы боссов: ядро, рой и импульс. Индекс хранится в [Boss.kind]. */
+    val bossNames = listOf("ЯДРО", "РОЙ", "ИМПУЛЬС")
+
+    /** Сезонные модификаторы: выбираются детерминированно по номеру сезона. */
+    val seasonModifiers = listOf(
+        "СТАНДАРТ" to 1.00f,
+        "МЕТЕОРНЫЙ СЕЗОН" to 1.18f,
+        "ЭНЕРГЕТИЧЕСКИЙ СЕЗОН" to 1.10f,
+        "ТИХИЙ СЕЗОН" to 0.90f,
+    )
+
+    fun seasonModifier(seasonId: String): Pair<String, Float> {
+        val n = seasonId.fold(0) { acc, c -> acc + c.code }
+        return seasonModifiers[Math.floorMod(n, seasonModifiers.size)]
+    }
+
     val sectors = listOf(
         SectorDef(0, "ОРБИТА-01", "Учебный сектор", 1, listOf(HazardKind.Rock), 0.75f),
         SectorDef(1, "ПЕПЕЛ", "Горящий пояс", 2, listOf(HazardKind.Rock, HazardKind.Comet), 0.90f),
@@ -58,6 +80,8 @@ object Content {
         SectorDef(5, "ЧЕРВОТОЧИНА", "Пространство рвётся", 9, listOf(HazardKind.Rock, HazardKind.Wormhole), 1.10f),
         SectorDef(6, "ЯДРО ГИГАНТА", "Стража ядра", 12, listOf(HazardKind.Rock, HazardKind.Comet, HazardKind.Boss), 1.20f),
         SectorDef(7, "СЕКРЕТ", "Скрытый сектор", 99, listOf(HazardKind.Rock, HazardKind.Mine, HazardKind.Boss), 1.30f),
+        SectorDef(8, "ПОЛЯРНАЯ КОРОНА", "Ледяные арки и кометы", 15, listOf(HazardKind.Rock, HazardKind.Comet, HazardKind.Flare), 1.22f),
+        SectorDef(9, "СИНГУЛЯРНОСТЬ", "Гравитация и боссы", 22, listOf(HazardKind.Rock, HazardKind.Gravity, HazardKind.Boss), 1.28f),
     )
 
     fun sector(id: Int): SectorDef = sectors.getOrElse(id.coerceIn(0, sectors.lastIndex)) { sectors[0] }
@@ -113,10 +137,14 @@ object Content {
         ShopItem("trail_smoke", "ДЫМ", "Плотный шлейф", 450, "trail", 1),
         ShopItem("trail_rainbow", "СПЕКТР", "Радужный шлейф", 1200, "trail", 2),
         ShopItem("trail_wave", "ВОЛНА", "Волнистый шлейф", 2200, "trail", 3),
-        ShopItem("planet_nebula", "ТУМАННОСТЬ", "Фон сектора по умолчанию", 0, "planet", 0),
-        ShopItem("planet_graphite", "ГРАФИТ", "Тёмный фон", 700, "planet", 1),
-        ShopItem("planet_solar", "СОЛНЕЧНЫЙ", "Тёплый фон", 1500, "planet", 2),
-        ShopItem("planet_void", "ПУСТОТА", "Холодный фон", 2600, "planet", 3),
+        ShopItem("planet_earth", "ЗЕМЛЯ", "Сине-зелёная планета", 0, "planet", 0),
+        ShopItem("planet_mars", "МАРС", "Красная планета", 700, "planet", 1),
+        ShopItem("planet_jupiter", "ЮПИТЕР", "Газовый гигант", 1500, "planet", 2),
+        ShopItem("planet_neptune", "НЕПТУН", "Ледяной гигант", 2600, "planet", 3),
+        ShopItem("planet_venus", "ВЕНЕРА", "Раскалённый мир", 3400, "planet", 4),
+        ShopItem("planet_saturn", "САТУРН", "Кольцевая планета", 4200, "planet", 5),
+        ShopItem("planet_moon", "ЛУНА", "Каменный спутник", 5000, "planet", 6),
+        ShopItem("planet_exo", "ЭКЗО", "Неизведанный мир", 6000, "planet", 7),
         ShopItem("upg_shield", "РЕЗЕРВНЫЙ ЩИТ", "Щит в начале каждого забега", 800, "upgrade", 1),
         ShopItem("upg_time", "ХРОНОМЕТР", "+8 секунд в дзен и спринте", 1000, "upgrade", 1),
         ShopItem("upg_magnet", "ПОСТОЯННЫЙ МАГНИТ", "Сферы притягиваются слабее, но всегда", 1500, "upgrade", 1),

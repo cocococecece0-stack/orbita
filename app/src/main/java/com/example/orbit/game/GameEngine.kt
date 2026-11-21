@@ -84,6 +84,8 @@ class GameEngine {
         private set
     var shieldFlash = 0f
         private set
+    var resonanceFlash = 0f
+        private set
     var reverseFlash = 0f
         private set
     var hitStop = 0f
@@ -105,6 +107,9 @@ class GameEngine {
     var flareWarning = 0f
         private set
     var comboTime = 0f
+        private set
+    /** Заряд резонанса 0..1: заполняется за навык и очищает орбиту волной. */
+    var resonance by androidx.compose.runtime.mutableFloatStateOf(0f)
         private set
     var playerAngle = -PI.toFloat() / 2f
         private set
@@ -138,6 +143,7 @@ class GameEngine {
     private var lastBossLevel = 0
     private var nextBossLevel = 5
     private var eventCooldown = 0f
+    private var seasonDensity = 1f
     private var elapsed = 0f
     private var ghostTimer = 0f
     private var reviveAvailable = false
@@ -156,6 +162,7 @@ class GameEngine {
     fun setSettings(s: GameSettings) { settings = s }
     fun setReducedMotion(value: Boolean) { reducedMotion = value }
     fun setBest(value: Int) { bestScore = value }
+    fun setSeasonModifier(value: Float) { seasonDensity = value.coerceIn(0.5f, 2f) }
 
     fun resize(w: Int, h: Int) {
         if (w <= 0 || h <= 0 || (w == lastWidth && h == lastHeight)) return
@@ -192,7 +199,8 @@ class GameEngine {
         comboTime = 0f; slowTimer = 0f; doubleTimer = 0f
         magnetTimer = 0f; phaseTimer = 0f; freezeTimer = 0f
         invulnerable = 0f; hitStop = 0f; flash = 0f
-        levelUpFlash = 0f; shieldFlash = 0f; stormWarning = 0f; flareWarning = 0f
+        levelUpFlash = 0f; shieldFlash = 0f; resonanceFlash = 0f; resonance = 0f
+        stormWarning = 0f; flareWarning = 0f
         playerAngle = -PI.toFloat() / 2f; direction = 1
         spawnTimer = 0.7f; orbTimer = 2.2f; powerTimer = 5f
         stormTimer = 20f; flareTimer = 16f; mineTimer = 9f
@@ -331,7 +339,7 @@ class GameEngine {
             spawnAsteroid()
             val base = 1.0f - min(0.35f, score * 0.0004f)
             val floor = if (mode == Mode.Survival) 0.40f else 0.55f
-            spawnTimer = (base / s.density).coerceIn(floor, 1.1f) * (0.85f + rnd() * 0.3f)
+            spawnTimer = (base / (s.density * seasonDensity)).coerceIn(floor, 1.1f) * (0.85f + rnd() * 0.3f)
         }
         orbTimer -= step
         if (orbTimer <= 0f) { spawnOrb(); orbTimer = 2.8f + rnd() * 2.5f }
@@ -364,11 +372,10 @@ class GameEngine {
         if (freezeTimer <= 0f) {
             for (w in wells) {
                 w.pulse += step * 2f
+                // Гравитация ускоряет полёт к орбите, но не сворачивает с радиального курса:
+                // так направление угрозы всегда читается однозначно.
                 for (a in asteroids) {
-                    var diff = w.angle - a.angle
-                    while (diff > PI) diff -= TAU
-                    while (diff < -PI) diff += TAU
-                    a.angle = norm(a.angle + diff * w.strength * step * 0.35f)
+                    if (a.kind != AsteroidKind.Bolt) a.speed *= 1f + w.strength * step * 0.10f
                 }
             }
         }
@@ -380,10 +387,11 @@ class GameEngine {
             b.time += step
             b.hitFlash = max(0f, b.hitFlash - step * 4f)
             b.charge += step
-            if (b.charge >= 2.4f) {
+            if (b.charge >= 2.4f / (1f + b.kind * 0.22f)) {
                 b.charge = 0f
-                for (k in -1..1) {
-                    val a = norm(b.angle + k * 0.16f)
+                val shots = 1 + b.kind.coerceIn(0, 2)
+                for (k in -shots..shots) {
+                    val a = norm(b.angle + k * (0.16f - shots * 0.02f))
                     asteroids += makeBolt(a)
                 }
                 onEvent(GameEvent.BossHit)
@@ -399,6 +407,7 @@ class GameEngine {
         val speedScale = if (slowTimer > 0f) 0.45f else if (freezeTimer > 0f) 0f else 1f
         var hit: Asteroid? = null
         for (a in asteroids) {
+            if (a.dead) continue
             a.pulse += step * 2f
             val prevDistance = a.distance
             if (freezeTimer <= 0f) a.distance -= a.speed * speedScale * step
@@ -417,6 +426,7 @@ class GameEngine {
                 a.nearMissed = true
                 stats.nearMisses++
                 rewardSkill(1)
+                if (a.dead) continue
                 flash = 1f
                 hitStop = if (reducedMotion) 0f else 0.02f
                 onEvent(GameEvent.NearMiss)
@@ -427,6 +437,7 @@ class GameEngine {
                 a.dodged = true
                 stats.dodges++
                 rewardSkill(1)
+                if (a.dead) continue
                 onEvent(GameEvent.Dodge(combo))
             }
             if (a.distance < planetRadius * 0.35f) {
@@ -481,9 +492,12 @@ class GameEngine {
                 onEvent(GameEvent.Wormhole)
             }
         }
+        // Резонанс может сработать при сборе сферы/бонуса уже после основной уборки.
+        asteroids.removeAll { it.dead }
     }
 
     private fun collectOrb(o: Orb) {
+        chargeResonance(0.04f)
         when (o.kind) {
             OrbKind.Normal -> {
                 stats.orbs++
@@ -551,10 +565,35 @@ class GameEngine {
 
     /** Награда за навык: один счётчик на любое событие, чтобы очки не «капали». */
     private fun rewardSkill(base: Int) {
+        chargeResonance(0.08f)
         if (eventCooldown > 0f) return
         eventCooldown = 0.45f
         bumpCombo()
         addPoints(base)
+    }
+
+    /** Резонанс: волна сбрасывает угрозы у орбиты и даёт бонус за каждую. */
+    private fun chargeResonance(amount: Float) {
+        resonance = min(1f, resonance + amount)
+        if (resonance >= 1f) triggerResonance()
+    }
+
+    private fun triggerResonance() {
+        resonance = 0f
+        resonanceFlash = 1f
+        addPoints(80)
+        var cleared = 0
+        for (a in asteroids) {
+            // Только помечаем: удаление прямо здесь ломает итератор цикла столкновений.
+            if (a.dead || a.distance > orbitRadius * 1.45f || a.kind == AsteroidKind.Bolt) continue
+            val x = centerX + cos(a.angle) * a.distance
+            val y = centerY + sin(a.angle) * a.distance
+            burst(x, y, 12, Palette.Orb, 0.9f)
+            a.dead = true
+            cleared++
+        }
+        if (cleared > 0) addPoints(cleared * 12)
+        onEvent(GameEvent.Resonance)
     }
 
     private fun bumpCombo() {
@@ -653,7 +692,7 @@ class GameEngine {
 
     private fun spawnStorm() {
         val safe = rnd() * TAU
-        repeat(if (mode == Mode.Survival) 6 else 5) {
+        repeat((if (mode == Mode.Survival) 6 else 5) + if (seasonDensity > 1.1f) 1 else 0) {
             var angle = rnd() * TAU
             var tries = 0
             while (abs(angDiff(angle, safe)) < 0.8f && tries < 24) { angle = rnd() * TAU; tries++ }
@@ -668,7 +707,8 @@ class GameEngine {
 
     private fun spawnBoss() {
         lastBossLevel = level
-        val b = Boss(rnd() * TAU, 2 + level / 20, 26f)
+        val kind = Math.floorMod(level / 5, Content.bossNames.size)
+        val b = Boss(rnd() * TAU, 2 + level / 20 + kind, 26f, kind)
         boss += b
         // Рядом с боссом появляются сферы — ядро реально можно сбить.
         repeat(2) { orbs += Orb(norm(b.angle + (rnd() - 0.5f) * 0.55f), OrbKind.Normal, 0) }
@@ -738,6 +778,7 @@ class GameEngine {
         flash = max(0f, flash - step * 3.2f)
         levelUpFlash = max(0f, levelUpFlash - step * 0.9f)
         shieldFlash = max(0f, shieldFlash - step * 2.5f)
+        resonanceFlash = max(0f, resonanceFlash - step * 1.8f)
     }
 
     private fun burst(x: Float, y: Float, count: Int, color: Color, power: Float) {

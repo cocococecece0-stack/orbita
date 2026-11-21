@@ -11,7 +11,7 @@ import java.time.ZoneOffset
 import java.util.Base64
 import java.util.zip.CRC32
 
-/** Полностью локальное сохранение JSON v3: валидация, резервная копия, экспорт/импорт кодом. */
+/** Полностью локальное сохранение JSON v4: валидация, миграция, резервная копия, экспорт/импорт кодом. */
 data class RunRecord(
     val score: Int = 0,
     val mode: String = "classic",
@@ -35,10 +35,13 @@ data class GameSettings(
     var haptics: Boolean = true,
     var reducedMotion: Boolean = false,
     var colorblind: Boolean = false,
+    var largeText: Boolean = false,
+    var audioProfile: String = "BALANCED",
+    var hapticProfile: String = "CLASSIC",
 )
 
 data class SaveData(
-    var version: Int = 3,
+    var version: Int = 4,
     var credits: Int = 0,
     var xp: Int = 0,
     var bestByMode: MutableMap<String, Int> = mutableMapOf(),
@@ -53,7 +56,7 @@ data class SaveData(
     var seasonId: String = "",
     var seasonXp: Int = 0,
     var seasonClaimed: MutableList<Boolean> = mutableListOf(false, false, false, false),
-    var inventory: MutableList<String> = mutableListOf("ship_cyan", "trail_spark", "planet_nebula"),
+    var inventory: MutableList<String> = mutableListOf("ship_cyan", "trail_spark", "planet_earth"),
     var equippedShip: Int = 0,
     var equippedTrail: Int = 0,
     var equippedPlanet: Int = 0,
@@ -77,7 +80,7 @@ data class SaveData(
         seasonXp = seasonXp.coerceIn(0, MAX)
         dailyStreak = dailyStreak.coerceIn(0, 3650)
         zenRuns = zenRuns.coerceIn(0, MAX)
-        selectedSector = selectedSector.coerceIn(0, 7)
+        selectedSector = selectedSector.coerceIn(0, Content.sectors.lastIndex)
         equippedShip = equippedShip.coerceIn(0, 7)
         equippedTrail = equippedTrail.coerceIn(0, 7)
         equippedPlanet = equippedPlanet.coerceIn(0, 7)
@@ -95,7 +98,7 @@ data class SaveData(
                 nearMisses = r.nearMisses.coerceIn(0, MAX), dodges = r.dodges.coerceIn(0, MAX),
                 bossKills = r.bossKills.coerceIn(0, MAX), wormholes = r.wormholes.coerceIn(0, MAX),
                 rareOrbs = r.rareOrbs.coerceIn(0, MAX), seconds = r.seconds.coerceIn(0, 100000),
-                sector = r.sector.coerceIn(0, 7),
+                sector = r.sector.coerceIn(0, Content.sectors.lastIndex),
             )
         }
         if (dailyProgress.size != 3) dailyProgress = mutableListOf(0, 0, 0)
@@ -103,10 +106,18 @@ data class SaveData(
         if (seasonClaimed.size != 4) seasonClaimed = mutableListOf(false, false, false, false)
         for (i in dailyProgress.indices) dailyProgress[i] = dailyProgress[i].coerceIn(0, MAX)
         for (k in upgrades.keys.toList()) upgrades[k] = (upgrades[k] ?: 0).coerceIn(0, 1)
-        visitedSectors.removeAll { it !in 0..7 }
+        val knownItems = Content.shop.map { it.id }.toSet()
+        inventory.removeAll { it !in knownItems }
+        listOf("ship_cyan", "trail_spark", "planet_earth").forEach {
+            if (it !in inventory) inventory += it
+        }
+        visitedSectors.removeAll { it !in 0..Content.sectors.lastIndex }
         if (Content.modes.none { it.id == selectedMode }) selectedMode = Mode.Classic.id
+        selectedSector = selectedSector.coerceIn(0, Content.sectors.lastIndex)
         settings.music = settings.music.coerceIn(0f, 1f)
         settings.sfx = settings.sfx.coerceIn(0f, 1f)
+        if (settings.audioProfile !in setOf("BALANCED", "NIGHT", "BASS")) settings.audioProfile = "BALANCED"
+        if (settings.hapticProfile !in setOf("CLASSIC", "SOFT", "STRONG")) settings.hapticProfile = "CLASSIC"
     }
 
     companion object { const val MAX = 100_000_000 }
@@ -176,9 +187,10 @@ class SaveStore(context: Context) {
             fun read(arr: JSONArray, index: Int, default: Int = 0, min: Int = 0, max: Int = SaveData.MAX): Int =
                 number(arr.opt(index), default, min, max)
 
-            if (read(o, "version", 0, 3, 3) != 3) return null
+            val saveVersion = read(o, "version", 0, 3, 4)
+            if (saveVersion !in 3..4) return null
             val d = SaveData()
-            d.version = 3
+            d.version = 4
             d.credits = read(o, "credits")
             d.xp = read(o, "xp")
             val best = o.optJSONObject("bestByMode")
@@ -195,7 +207,8 @@ class SaveStore(context: Context) {
                 val stamp = (r.opt("timestamp") as? Number)?.toLong() ?: 0L
                 d.history += RunRecord(
                     score = read(r, "score"), mode = r.optString("mode", "classic"),
-                    sector = read(r, "sector", max = 7), level = read(r, "level", 1, 1, 10000),
+                    sector = read(r, "sector", max = Content.sectors.lastIndex),
+                    level = read(r, "level", 1, 1, 10000),
                     orbs = read(r, "orbs"), maxCombo = read(r, "maxCombo"),
                     nearMisses = read(r, "nearMisses"), dodges = read(r, "dodges"),
                     bossKills = read(r, "bossKills"), wormholes = read(r, "wormholes"),
@@ -213,6 +226,16 @@ class SaveStore(context: Context) {
             d.seasonXp = read(o, "seasonXp")
             d.seasonClaimed = bools(o.optJSONArray("seasonClaimed"), 4)
             d.inventory = strings(o.optJSONArray("inventory")).ifEmpty { d.inventory }
+            if (saveVersion == 3) {
+                // v3 → v4: старые идентификаторы планет заменяются на новые с сохранением ранга.
+                val legacyPlanets = mapOf(
+                    "planet_nebula" to "planet_earth",
+                    "planet_graphite" to "planet_mars",
+                    "planet_solar" to "planet_jupiter",
+                    "planet_void" to "planet_neptune",
+                )
+                d.inventory = d.inventory.map { legacyPlanets[it] ?: it }.toMutableList()
+            }
             d.equippedShip = read(o, "equippedShip", max = 7)
             d.equippedTrail = read(o, "equippedTrail", max = 7)
             d.equippedPlanet = read(o, "equippedPlanet", max = 7)
@@ -223,7 +246,7 @@ class SaveStore(context: Context) {
             d.modesPlayed = strings(o.optJSONArray("modesPlayed")).toMutableList()
             d.zenRuns = read(o, "zenRuns")
             d.selectedMode = o.optString("selectedMode", "classic")
-            d.selectedSector = read(o, "selectedSector", max = 7)
+            d.selectedSector = read(o, "selectedSector", max = Content.sectors.lastIndex)
             d.mutedTrack = read(o, "mutedTrack", -1, -1, 7)
             d.tutorialSeen = o.optBoolean("tutorialSeen")
             val s = o.optJSONObject("settings")
@@ -234,6 +257,9 @@ class SaveStore(context: Context) {
                 d.settings.haptics = s.optBoolean("haptics", true)
                 d.settings.reducedMotion = s.optBoolean("reducedMotion")
                 d.settings.colorblind = s.optBoolean("colorblind")
+                d.settings.largeText = s.optBoolean("largeText")
+                d.settings.audioProfile = s.optString("audioProfile", "BALANCED")
+                d.settings.hapticProfile = s.optString("hapticProfile", "CLASSIC")
             }
             if (!valid) return null
             if (d.dailyDate != today()) {
@@ -283,7 +309,7 @@ class SaveStore(context: Context) {
 
     fun encode(d: SaveData = data): String {
         val o = JSONObject()
-        o.put("version", 3)
+        o.put("version", 4)
         o.put("credits", d.credits)
         o.put("xp", d.xp)
         val best = JSONObject()
@@ -334,6 +360,9 @@ class SaveStore(context: Context) {
         s.put("haptics", d.settings.haptics)
         s.put("reducedMotion", d.settings.reducedMotion)
         s.put("colorblind", d.settings.colorblind)
+        s.put("largeText", d.settings.largeText)
+        s.put("audioProfile", d.settings.audioProfile)
+        s.put("hapticProfile", d.settings.hapticProfile)
         o.put("settings", s)
         return o.toString()
     }
@@ -356,7 +385,7 @@ class SaveStore(context: Context) {
 
     private fun clampRecord(r: RunRecord): RunRecord = r.copy(
         score = r.score.coerceIn(0, SaveData.MAX),
-        sector = r.sector.coerceIn(0, 7), level = r.level.coerceIn(1, 10000),
+        sector = r.sector.coerceIn(0, Content.sectors.lastIndex), level = r.level.coerceIn(1, 10000),
         orbs = r.orbs.coerceIn(0, SaveData.MAX), maxCombo = r.maxCombo.coerceIn(0, SaveData.MAX),
         nearMisses = r.nearMisses.coerceIn(0, SaveData.MAX), dodges = r.dodges.coerceIn(0, SaveData.MAX),
         bossKills = r.bossKills.coerceIn(0, SaveData.MAX), wormholes = r.wormholes.coerceIn(0, SaveData.MAX),

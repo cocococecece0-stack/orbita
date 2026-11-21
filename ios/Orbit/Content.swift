@@ -125,6 +125,24 @@ struct Mission {
 enum Content {
     static let modes = Mode.allCases
 
+    /// Названия скинов орбиты/планеты — индекс совпадает с save.equippedPlanet.
+    static let planetSkins = ["ЗЕМЛЯ", "МАРС", "ЮПИТЕР", "НЕПТУН",
+                              "ВЕНЕРА", "САТУРН", "ЛУНА", "ЭКЗО"]
+
+    /// Типы боссов: ядро, рой и импульс. Индекс хранится в Boss.kind.
+    static let bossNames = ["ЯДРО", "РОЙ", "ИМПУЛЬС"]
+
+    /// Сезонные модификаторы: выбираются детерминированно по номеру сезона.
+    static let seasonModifiers: [(String, CGFloat)] = [
+        ("СТАНДАРТ", 1.00), ("МЕТЕОРНЫЙ СЕЗОН", 1.18),
+        ("ЭНЕРГЕТИЧЕСКИЙ СЕЗОН", 1.10), ("ТИХИЙ СЕЗОН", 0.90),
+    ]
+
+    static func seasonModifier(_ seasonId: String) -> (String, CGFloat) {
+        let n = seasonId.unicodeScalars.reduce(0) { $0 + Int($1.value) }
+        return seasonModifiers[((n % seasonModifiers.count) + seasonModifiers.count) % seasonModifiers.count]
+    }
+
     static let sectors = [
         SectorDef(id: 0, name: "ОРБИТА-01", subtitle: "Учебный сектор", unlockLevel: 1,
                   hazards: [.rock], density: 0.75),
@@ -142,6 +160,10 @@ enum Content {
                   hazards: [.rock, .comet, .boss], density: 1.20),
         SectorDef(id: 7, name: "СЕКРЕТ", subtitle: "Скрытый сектор", unlockLevel: 99,
                   hazards: [.rock, .mine, .boss], density: 1.30),
+        SectorDef(id: 8, name: "ПОЛЯРНАЯ КОРОНА", subtitle: "Ледяные арки и кометы", unlockLevel: 15,
+                  hazards: [.rock, .comet, .flare], density: 1.22),
+        SectorDef(id: 9, name: "СИНГУЛЯРНОСТЬ", subtitle: "Гравитация и боссы", unlockLevel: 22,
+                  hazards: [.rock, .gravity, .boss], density: 1.28),
     ]
 
     static func sector(_ id: Int) -> SectorDef { sectors[max(0, min(id, sectors.count - 1))] }
@@ -180,10 +202,14 @@ enum Content {
         ShopItem(id: "trail_smoke", title: "ДЫМ", detail: "Плотный шлейф", price: 450, category: "trail", value: 1),
         ShopItem(id: "trail_rainbow", title: "СПЕКТР", detail: "Радужный шлейф", price: 1200, category: "trail", value: 2),
         ShopItem(id: "trail_wave", title: "ВОЛНА", detail: "Волнистый шлейф", price: 2200, category: "trail", value: 3),
-        ShopItem(id: "planet_nebula", title: "ТУМАННОСТЬ", detail: "Фон сектора по умолчанию", price: 0, category: "planet", value: 0),
-        ShopItem(id: "planet_graphite", title: "ГРАФИТ", detail: "Тёмный фон", price: 700, category: "planet", value: 1),
-        ShopItem(id: "planet_solar", title: "СОЛНЕЧНЫЙ", detail: "Тёплый фон", price: 1500, category: "planet", value: 2),
-        ShopItem(id: "planet_void", title: "ПУСТОТА", detail: "Холодный фон", price: 2600, category: "planet", value: 3),
+        ShopItem(id: "planet_earth", title: "ЗЕМЛЯ", detail: "Сине-зелёная планета", price: 0, category: "planet", value: 0),
+        ShopItem(id: "planet_mars", title: "МАРС", detail: "Красная планета", price: 700, category: "planet", value: 1),
+        ShopItem(id: "planet_jupiter", title: "ЮПИТЕР", detail: "Газовый гигант", price: 1500, category: "planet", value: 2),
+        ShopItem(id: "planet_neptune", title: "НЕПТУН", detail: "Ледяной гигант", price: 2600, category: "planet", value: 3),
+        ShopItem(id: "planet_venus", title: "ВЕНЕРА", detail: "Раскалённый мир", price: 3400, category: "planet", value: 4),
+        ShopItem(id: "planet_saturn", title: "САТУРН", detail: "Кольцевая планета", price: 4200, category: "planet", value: 5),
+        ShopItem(id: "planet_moon", title: "ЛУНА", detail: "Каменный спутник", price: 5000, category: "planet", value: 6),
+        ShopItem(id: "planet_exo", title: "ЭКЗО", detail: "Неизведанный мир", price: 6000, category: "planet", value: 7),
         ShopItem(id: "upg_shield", title: "РЕЗЕРВНЫЙ ЩИТ", detail: "Щит в начале каждого забега", price: 800, category: "upgrade", value: 1),
         ShopItem(id: "upg_time", title: "ХРОНОМЕТР", detail: "+8 секунд в дзен и спринте", price: 1000, category: "upgrade", value: 1),
         ShopItem(id: "upg_magnet", title: "ПОСТОЯННЫЙ МАГНИТ", detail: "Сферы притягиваются всегда", price: 1500, category: "upgrade", value: 1),

@@ -33,6 +33,7 @@ final class GameArt {
 /// Высококонтрастная палитра для режима «Контрастные цвета».
 private enum RenderColors {
     static let hazard = Color(hex: 0xFF7A1A)
+    static let hazardHot = Color(hex: 0xFF4438)
     static let hazardDark = Color(hex: 0xC4232B)
     static let bonusBlue = Color(hex: 0x35A7FF)
     static let bonusGreen = Color(hex: 0x37E39B)
@@ -87,24 +88,22 @@ extension GameEngine {
             context.fill(Path(ellipseIn: rect), with: .color(Color.white.opacity(twinkle * 0.75)))
         }
 
-        var world = context
-        if shake > 0 && !reducedMotion {
-            world.translateBy(x: sin(visualTime * 83) * shake * 14, y: cos(visualTime * 71) * shake * 14)
-        }
-        drawWells(&world, art: art, reducedMotion: reducedMotion)
-        drawPlanet(&world, art: art, style: planetStyle, reducedMotion: reducedMotion,
+        // Орбита, планета и сектор остаются абсолютно неподвижными: дрейф камеры убран.
+        drawWells(&context, art: art, reducedMotion: reducedMotion)
+        drawPlanet(&context, art: art, style: planetStyle, reducedMotion: reducedMotion,
                    colorblind: colorblind)
-        drawComboRing(&world)
-        drawOrbitRing(&world)
-        drawWormholes(&world, art: art, reducedMotion: reducedMotion)
-        drawBosses(&world, art: art, reducedMotion: reducedMotion, colorblind: colorblind)
-        drawTrail(&world, art: art, style: trailStyle, visualTime: visualTime)
-        drawOrbs(&world, art: art, reducedMotion: reducedMotion, colorblind: colorblind)
-        drawPowerUps(&world, art: art, reducedMotion: reducedMotion, colorblind: colorblind)
-        drawAsteroids(&world, art: art, reducedMotion: reducedMotion, colorblind: colorblind)
-        drawPlayer(&world, art: art, shipSprite: shipSprite, visualTime: visualTime,
+        drawComboRing(&context)
+        drawResonanceRing(&context)
+        drawOrbitRing(&context)
+        drawWormholes(&context, art: art, reducedMotion: reducedMotion)
+        drawBosses(&context, art: art, reducedMotion: reducedMotion, colorblind: colorblind)
+        drawTrail(&context, art: art, style: trailStyle, visualTime: visualTime)
+        drawOrbs(&context, art: art, reducedMotion: reducedMotion, colorblind: colorblind)
+        drawPowerUps(&context, art: art, reducedMotion: reducedMotion, colorblind: colorblind)
+        drawAsteroids(&context, art: art, reducedMotion: reducedMotion, colorblind: colorblind)
+        drawPlayer(&context, art: art, shipSprite: shipSprite, visualTime: visualTime,
                    reducedMotion: reducedMotion)
-        drawParticles(&world, art: art)
+        drawParticles(&context, art: art)
 
         if multiplier >= 3 {
             context.fill(full, with: .radialGradient(
@@ -187,18 +186,17 @@ extension GameEngine {
 
     private func drawBackground(_ context: inout GraphicsContext, art: GameArt, sector: Int,
                                  style: Int, time: CGFloat, w: CGFloat, h: CGFloat) {
-        let image = art.backgrounds[(sector + style * 2) % art.backgrounds.count]
+        let image = art.backgrounds[((sector % art.backgrounds.count) + art.backgrounds.count) % art.backgrounds.count]
         let scale = max(w / CGFloat(image.size.width), h / CGFloat(image.size.height)) * 1.04
         let dw = CGFloat(image.size.width) * scale
         let dh = CGFloat(image.size.height) * scale
-        let drift = sin(time * 0.08) * 3
-        context.drawUI(image, in: CGRect(x: (w - dw) / 2 + drift, y: (h - dh) / 2, width: dw, height: dh))
+        context.drawUI(image, in: CGRect(x: (w - dw) / 2, y: (h - dh) / 2, width: dw, height: dh))
     }
 
     private func drawPlanet(_ context: inout GraphicsContext, art: GameArt, style: Int,
                             reducedMotion: Bool, colorblind: Bool) {
         let center = CGPoint(x: centerX, y: centerY)
-        let image = art.planets[(sectorId + style) % art.planets.count]
+        let image = art.planets[max(0, min(style, art.planets.count - 1))]
         // Видимый радиус спрайта совпадает с радиусом обводки и не заходит на орбиту.
         let diameter = planetRadius * 2.25
         let outlineRadius = planetRadius * 1.02
@@ -232,6 +230,19 @@ extension GameEngine {
                     startAngle: .degrees(-90), endAngle: .degrees(-90 + 360 * Double(fraction)), clockwise: false)
         context.stroke(arc, with: .color(skinColor.opacity(0.55)),
                        style: StrokeStyle(lineWidth: 3, lineCap: .round))
+    }
+
+    private func drawResonanceRing(_ context: inout GraphicsContext) {
+        guard resonance > 0 || resonanceFlash > 0 else { return }
+        let radius = orbitRadius * 1.16
+        let alpha = min(max(0.22 + Double(resonance) * 0.45 + Double(resonanceFlash) * 0.33, 0), 1)
+        let fraction = resonanceFlash > 0 ? 1 : Double(resonance)
+        var arc = Path()
+        arc.addArc(center: CGPoint(x: centerX, y: centerY), radius: radius,
+                   startAngle: .degrees(-90), endAngle: .degrees(-90 + 360 * fraction),
+                   clockwise: false)
+        context.stroke(arc, with: .color(skinColor.opacity(alpha)),
+                       style: StrokeStyle(lineWidth: resonanceFlash > 0 ? 5 : 2.5, lineCap: .round))
     }
 
     private func drawOrbitRing(_ context: inout GraphicsContext) {
@@ -284,9 +295,11 @@ extension GameEngine {
             let radius = playerRadius * 6
             let pulse: CGFloat = reducedMotion ? 1 : 1 + 0.14 * sin(boss.time * 5)
             let center = CGPoint(x: x, y: y)
-            context.drawGlow(center, radius: radius * 1.5 * pulse, color: Palette.boss, alpha: 0.35)
+            let kindColor: Color = boss.kind % 3 == 1 ? Palette.orb : (boss.kind % 3 == 2 ? Palette.danger : Palette.boss)
+            let bossColor: Color = colorblind ? RenderColors.hazardHot : kindColor
+            context.drawGlow(center, radius: radius * 1.5 * pulse, color: bossColor, alpha: 0.35)
             context.fill(circlePath(center, radius * pulse), with: .radialGradient(
-                Gradient(colors: [boss.hitFlash > 0 ? Color.white : Color(hex: 0x3A0A24), Palette.boss.opacity(0.85)]),
+                Gradient(colors: [boss.hitFlash > 0 ? Color.white : Color(hex: 0x3A0A24), bossColor.opacity(0.85)]),
                 center: center, startRadius: 0, endRadius: radius))
             context.fill(circlePath(center, radius * 0.35), with: .color(Color.white.opacity(0.8)))
             let arcRadius = radius * 1.35
@@ -296,7 +309,7 @@ extension GameEngine {
                        startAngle: .degrees(-90),
                        endAngle: .degrees(-90 + 360 * Double(CGFloat(boss.hp) / max(1, hpMax))),
                        clockwise: false)
-            context.stroke(arc, with: .color(Palette.boss), style: StrokeStyle(lineWidth: 3, lineCap: .round))
+            context.stroke(arc, with: .color(bossColor), style: StrokeStyle(lineWidth: 3, lineCap: .round))
             drawHazardMarker(&context, center: center, radius: radius * 1.1, colorblind: colorblind)
         }
     }
@@ -369,6 +382,16 @@ extension GameEngine {
             let x = centerX + cos(asteroid.angle) * asteroid.distance
             let y = centerY + sin(asteroid.angle) * asteroid.distance
             let center = CGPoint(x: x, y: y)
+            // Тонкий радиальный коридор: угроза летит строго на орбиту и планету.
+            if asteroid.distance > orbitRadius * 0.9 && asteroid.kind != .bolt {
+                var lane = Path()
+                lane.move(to: CGPoint(x: centerX, y: centerY))
+                lane.addLine(to: center)
+                context.stroke(lane, with: .linearGradient(
+                    Gradient(colors: [Color.clear, (colorblind ? RenderColors.hazardHot : Palette.danger).opacity(0.13)]),
+                    startPoint: CGPoint(x: centerX, y: centerY), endPoint: center),
+                    style: StrokeStyle(lineWidth: 1))
+            }
             switch asteroid.kind {
             case .comet:
                 let dx = cos(asteroid.angle)
@@ -474,8 +497,7 @@ extension GameArt {
         let scale = max(size.width / CGFloat(image.size.width), size.height / CGFloat(image.size.height)) * 1.05
         let dw = CGFloat(image.size.width) * scale
         let dh = CGFloat(image.size.height) * scale
-        let shift: CGFloat = reducedMotion ? 0 : sin(Double(tick) * 0.002) * 4
-        context.drawUI(image, in: CGRect(x: (size.width - dw) / 2 + shift, y: (size.height - dh) / 2,
+        context.drawUI(image, in: CGRect(x: (size.width - dw) / 2, y: (size.height - dh) / 2,
                                         width: dw, height: dh))
         let full = Path(CGRect(origin: .zero, size: size))
         context.fill(full, with: .radialGradient(
@@ -498,6 +520,44 @@ extension GameArt {
             context.stroke(Path(ellipseIn: CGRect(x: center.x - radius, y: center.y - radius,
                                                   width: radius * 2, height: radius * 2)),
                            with: .color(RenderColors.bonusBlue), lineWidth: 2)
+        }
+    }
+
+    /// Живая открытка главного экрана: планета-скин, орбита и корабль в полёте.
+    func drawHubHero(in context: inout GraphicsContext, size: CGSize, planetIndex: Int,
+                     shipSprite: Int, skinColor: Color, tick: Int,
+                     colorblind: Bool, reducedMotion: Bool) {
+        guard !planets.isEmpty, !ships.isEmpty else { return }
+        let cx = size.width / 2
+        let cy = size.height / 2
+        let r = min(size.width, size.height) * 0.36
+        context.drawGlow(CGPoint(x: cx, y: cy), radius: r * 1.35, color: skinColor, alpha: 0.10)
+        context.stroke(Path(ellipseIn: CGRect(x: cx - r, y: cy - r, width: r * 2, height: r * 2)),
+                       with: .color(skinColor.opacity(0.20)),
+                       style: StrokeStyle(lineWidth: 1.5, dash: [8, 12]))
+        context.stroke(Path(ellipseIn: CGRect(x: cx - r * 0.68, y: cy - r * 0.68,
+                                              width: r * 1.36, height: r * 1.36)),
+                       with: .color(Color.white.opacity(0.06)), lineWidth: 1)
+        drawPlanetPreview(in: &context, index: planetIndex,
+                          center: CGPoint(x: cx, y: cy), radius: r * 0.42,
+                          tick: tick, colorblind: colorblind, reducedMotion: reducedMotion)
+        let phase: CGFloat = reducedMotion ? -CGFloat.pi / 2 : -CGFloat.pi / 2 + CGFloat(tick) * 0.014
+        let px = cx + cos(phase) * r
+        let py = cy + sin(phase) * r
+        context.drawGlow(CGPoint(x: px, y: py), radius: r * 0.26, color: skinColor, alpha: 0.45)
+        let d = r * 0.24
+        context.drawLayer { layer in
+            layer.translateBy(x: px, y: py)
+            layer.rotate(by: .radians(Double(phase + CGFloat.pi)))
+            layer.drawUI(ships[shipSprite % ships.count],
+                         in: CGRect(x: -d / 2, y: -d / 2, width: d, height: d))
+        }
+        for i in 1...3 {
+            let a = phase + CGFloat(i) * CGFloat.pi / 2
+            context.fill(Path(ellipseIn: CGRect(x: cx + cos(a) * r - r * 0.026,
+                                                y: cy + sin(a) * r - r * 0.026,
+                                                width: r * 0.052, height: r * 0.052)),
+                         with: .color(Palette.orb.opacity(0.55)))
         }
     }
 }

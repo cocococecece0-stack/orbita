@@ -37,6 +37,7 @@ enum GameEvent {
     case bossSpawn
     case bossHit
     case bossDown
+    case resonance
     case finish
     case tick
 }
@@ -44,7 +45,7 @@ enum GameEvent {
 final class Asteroid {
     var angle: CGFloat
     var distance: CGFloat
-    let speed: CGFloat
+    var speed: CGFloat
     let radius: CGFloat
     let kind: AsteroidKind
     let sprite: Int
@@ -118,15 +119,17 @@ final class Boss {
     let angle: CGFloat
     var hp: Int
     let duration: CGFloat
+    let kind: Int
     var time: CGFloat = 0
     var charge: CGFloat = 0
     var hitFlash: CGFloat = 0
     var dead = false
 
-    init(angle: CGFloat, hp: Int, duration: CGFloat) {
+    init(angle: CGFloat, hp: Int, duration: CGFloat, kind: Int = 0) {
         self.angle = angle
         self.hp = hp
         self.duration = duration
+        self.kind = kind
     }
 }
 

@@ -158,23 +158,21 @@ fun DrawScope.drawGame(
         )
     }
 
-    val shakeX = if (!reducedMotion && engine.shake > 0f) sin(visualTime * 83f) * engine.shake * 14f else 0f
-    val shakeY = if (!reducedMotion && engine.shake > 0f) cos(visualTime * 71f) * engine.shake * 14f else 0f
-
-    translate(shakeX, shakeY) {
-        drawWells(engine, art, colorblind)
-        drawPlanet(engine, art, planetStyle, visualTime, colorblind)
-        drawComboRing(engine)
-        drawOrbitRing(engine)
-        drawWormholes(engine, art, colorblind)
-        drawBosses(engine, art, visualTime, colorblind)
-        drawTrail(engine, art, trailStyle, visualTime)
-        drawOrbs(engine, art, colorblind, reducedMotion)
-        drawPowerUps(engine, art, colorblind, reducedMotion)
-        drawAsteroids(engine, art, colorblind)
-        drawPlayer(engine, art, shipSprite, skin, visualTime, colorblind)
-        drawParticles(engine, art)
-    }
+    // Орбита, планета и сектор remained absolutely fixed: никакого «дрейфа камеры».
+    // Тряска заменена вспышками и частицами, чтобы траектории угроз читались однозначно.
+    drawWells(engine, art, colorblind)
+    drawPlanet(engine, art, planetStyle, visualTime, colorblind)
+    drawComboRing(engine)
+    drawResonanceRing(engine, skin)
+    drawOrbitRing(engine)
+    drawWormholes(engine, art, colorblind)
+    drawBosses(engine, art, visualTime, colorblind)
+    drawTrail(engine, art, trailStyle, visualTime)
+    drawOrbs(engine, art, colorblind, reducedMotion)
+    drawPowerUps(engine, art, colorblind, reducedMotion)
+    drawAsteroids(engine, art, colorblind)
+    drawPlayer(engine, art, shipSprite, skin, visualTime, colorblind)
+    drawParticles(engine, art)
 
     if (engine.multiplier >= 3) {
         drawRect(
@@ -228,15 +226,14 @@ private fun DrawScope.drawBackground(
     w: Float,
     h: Float,
 ) {
-    val image = art.backgrounds[(sector + style * 2) % art.backgrounds.size]
+    val image = art.backgrounds[Math.floorMod(sector, art.backgrounds.size)]
     val scale = max(w / image.width, h / image.height) * 1.04f
     val dw = image.width * scale
     val dh = image.height * scale
-    // Дрейф фона минимален и полностью выключен при reducedMotion (time == 0).
-    val drift = (sin(time * 0.12f) * 6f).roundToInt()
+    // Фон статичен: орбита не должна «уезжать» из-за декоративного дрейфа.
     drawImage(
         image,
-        dstOffset = IntOffset(((w - dw) / 2f).roundToInt() + drift, ((h - dh) / 2f).roundToInt()),
+        dstOffset = IntOffset(((w - dw) / 2f).roundToInt(), ((h - dh) / 2f).roundToInt()),
         dstSize = IntSize(dw.roundToInt(), dh.roundToInt()),
     )
     // Тонкий акцент сектора поверх фона, вместо плотной «полосы» в текстуре.
@@ -252,7 +249,7 @@ private fun DrawScope.drawBackground(
 
 private fun DrawScope.drawPlanet(engine: GameEngine, art: GameArt, style: Int, time: Float, colorblind: Boolean) {
     val center = Offset(engine.centerX, engine.centerY)
-    val image = art.planets[(engine.sectorId + style) % art.planets.size]
+    val image = art.planets[style.coerceIn(0, art.planets.lastIndex)]
     // Видимый радиус спрайта ≈ 0.456 * половины side: выравниваем его с радиусом планеты движка.
     val diameter = (engine.planetRadius * 2f / PLANET_SPRITE_VISIBLE).roundToInt()
     drawGlow(center, engine.planetRadius * 1.7f, if (colorblind) Contrast.Bonus else Color(0xFF7C5CFF), 0.22f)
@@ -285,6 +282,21 @@ private fun DrawScope.drawComboRing(engine: GameEngine) {
         topLeft = Offset(engine.centerX - ringRadius, engine.centerY - ringRadius),
         size = Size(ringRadius * 2f, ringRadius * 2f),
         style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round),
+    )
+}
+
+private fun DrawScope.drawResonanceRing(engine: GameEngine, skin: Color) {
+    if (engine.resonance <= 0f && engine.resonanceFlash <= 0f) return
+    val radius = engine.orbitRadius * 1.16f
+    val alpha = 0.22f + engine.resonance * 0.45f + engine.resonanceFlash * 0.33f
+    drawArc(
+        color = skin.copy(alpha = alpha.coerceIn(0f, 1f)),
+        startAngle = -90f,
+        sweepAngle = if (engine.resonanceFlash > 0f) 360f else 360f * engine.resonance,
+        useCenter = false,
+        topLeft = Offset(engine.centerX - radius, engine.centerY - radius),
+        size = Size(radius * 2f, radius * 2f),
+        style = Stroke(width = (if (engine.resonanceFlash > 0f) 5f else 2.5f).dp.toPx(), cap = StrokeCap.Round),
     )
 }
 
@@ -350,8 +362,12 @@ private fun DrawScope.drawWormholes(engine: GameEngine, art: GameArt, colorblind
 }
 
 private fun DrawScope.drawBosses(engine: GameEngine, art: GameArt, time: Float, colorblind: Boolean) {
-    val bossColor = if (colorblind) Contrast.HazardHot else Palette.Boss
     engine.boss.forEach { boss ->
+        val bossColor = if (colorblind) Contrast.HazardHot else when (boss.kind % 3) {
+            1 -> Palette.Orb
+            2 -> Palette.Danger
+            else -> Palette.Boss
+        }
         val x = engine.centerX + cos(boss.angle) * engine.orbitRadius
         val y = engine.centerY + sin(boss.angle) * engine.orbitRadius
         val radius = engine.playerRadius * 6f
@@ -461,6 +477,19 @@ private fun DrawScope.drawAsteroids(engine: GameEngine, art: GameArt, colorblind
         val x = engine.centerX + cos(asteroid.angle) * asteroid.distance
         val y = engine.centerY + sin(asteroid.angle) * asteroid.distance
         val center = Offset(x, y)
+        // Тонкий радиальный «коридор» показывает, что угрога летит строго на орбиту/планету.
+        if (asteroid.distance > engine.orbitRadius * 0.9f && asteroid.kind != AsteroidKind.Bolt) {
+            drawLine(
+                brush = Brush.linearGradient(
+                    colors = listOf(Color.Transparent, hazard.copy(alpha = 0.13f)),
+                    start = Offset(engine.centerX, engine.centerY),
+                    end = center,
+                ),
+                start = Offset(engine.centerX, engine.centerY),
+                end = center,
+                strokeWidth = 1.dp.toPx(),
+            )
+        }
         when (asteroid.kind) {
             AsteroidKind.Comet -> {
                 val dx = cos(asteroid.angle)
@@ -659,10 +688,9 @@ fun DrawScope.drawMenuBackground(
     val scale = max(size.width / image.width, size.height / image.height) * 1.05f
     val dw = image.width * scale
     val dh = image.height * scale
-    val shift = if (reducedMotion) 0 else (sin(tick * 0.004f) * 10f).roundToInt()
     drawImage(
         image,
-        dstOffset = IntOffset(((size.width - dw) / 2f).roundToInt() + shift, ((size.height - dh) / 2f).roundToInt()),
+        dstOffset = IntOffset(((size.width - dw) / 2f).roundToInt(), ((size.height - dh) / 2f).roundToInt()),
         dstSize = IntSize(dw.roundToInt(), dh.roundToInt()),
     )
     drawRect(
@@ -710,4 +738,58 @@ fun DrawScope.drawPreviewPlanet(
         center = center,
         style = Stroke(width = 1.5.dp.toPx()),
     )
+}
+
+/** Живая открытка главного экрана: планета-скин, орбита и корабль в полёте. */
+fun DrawScope.drawHubHero(
+    art: GameArt,
+    planetIndex: Int,
+    shipSprite: Int,
+    skinColor: Color,
+    tick: Long,
+    colorblind: Boolean = false,
+    reducedMotion: Boolean = false,
+) {
+    val cx = size.width / 2f
+    val cy = size.height / 2f
+    val r = minOf(size.width, size.height) * 0.36f
+    drawGlow(Offset(cx, cy), r * 1.35f, skinColor, 0.10f)
+    drawCircle(
+        color = skinColor.copy(alpha = 0.20f),
+        radius = r,
+        center = Offset(cx, cy),
+        style = Stroke(
+            width = 1.5.dp.toPx(),
+            pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(8.dp.toPx(), 12.dp.toPx())),
+        ),
+    )
+    drawCircle(
+        color = Color.White.copy(alpha = 0.06f),
+        radius = r * 0.68f,
+        center = Offset(cx, cy),
+        style = Stroke(width = 1.dp.toPx()),
+    )
+    drawPreviewPlanet(art, planetIndex, Offset(cx, cy), r * 0.42f, tick, colorblind, reducedMotion)
+    val phase = if (reducedMotion) -PI.toFloat() / 2f else -PI.toFloat() / 2f + tick * 0.014f
+    val px = cx + cos(phase) * r
+    val py = cy + sin(phase) * r
+    drawGlow(Offset(px, py), r * 0.26f, skinColor, 0.45f)
+    val shipSize = (r * 0.24f).roundToInt()
+    translate(px, py) {
+        rotate(phase * RAD + 180f) {
+            drawImage(
+                art.ships[shipSprite.coerceIn(0, art.ships.lastIndex)],
+                dstOffset = IntOffset(-shipSize / 2, -shipSize / 2),
+                dstSize = IntSize(shipSize, shipSize),
+            )
+        }
+    }
+    repeat(3) { i ->
+        val a = phase + (i + 1) * TAU / 4f
+        drawCircle(
+            color = Palette.Orb.copy(alpha = 0.55f),
+            radius = r * 0.026f,
+            center = Offset(cx + cos(a) * r, cy + sin(a) * r),
+        )
+    }
 }

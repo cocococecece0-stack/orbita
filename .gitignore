@@ -15,4 +15,6 @@ build/
 /ios/build/
 /ios/Orbit.xcodeproj/
 /node_modules/
+__pycache__/
+*.pyc
 
