@@ -65,7 +65,7 @@ python3 tools/size_budget.py <path-to.apk> <path-to.ipa>
 python3 tools/parity_report.py
 ```
 
-CI `Build` собирает Android debug APK и iOS unsigned device IPA, затем проверяет бюджет `TARGET_SIZE_MB: 8`. Релиз по тегу `vX.Y` публикует оба артефакта. Имя приложения `Orbit`, Bundle ID `com.example.orbit` и имя IPA не изменялись. Сертификаты и ключи в репозитории отсутствуют.
+CI `Build` собирает Android debug APK и iOS unsigned device IPA, затем проверяет `TARGET_SIZE_MB` (по умолчанию 512 — жёсткого лимита размера нет). Перед сборкой проверяется совпадение версии тега и версий приложения. Релиз по тегу `vX.Y` публикует оба артефакта с заметками из CHANGELOG. Имя приложения `Orbit`, Bundle ID `com.example.orbit` и имя IPA не изменялись. Сертификаты и ключи в репозитории отсутствуют.
 
 Локально iOS-сборка невозможна без macOS/Xcode — она проверяется только в GitHub Actions.
 

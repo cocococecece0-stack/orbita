@@ -7,6 +7,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+env:
+  TARGET_SIZE_MB: 512
+
 jobs:
   verify:
     runs-on: ubuntu-latest

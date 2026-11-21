@@ -65,6 +65,7 @@ async function ensureAudio(): Promise<void> {
   try {
     await audio.init();
     audio.setMuted(!save.get().settings.sound);
+    audio.setMusicEnabled(save.get().settings.music);
     if (save.get().settings.music) audio.startAmbient();
   } catch (error) {
     console.warn('Аудио недоступно:', error);
@@ -86,9 +87,9 @@ game.events.on('shieldOn', () => { sfx('shield', 0.9); hapticSafe('medium'); });
 game.events.on('shieldBreak', () => { sfx('shield', 0.7); hapticSafe('heavy'); });
 game.events.on('slowOn', () => { sfx('powerup', 0.85); hapticSafe('medium'); });
 game.events.on('levelUp', (level) => { sfx('level', 0.95 + level * 0.01); hapticSafe('success'); });
-game.events.on('feverOn', () => { sfx('powerup', 1.25); hapticSafe('success'); });
-game.events.on('newBest', () => { sfx('level', 1.3); hapticSafe('success'); });
-game.events.on('death', () => { sfx('crash'); hapticSafe('heavy'); });
+game.events.on('feverOn', () => { sfx('powerup', 1.25); hapticSafe('pulse'); });
+game.events.on('newBest', () => { sfx('level', 1.3); hapticSafe('record'); });
+game.events.on('death', () => { sfx('crash'); audio.duck(); hapticSafe('heavy'); });
 
 function seedFor(mode: Mode): number {
   return mode === 'daily' ? Rng.dailySeedUTC() : Rng.runSeed();
@@ -127,7 +128,7 @@ ui.on('sound', () => {
 });
 
 ui.onInput('set-sound', (v) => { save.get().settings.sound = v === 'true'; audio.setMuted(v !== 'true'); save.save(); });
-ui.onInput('set-music', (v) => { save.get().settings.music = v === 'true'; save.save(); });
+ui.onInput('set-music', (v) => { save.get().settings.music = v === 'true'; audio.setMusicEnabled(v === 'true'); save.save(); });
 ui.onInput('set-haptics', (v) => { save.get().settings.haptics = v === 'true'; save.save(); });
 ui.onInput('set-lowfps', (v) => { save.get().settings.lowFps = v === 'true'; loop.setFpsCap(v === 'true' ? 30 : 0); save.save(); });
 ui.onInput('set-fx', (v) => { save.get().settings.fx = Number(v); applyTheme(); save.save(); });
@@ -208,6 +209,7 @@ const loop = new GameLoop({
   update: (dt: number): void => {
     game.update(dt);
     const s = game.getSnapshot();
+    audio.update(s.level, s.feverLeft > 0, s.screen === 'playing');
     if (s.screen === 'playing') wasPlaying = true;
     if (s.screen === 'gameover' && wasPlaying) {
       wasPlaying = false;

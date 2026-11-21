@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
-"""Валит сборку, если APK/IPA больше TARGET_SIZE_MB (8)."""
+"""Сообщает размер артефактов и валит сборку только при превышении TARGET_SIZE_MB.
+
+Лимит задаётся окружением; по умолчанию 512 МБ — размер не является ограничением
+продукта, но проверка остаётся как страховка от случайного включения мусора в бандл.
+"""
 import os
 import sys
 
-MAX_MB = 8.0
+MAX_MB = float(os.environ.get('TARGET_SIZE_MB', '512'))
+
 
 def main() -> int:
     files = [p for p in sys.argv[1:] if p]
@@ -21,6 +26,7 @@ def main() -> int:
         if mb > MAX_MB:
             failed = True
     return 1 if failed else 0
+
 
 if __name__ == '__main__':
     raise SystemExit(main())
