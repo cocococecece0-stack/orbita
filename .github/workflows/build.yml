@@ -8,7 +8,28 @@ on:
   workflow_dispatch:
 
 jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Tag matches app version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          normalize() { node -e 'const p=process.argv[1].split("."); while(p.length<3)p.push("0"); console.log(p.join("."))' "$1"; }
+          TAG=$(normalize "${GITHUB_REF_NAME#v}")
+          PKG=$(normalize "$(node -p "require('./package.json').version")")
+          ANDROID=$(normalize "$(grep -oE 'versionName "[^"]+"' android/app/build.gradle | head -1 | cut -d'"' -f2)")
+          IOS=$(normalize "$(grep -oE 'MARKETING_VERSION = [^;]+' ios/App/App.xcodeproj/project.pbxproj | head -1 | sed 's/.*= //;s/;//')")
+          echo "tag=$TAG package=$PKG android=$ANDROID ios=$IOS"
+          if [ "$TAG" != "$PKG" ] || [ "$TAG" != "$ANDROID" ] || [ "$TAG" != "$IOS" ]; then
+            echo "::error::Версия тега не совпадает с версией приложения"
+            exit 1
+          fi
+
   android:
+    needs: [verify]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -59,6 +80,7 @@ jobs:
           if-no-files-found: error
 
   ios:
+    needs: [verify]
     runs-on: macos-latest
     steps:
       - name: Checkout
@@ -124,6 +146,20 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Release notes from CHANGELOG
+        run: |
+          python3 - <<'PY'
+          import os, re
+          ver = os.environ['GITHUB_REF_NAME'].lstrip('v')
+          text = open('CHANGELOG.md', encoding='utf-8').read()
+          m = re.search(r'^## \[' + re.escape(ver) + r'\][^\n]*\n(.*?)(?=^## \[|\Z)', text, re.M | re.S)
+          open('release-notes.md', 'w', encoding='utf-8').write(
+              m.group(0) if m else f'Орбита {ver}\n')
+          PY
+
       - name: Download APK
         uses: actions/download-artifact@v4
         with:
@@ -147,6 +183,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: "Орбита ${{ github.ref_name }}"
+          body_path: release-notes.md
           draft: false
           generate_release_notes: true
           files: |
