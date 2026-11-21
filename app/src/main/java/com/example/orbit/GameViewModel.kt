@@ -19,7 +19,17 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         initialValue = 0,
     )
 
+    val muted: StateFlow<Boolean> = store.muted.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = false,
+    )
+
     fun submit(score: Int) {
         viewModelScope.launch { store.submit(score) }
+    }
+
+    fun toggleMuted() {
+        viewModelScope.launch { store.setMuted(!muted.value) }
     }
 }

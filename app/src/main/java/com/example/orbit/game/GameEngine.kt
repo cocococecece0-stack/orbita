@@ -1,6 +1,7 @@
 package com.example.orbit.game
 
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -13,7 +14,7 @@ import kotlin.math.sqrt
 import kotlin.random.Random
 
 /**
- * Pure game simulation: orbiting player, incoming asteroids, collectible orbs
+ * Pure game simulation: orbiting player, incoming asteroids, orbs, power-ups
  * and a particle system. Coordinates are pixels relative to the canvas size.
  */
 class GameEngine {
@@ -28,8 +29,16 @@ class GameEngine {
     var paused by mutableStateOf(false)
         private set
 
-    var onCollect: () -> Unit = {}
-    var onCrash: () -> Unit = {}
+    var combo by mutableIntStateOf(0)
+        private set
+    var multiplier by mutableIntStateOf(1)
+        private set
+    var level by mutableIntStateOf(1)
+        private set
+    var shield by mutableStateOf(false)
+        private set
+
+    var onEvent: (GameEvent) -> Unit = {}
     var onNewRecord: (Int) -> Unit = {}
 
     var width = 0f
@@ -51,7 +60,21 @@ class GameEngine {
         private set
     var shake = 0f
         private set
+    var flash = 0f
+        private set
+    var levelUpFlash = 0f
+        private set
+    var shieldFlash = 0f
+        private set
     var reverseFlash = 0f
+        private set
+    var hitStop = 0f
+        private set
+    var invulnerable = 0f
+        private set
+    var slowTimer = 0f
+        private set
+    var doubleTimer = 0f
         private set
     var playerAngle = -PI.toFloat() / 2f
         private set
@@ -62,6 +85,7 @@ class GameEngine {
 
     val asteroids = mutableListOf<Asteroid>()
     val orbs = mutableListOf<Orb>()
+    val powerUps = mutableListOf<PowerUp>()
     val particles = mutableListOf<Particle>()
     val stars = mutableListOf<Star>()
     val trail = ArrayDeque<TrailPoint>()
@@ -72,6 +96,8 @@ class GameEngine {
     private var minDim = 0f
     private var spawnTimer = 0f
     private var orbTimer = 0f
+    private var powerTimer = 0f
+    private var comboTime = 0f
 
     fun resize(w: Int, h: Int) {
         if (w <= 0 || h <= 0) return
@@ -96,15 +122,30 @@ class GameEngine {
     fun start() {
         asteroids.clear()
         orbs.clear()
+        powerUps.clear()
         particles.clear()
         trail.clear()
         score = 0
+        best = max(best, score)
         isNewRecord = false
         paused = false
+        combo = 0
+        multiplier = 1
+        level = 1
+        shield = false
+        comboTime = 0f
+        slowTimer = 0f
+        doubleTimer = 0f
+        invulnerable = 0f
+        hitStop = 0f
+        flash = 0f
+        levelUpFlash = 0f
+        shieldFlash = 0f
         playerAngle = -PI.toFloat() / 2f
         direction = 1
         spawnTimer = 0.7f
         orbTimer = 3.5f
+        powerTimer = 6f
         time = 0f
         shake = 0f
         reverseFlash = 0f
@@ -113,6 +154,7 @@ class GameEngine {
     }
 
     fun tap() {
+        onEvent(GameEvent.Tap)
         when {
             paused -> paused = false
             status == GameStatus.Ready -> start()
@@ -130,22 +172,36 @@ class GameEngine {
     fun update(dt: Float) {
         val step = dt.coerceIn(0f, 0.05f)
         time += step
-        if (shake > 0f) shake = max(0f, shake - step * 2.4f)
-        if (reverseFlash > 0f) reverseFlash = max(0f, reverseFlash - step * 3.5f)
+        decayVisuals(step)
         updateParticles(step)
         updateTrail(step)
 
+        if (hitStop > 0f) {
+            hitStop = max(0f, hitStop - step)
+            return
+        }
         if (status != GameStatus.Playing || paused) return
 
-        speedLevel = min(1f, score / 40f)
-        playerAngle += direction * (1.45f + speedLevel * 0.6f) * step
+        if (combo > 0) {
+            comboTime -= step
+            if (comboTime <= 0f) {
+                combo = 0
+                multiplier = 1
+            }
+        }
+        if (slowTimer > 0f) slowTimer = max(0f, slowTimer - step)
+        if (doubleTimer > 0f) doubleTimer = max(0f, doubleTimer - step)
+        if (invulnerable > 0f) invulnerable = max(0f, invulnerable - step)
+
+        speedLevel = min(1f, score / 80f)
+        playerAngle += direction * (1.45f + speedLevel * 0.65f) * step
         trail.addLast(TrailPoint(playerX(), playerY(), 1f))
 
         spawnTimer -= step
         if (spawnTimer <= 0f) {
             spawnAsteroid()
-            val base = 1.05f - score * 0.018f
-            spawnTimer = base.coerceIn(0.32f, 1.05f) * (0.75f + random.nextFloat() * 0.5f)
+            val base = 1.05f - score * 0.015f
+            spawnTimer = base.coerceIn(0.30f, 1.05f) * (0.75f + random.nextFloat() * 0.5f)
         }
 
         orbTimer -= step
@@ -154,30 +210,59 @@ class GameEngine {
             orbTimer = 3.5f + random.nextFloat() * 2.5f
         }
 
+        powerTimer -= step
+        if (powerTimer <= 0f) {
+            val kinds = PowerUpKind.entries
+            powerUps += PowerUp(random.nextFloat() * TAU, kinds[random.nextInt(kinds.size)])
+            powerTimer = 7f + random.nextFloat() * 5f
+        }
+
         val px = playerX()
         val py = playerY()
+        val speedScale = if (slowTimer > 0f) 0.45f else 1f
 
-        val asteroidIterator = asteroids.iterator()
-        while (asteroidIterator.hasNext()) {
-            val asteroid = asteroidIterator.next()
-            asteroid.distance -= asteroid.speed * step
+        val toRemove = mutableListOf<Asteroid>()
+        var hit: Asteroid? = null
+        for (asteroid in asteroids) {
+            asteroid.distance -= asteroid.speed * speedScale * step
             asteroid.rotation += asteroid.spin * step
 
             val ax = centerX + cos(asteroid.angle) * asteroid.distance
             val ay = centerY + sin(asteroid.angle) * asteroid.distance
+            val distanceToPlayer = distance(ax, ay, px, py)
+            val collisionDistance = asteroid.radius + playerRadius
 
-            if (distance(ax, ay, px, py) < asteroid.radius + playerRadius) {
-                crash()
-                return
+            if (distanceToPlayer < collisionDistance && invulnerable <= 0f) {
+                hit = asteroid
+                break
+            }
+            if (!asteroid.nearMissed &&
+                distanceToPlayer < collisionDistance + playerRadius * 2.1f &&
+                invulnerable <= 0f
+            ) {
+                asteroid.nearMissed = true
+                bumpCombo()
+                addPoints(2)
+                flash = 1f
+                hitStop = 0.035f
+                onEvent(GameEvent.NearMiss)
             }
             if (!asteroid.dodged && asteroid.distance < orbitRadius - asteroid.radius) {
                 asteroid.dodged = true
-                score += 1
+                bumpCombo()
+                addPoints(1)
+                onEvent(GameEvent.Dodge(combo))
             }
             if (asteroid.distance < planetRadius * 0.35f) {
                 burst(ax, ay, 6, Palette.Asteroid, 0.45f)
-                asteroidIterator.remove()
+                toRemove += asteroid
             }
+        }
+        asteroids.removeAll(toRemove)
+
+        if (hit != null) {
+            handleHit(hit)
+            return
         }
 
         val orbIterator = orbs.iterator()
@@ -187,12 +272,88 @@ class GameEngine {
             val ox = centerX + cos(orb.angle) * orbitRadius
             val oy = centerY + sin(orb.angle) * orbitRadius
             if (distance(ox, oy, px, py) < playerRadius * 2.4f) {
-                score += 3
+                bumpCombo()
+                addPoints(3)
                 burst(ox, oy, 14, Palette.Orb, 0.9f)
-                onCollect()
+                onEvent(GameEvent.Orb)
                 orbIterator.remove()
             }
         }
+
+        val powerIterator = powerUps.iterator()
+        while (powerIterator.hasNext()) {
+            val powerUp = powerIterator.next()
+            powerUp.pulse += step * 4f
+            val ox = centerX + cos(powerUp.angle) * orbitRadius
+            val oy = centerY + sin(powerUp.angle) * orbitRadius
+            if (distance(ox, oy, px, py) < playerRadius * 2.8f) {
+                applyPowerUp(powerUp.kind)
+                burst(ox, oy, 18, powerColor(powerUp.kind), 1f)
+                onEvent(GameEvent.PowerUp(powerUp.kind))
+                powerIterator.remove()
+            }
+        }
+    }
+
+    private fun applyPowerUp(kind: PowerUpKind) {
+        when (kind) {
+            PowerUpKind.Shield -> shield = true
+            PowerUpKind.Slow -> slowTimer = 5f
+            PowerUpKind.Double -> doubleTimer = 8f
+        }
+    }
+
+    private fun bumpCombo() {
+        combo += 1
+        comboTime = 2.5f
+        multiplier = min(5, 1 + combo / 3)
+    }
+
+    private fun addPoints(base: Int) {
+        val factor = if (doubleTimer > 0f) 2 else 1
+        score += base * multiplier * factor
+        val nextLevel = 1 + score / 50
+        if (nextLevel > level) {
+            level = nextLevel
+            levelUpFlash = 1f
+            onEvent(GameEvent.LevelUp(level))
+        }
+    }
+
+    private fun handleHit(asteroid: Asteroid) {
+        if (shield) {
+            shield = false
+            invulnerable = 1.6f
+            shieldFlash = 1f
+            shake = 0.9f
+            hitStop = 0.06f
+            val px = playerX()
+            val py = playerY()
+            burst(px, py, 24, Palette.Shield, 1.1f)
+            asteroids.removeAll { other ->
+                val ox = centerX + cos(other.angle) * other.distance
+                val oy = centerY + sin(other.angle) * other.distance
+                distance(ox, oy, px, py) < orbitRadius * 0.55f
+            }
+            onEvent(GameEvent.ShieldBreak)
+            return
+        }
+        gameOver()
+    }
+
+    private fun gameOver() {
+        status = GameStatus.GameOver
+        paused = false
+        shake = 1f
+        hitStop = 0.09f
+        burst(playerX(), playerY(), 34, Palette.Player, 1.4f)
+        burst(playerX(), playerY(), 14, Palette.Danger, 0.9f)
+        if (score > best) {
+            best = score
+            isNewRecord = true
+            onNewRecord(score)
+        }
+        onEvent(GameEvent.Crash)
     }
 
     private fun spawnAsteroid() {
@@ -210,18 +371,12 @@ class GameEngine {
         )
     }
 
-    private fun crash() {
-        status = GameStatus.GameOver
-        paused = false
-        shake = 1f
-        burst(playerX(), playerY(), 28, Palette.Player, 1.3f)
-        burst(playerX(), playerY(), 10, Palette.Danger, 0.8f)
-        if (score > best) {
-            best = score
-            isNewRecord = true
-            onNewRecord(score)
-        }
-        onCrash()
+    private fun decayVisuals(step: Float) {
+        if (shake > 0f) shake = max(0f, shake - step * 2.4f)
+        if (reverseFlash > 0f) reverseFlash = max(0f, reverseFlash - step * 3.5f)
+        if (flash > 0f) flash = max(0f, flash - step * 3.2f)
+        if (levelUpFlash > 0f) levelUpFlash = max(0f, levelUpFlash - step * 0.9f)
+        if (shieldFlash > 0f) shieldFlash = max(0f, shieldFlash - step * 2.5f)
     }
 
     private fun burst(x: Float, y: Float, count: Int, color: androidx.compose.ui.graphics.Color, power: Float) {
@@ -279,6 +434,12 @@ class GameEngine {
                 speed = 0.5f + random.nextFloat() * 2.5f,
             )
         }
+    }
+
+    private fun powerColor(kind: PowerUpKind) = when (kind) {
+        PowerUpKind.Shield -> Palette.Shield
+        PowerUpKind.Slow -> Palette.Slow
+        PowerUpKind.Double -> Palette.Double
     }
 
     private fun distance(x1: Float, y1: Float, x2: Float, y2: Float): Float {

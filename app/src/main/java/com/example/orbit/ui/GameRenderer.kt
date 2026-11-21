@@ -5,12 +5,14 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.unit.dp
 import com.example.orbit.game.GameEngine
 import com.example.orbit.game.Palette
+import com.example.orbit.game.PowerUpKind
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -52,9 +54,29 @@ fun DrawScope.drawGame(engine: GameEngine, frameTick: Long) {
         drawOrbitRing(engine, center)
         drawTrail(engine)
         drawOrbs(engine, center)
+        drawPowerUps(engine, center)
         drawAsteroids(engine, center)
         drawPlayer(engine)
         drawParticles(engine)
+    }
+
+    // Near-miss flash.
+    if (engine.flash > 0f) {
+        drawRect(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    Color.White.copy(alpha = engine.flash * 0.20f),
+                    Color.Transparent,
+                ),
+                center = center,
+                radius = max(w, h) * 0.7f,
+            ),
+        )
+    }
+
+    // Shield break flash.
+    if (engine.shieldFlash > 0f) {
+        drawRect(color = Palette.Shield.copy(alpha = engine.shieldFlash * 0.12f))
     }
 
     // Vignette keeps the HUD readable on top of the starfield.
@@ -142,6 +164,69 @@ private fun DrawScope.drawOrbs(engine: GameEngine, center: Offset) {
     }
 }
 
+private fun DrawScope.drawPowerUps(engine: GameEngine, center: Offset) {
+    engine.powerUps.forEach { powerUp ->
+        val position = Offset(
+            center.x + cos(powerUp.angle) * engine.orbitRadius,
+            center.y + sin(powerUp.angle) * engine.orbitRadius,
+        )
+        val color = when (powerUp.kind) {
+            PowerUpKind.Shield -> Palette.Shield
+            PowerUpKind.Slow -> Palette.Slow
+            PowerUpKind.Double -> Palette.Double
+        }
+        val radius = engine.playerRadius * 2.1f
+        val wobble = 1f + 0.1f * sin(powerUp.pulse)
+
+        drawCircle(color = color.copy(alpha = 0.18f), radius = radius * 1.9f, center = position)
+
+        val diamond = Path().apply {
+            moveTo(position.x, position.y - radius * wobble)
+            lineTo(position.x + radius * wobble, position.y)
+            lineTo(position.x, position.y + radius * wobble)
+            lineTo(position.x - radius * wobble, position.y)
+            close()
+        }
+        drawPath(diamond, color.copy(alpha = 0.85f))
+        drawPath(
+            path = diamond,
+            color = Color.White.copy(alpha = 0.9f),
+            style = Stroke(width = radius * 0.12f),
+        )
+
+        when (powerUp.kind) {
+            PowerUpKind.Shield -> drawCircle(
+                color = Color(0xFF04222A),
+                radius = radius * 0.4f,
+                center = position,
+                style = Stroke(width = radius * 0.16f),
+            )
+
+            PowerUpKind.Slow -> {
+                drawLine(
+                    color = Color(0xFF1B1033),
+                    start = Offset(position.x - radius * 0.28f, position.y - radius * 0.3f),
+                    end = Offset(position.x - radius * 0.28f, position.y + radius * 0.3f),
+                    strokeWidth = radius * 0.16f,
+                    cap = StrokeCap.Round,
+                )
+                drawLine(
+                    color = Color(0xFF1B1033),
+                    start = Offset(position.x + radius * 0.28f, position.y - radius * 0.3f),
+                    end = Offset(position.x + radius * 0.28f, position.y + radius * 0.3f),
+                    strokeWidth = radius * 0.16f,
+                    cap = StrokeCap.Round,
+                )
+            }
+
+            PowerUpKind.Double -> {
+                drawCircle(Color(0xFF2A1405), radius = radius * 0.13f, center = Offset(position.x - radius * 0.26f, position.y))
+                drawCircle(Color(0xFF2A1405), radius = radius * 0.13f, center = Offset(position.x + radius * 0.26f, position.y))
+            }
+        }
+    }
+}
+
 private fun DrawScope.drawAsteroids(engine: GameEngine, center: Offset) {
     engine.asteroids.forEach { asteroid ->
         val position = Offset(
@@ -169,16 +254,36 @@ private fun DrawScope.drawAsteroids(engine: GameEngine, center: Offset) {
 
 private fun DrawScope.drawPlayer(engine: GameEngine) {
     val position = Offset(engine.playerX(), engine.playerY())
+    val alpha = if (engine.invulnerable > 0f) {
+        0.4f + 0.6f * abs(sin(engine.time * 22f))
+    } else {
+        1f
+    }
 
     drawCircle(
         brush = Brush.radialGradient(
-            colors = listOf(Palette.Player.copy(alpha = 0.35f), Color.Transparent),
+            colors = listOf(Palette.Player.copy(alpha = 0.35f * alpha), Color.Transparent),
             center = position,
             radius = engine.playerRadius * 4.5f,
         ),
         radius = engine.playerRadius * 4.5f,
         center = position,
     )
+
+    if (engine.shield) {
+        val pulse = 1f + 0.08f * sin(engine.time * 6f)
+        drawCircle(
+            color = Palette.Shield.copy(alpha = 0.75f),
+            radius = engine.playerRadius * 2.7f * pulse,
+            center = position,
+            style = Stroke(width = engine.playerRadius * 0.4f),
+        )
+        drawCircle(
+            color = Palette.Shield.copy(alpha = 0.12f),
+            radius = engine.playerRadius * 2.7f * pulse,
+            center = position,
+        )
+    }
 
     if (engine.reverseFlash > 0f) {
         drawCircle(
@@ -206,8 +311,8 @@ private fun DrawScope.drawPlayer(engine: GameEngine) {
         )
         close()
     }
-    drawPath(ship, Palette.Player)
-    drawCircle(color = Color.White, radius = engine.playerRadius * 0.55f, center = position)
+    drawPath(ship, Palette.Player, alpha = alpha)
+    drawCircle(color = Color.White.copy(alpha = alpha), radius = engine.playerRadius * 0.55f, center = position)
 }
 
 private fun DrawScope.drawParticles(engine: GameEngine) {

@@ -4,13 +4,20 @@
     <string name="score_label">СЧЁТ</string>
     <string name="best_label">РЕКОРД</string>
     <string name="ready_title">ОРБИТА</string>
-    <string name="ready_subtitle">Уклоняйся от астероидов и собирай сферы</string>
-    <string name="ready_hint">Тап по экрану — сменить направление полёта</string>
+    <string name="ready_subtitle">Уклоняйся от астероидов, собирай сферы и бонусы</string>
+    <string name="ready_hint">Тап — сменить направление полёта</string>
     <string name="ready_tap">НАЖМИ, ЧТОБЫ НАЧАТЬ</string>
     <string name="paused_title">ПАУЗА</string>
-    <string name="paused_hint">Тапни, чтобы продолжить</string>
+    <string name="paused_hint">Игра остановлена</string>
+    <string name="resume">Продолжить</string>
+    <string name="restart">Заново</string>
     <string name="game_over_title">ИГРА ОКОНЧЕНА</string>
     <string name="new_record">НОВЫЙ РЕКОРД</string>
     <string name="best_score">Рекорд: %1$d</string>
     <string name="play_again">Ещё раз</string>
+    <string name="level_banner">УРОВЕНЬ %1$d</string>
+    <string name="power_shield">ЩИТ</string>
+    <string name="power_slow">ЗАМЕДЛЕНИЕ</string>
+    <string name="power_double">ДВОЙНЫЕ</string>
+    <string name="combo_badge">x%1$d</string>
 </resources>

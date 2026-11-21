@@ -10,6 +10,23 @@ object Palette {
     val Orb = Color(0xFFFBBF24)
     val Asteroid = Color(0xFF9D8CFF)
     val Danger = Color(0xFFF472B6)
+    val Shield = Color(0xFF4ADE80)
+    val Slow = Color(0xFFA78BFA)
+    val Double = Color(0xFFFB923C)
+}
+
+enum class PowerUpKind { Shield, Slow, Double }
+
+/** Everything the UI layer needs to react to: sounds, haptics, banners. */
+sealed interface GameEvent {
+    data object Tap : GameEvent
+    data class Dodge(val combo: Int) : GameEvent
+    data object Orb : GameEvent
+    data class PowerUp(val kind: PowerUpKind) : GameEvent
+    data object ShieldBreak : GameEvent
+    data object Crash : GameEvent
+    data class LevelUp(val level: Int) : GameEvent
+    data object NearMiss : GameEvent
 }
 
 class Asteroid(
@@ -22,9 +39,14 @@ class Asteroid(
     val spin: Float,
 ) {
     var dodged: Boolean = false
+    var nearMissed: Boolean = false
 }
 
 class Orb(val angle: Float) {
+    var pulse: Float = 0f
+}
+
+class PowerUp(val angle: Float, val kind: PowerUpKind) {
     var pulse: Float = 0f
 }
 
