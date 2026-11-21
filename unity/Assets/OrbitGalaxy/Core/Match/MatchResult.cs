@@ -1,0 +1,37 @@
+using System.Collections.Generic;
+
+namespace Orbit.Galaxy
+{
+    /// <summary>Final, save-ready summary of a finished match. All text is Russian.</summary>
+    public sealed class MatchResult
+    {
+        public GameModeKind Mode;
+        public float Duration;
+        public int Rank;
+        public int Participants;
+        public float Score;
+        public float Mass;
+        public int Level;
+        public int Kills;
+        public int Deaths;
+        public float EnergyCollected;
+        public int Crystals;
+        public int DarkMatter;
+        public int Artifacts;
+        public int BossKills;
+        public int BestStreak;
+        public bool Victory;
+        public int Credits;
+        public int CrystalsReward;
+        public int Xp;
+        public int AccountXp;
+        public List<LeaderboardEntry> Leaderboard;
+        public List<SimEvent> Highlights;
+
+        public MatchResult()
+        {
+            Leaderboard = new List<LeaderboardEntry>();
+            Highlights = new List<SimEvent>();
+        }
+    }
+}

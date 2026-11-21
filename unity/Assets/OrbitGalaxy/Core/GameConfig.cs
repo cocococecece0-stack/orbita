@@ -4,7 +4,7 @@ namespace Orbit.Galaxy
     public static class GameConfig
     {
         public const string GameTitle = "ORBITA GALAXY";
-        public const string SaveFileName = "orbita_galaxy_save.json";
+        public const string SaveFileName = "orbita_galaxy_save_v5.json";
         public const int SaveSchemaVersion = 5;
 
         // Arena and simulation.
