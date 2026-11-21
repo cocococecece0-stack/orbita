@@ -8,3 +8,11 @@ build/
 /captures/
 .externalNativeBuild/
 .cxx/
+/android/
+/dist/
+/ios/App/
+/ios/capacitor-cordova-ios-plugins/
+/ios/build/
+/ios/Orbit.xcodeproj/
+/node_modules/
+

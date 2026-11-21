@@ -4,7 +4,6 @@ import androidx.compose.ui.graphics.Color
 
 enum class GameStatus { Ready, Playing, GameOver }
 
-/** Neon palette shared by the engine (particles) and the renderer. */
 object Palette {
     val Player = Color(0xFF22D3EE)
     val Orb = Color(0xFFFBBF24)
@@ -13,45 +12,80 @@ object Palette {
     val Shield = Color(0xFF4ADE80)
     val Slow = Color(0xFFA78BFA)
     val Double = Color(0xFFFB923C)
+    val Magnet = Color(0xFFFFD654)
+    val Phase = Color(0xFF78E8FF)
+    val Freeze = Color(0xFFFF8CBE)
+    val Revive = Color(0xFFFFECC8)
+    val Boss = Color(0xFFFF5C70)
 }
 
-enum class PowerUpKind { Shield, Slow, Double }
+enum class AsteroidKind { Rock, Comet, Mine, Bolt }
 
-enum class AsteroidKind { Rock, Comet }
+enum class OrbKind { Normal, Golden, Artifact }
 
-/** Everything the UI layer needs to react to: sounds, haptics, banners. */
 sealed interface GameEvent {
     data object Tap : GameEvent
     data class Dodge(val combo: Int) : GameEvent
     data object Orb : GameEvent
+    data class GoldenOrb(val combo: Int) : GameEvent
+    data object Artifact : GameEvent
     data class PowerUp(val kind: PowerUpKind) : GameEvent
     data object ShieldBreak : GameEvent
     data object Crash : GameEvent
     data class LevelUp(val level: Int) : GameEvent
     data object NearMiss : GameEvent
     data object Storm : GameEvent
+    data object Wormhole : GameEvent
+    data object Flare : GameEvent
+    data object BossSpawn : GameEvent
+    data object BossHit : GameEvent
+    data object BossDown : GameEvent
+    data object Finish : GameEvent
+    data object Tick : GameEvent
 }
 
 class Asteroid(
-    val angle: Float,
+    var angle: Float,
     var distance: Float,
-    val speed: Float,
+    var speed: Float,
     val radius: Float,
-    val shape: FloatArray,
-    var rotation: Float,
-    val spin: Float,
-    val kind: AsteroidKind = AsteroidKind.Rock,
+    val kind: AsteroidKind,
+    val sprite: Int,
 ) {
-    var dodged: Boolean = false
-    var nearMissed: Boolean = false
+    var rotation = 0f
+    var spin = 0f
+    var dodged = false
+    var nearMissed = false
+    var dead = false
+    var life = 6f
+    var pulse = 0f
 }
 
-class Orb(val angle: Float) {
-    var pulse: Float = 0f
+class Orb(val angle: Float, val kind: OrbKind, val sprite: Int) {
+    var pulse = 0f
+    var dead = false
+    var drift = 0f
 }
 
 class PowerUp(val angle: Float, val kind: PowerUpKind) {
-    var pulse: Float = 0f
+    var pulse = 0f
+    var dead = false
+}
+
+class Wormhole(val angle: Float, val partner: Float) {
+    var pulse = 0f
+    var cooldown = 0f
+}
+
+class GravityWell(val angle: Float, val strength: Float) {
+    var pulse = 0f
+}
+
+class Boss(val angle: Float, var hp: Int, val duration: Float) {
+    var time = 0f
+    var charge = 0f
+    var hitFlash = 0f
+    var dead = false
 }
 
 class Particle(
@@ -63,6 +97,7 @@ class Particle(
     val maxLife: Float,
     val color: Color,
     val size: Float,
+    val spin: Float = 0f,
 )
 
 class Star(
@@ -71,6 +106,23 @@ class Star(
     val size: Float,
     val phase: Float,
     val speed: Float,
+    val layer: Int,
 )
 
-class TrailPoint(val x: Float, val y: Float, var life: Float)
+class TrailPoint(val x: Float, val y: Float, var life: Float, val color: Color)
+
+class RunStats(
+    var score: Int = 0,
+    var level: Int = 1,
+    var orbs: Int = 0,
+    var goldenOrbs: Int = 0,
+    var rareOrbs: Int = 0,
+    var maxCombo: Int = 0,
+    var nearMisses: Int = 0,
+    var dodges: Int = 0,
+    var bossKills: Int = 0,
+    var wormholes: Int = 0,
+    var seconds: Int = 0,
+    var powerups: Int = 0,
+    var hits: Int = 0,
+)
