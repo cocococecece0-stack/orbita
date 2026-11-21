@@ -33,9 +33,15 @@ final class GameArt {
 private extension GraphicsContext {
     /// UIImage не рисуется GraphicsContext напрямую — оборачиваем в SwiftUI.Image.
     mutating func drawUI(_ image: UIImage, in rect: CGRect,
-                         blendMode: BlendMode = .normal, opacity: Double = 1) {
+                         mode: GraphicsContext.BlendMode = .normal, alpha: Double = 1) {
         let resolved = resolve(Image(uiImage: image))
-        draw(resolved, in: rect, blendMode: blendMode, opacity: opacity)
+        let oldMode = blendMode
+        let oldAlpha = opacity
+        blendMode = mode
+        opacity = alpha
+        draw(resolved, in: rect)
+        blendMode = oldMode
+        opacity = oldAlpha
     }
 }
 
@@ -229,7 +235,7 @@ extension GameEngine {
             default: radius = playerRadius * (0.4 + life * 0.8)
             }
             let rect = CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2)
-            context.drawUI(glow, in: rect, blendMode: .normal, opacity: Double(life * (style == 1 ? 0.5 : 0.35)))
+            context.drawUI(glow, in: rect, mode: .normal, alpha: Double(life * (style == 1 ? 0.5 : 0.35)))
             context.fill(circlePath(CGPoint(x: point.x, y: point.y), radius * 0.5),
                          with: .color(color.opacity(Double(life * 0.7))))
         }
@@ -340,7 +346,7 @@ extension GameEngine {
         context.drawLayer { layer in
             layer.translateBy(x: position.x, y: position.y)
             layer.rotate(by: .radians(Double(heading + CGFloat.pi / 2)))
-            layer.drawUI(sprite, in: CGRect(x: -d / 2, y: -d / 2, width: d, height: d), opacity: Double(alpha))
+            layer.drawUI(sprite, in: CGRect(x: -d / 2, y: -d / 2, width: d, height: d), alpha: Double(alpha))
         }
         context.fill(circlePath(position, playerRadius * 0.35), with: .color(Color.white.opacity(alpha)))
     }
