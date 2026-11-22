@@ -1534,6 +1534,38 @@ namespace Orbit.Galaxy.Core.Tests
             Assert.Equal(ShipState.Respawning, player.State);
             Assert.Equal(deaths + 1, player.Deaths);
             Close(0f, player.Hp, Epsilon);
+            Assert.True(CountObjects(match.Arena, ObjectKind.Drop) >= SnakeConfig.DeathDrops,
+                "Every death source must leave the same visible mass cluster.");
+
+            match.Finish(true);
+            Assert.NotNull(match.Result);
+            Assert.True(match.Result.SurvivalTime > 0f);
+            // Death time, not the later respawn time: the ship was gone from this step onward.
+            Close(match.Time, match.Result.SurvivalTime, Epsilon);
+            Assert.Equal(player.Body.Count, match.Result.Length);
+            Assert.Equal(deaths + 1, match.Result.Deaths);
+        }
+
+        [Fact]
+        public void MatchSimulation_RestartCreatesFreshMatchState()
+        {
+            MatchSimulation first = new MatchSimulation(GameModeKind.Classic, 550,
+                Difficulty.Normal, new AccountProfile(), GameConfig.MinParticipants);
+            first.Player.Deaths = 4;
+            first.Player.Kills = 9;
+            first.Time = 70f;
+            first.Finish(true);
+
+            MatchSimulation restarted = new MatchSimulation(first.Mode, first.Seed + 1,
+                Difficulty.Normal, new AccountProfile(), GameConfig.MinParticipants);
+
+            Close(0f, restarted.Time, Epsilon);
+            Assert.Equal(0, restarted.Player.Deaths);
+            Assert.Equal(0, restarted.Player.Kills);
+            Assert.Equal(first.Settings.Participants, restarted.Settings.Participants);
+            Assert.Equal(first.Settings.Participants - 1, restarted.Bots.Count);
+            Assert.True(restarted.PlayerRank > 0);
+            Assert.Empty(restarted.Log.Drain());
         }
 
         [Fact]
@@ -1553,6 +1585,53 @@ namespace Orbit.Galaxy.Core.Tests
             Assert.Equal(0, victim.MultiKill);
             Close(-1000f, victim.LastKillTime, Epsilon);
             Assert.Equal(7, victim.BestStreak);
+        }
+
+        [Fact]
+        public void Combat_HandleKillIsIdempotentAndCapturesTheAttacker()
+        {
+            Ship victim = NewShip(401);
+            Ship killer = NewShip(402);
+            SimLog log = new SimLog();
+            float scoreBefore = killer.Score;
+
+            CombatSystem.HandleKill(victim, killer, log, 1f);
+            CombatSystem.HandleKill(victim, killer, log, 1f);
+
+            Assert.Equal(1, victim.Deaths);
+            Assert.Equal(1, killer.Kills);
+            Assert.Equal(killer.Id, victim.DeathAttackerId);
+            Assert.True(killer.Score > scoreBefore);
+
+            int killEvents = 0;
+            List<SimEvent> events = log.Drain();
+            for (int i = 0; i < events.Count; i++)
+                if (events[i].Kind == SimEventKind.Kill) killEvents++;
+            Assert.Equal(1, killEvents);
+        }
+
+        [Fact]
+        public void Combat_DeathWithoutKillerDoesNotInheritStaleAttacker()
+        {
+            Ship victim = NewShip(403);
+            Ship oldAttacker = NewShip(404);
+            victim.LastAttackerId = oldAttacker.Id;
+            SimLog log = new SimLog();
+
+            CombatSystem.HandleKill(victim, null, log, 2f);
+
+            Assert.Equal(-1, victim.DeathAttackerId);
+            Assert.Equal(0, oldAttacker.Kills);
+            bool found = false;
+            List<SimEvent> events = log.Drain();
+            for (int i = 0; i < events.Count; i++)
+            {
+                if (events[i].Kind != SimEventKind.Kill) continue;
+                found = true;
+                Assert.Equal(-1, events[i].ActorId);
+                Assert.Contains("ПОГИБ", events[i].Text);
+            }
+            Assert.True(found, "Even an environment death must be visible in the feed.");
         }
 
         [Fact]
@@ -1779,6 +1858,168 @@ namespace Orbit.Galaxy.Core.Tests
             system.ResolveCollisions(null, null, 1f);
 
             Assert.Equal(ShipState.Alive, head.State);
+        }
+
+        [Fact]
+        public void SnakeCollision_MutualHeadHits_KillBothAndCreditBoth()
+        {
+            Ship a = NewShip(420);
+            a.Position = Vec2.Zero;
+            a.Body = new SnakeBody();
+            a.Body.Reset(a.Position, Vec2.Up, a.Radius, a.Mass);
+
+            Ship b = NewShip(421);
+            b.Position = new Vec2(0f, -33f);
+            b.Body = new SnakeBody();
+            b.Body.Reset(b.Position, new Vec2(0f, -1f), b.Radius, b.Mass);
+
+            SnakeSystem system = new SnakeSystem(new Rng(4200));
+            system.Add(a);
+            system.Add(b);
+            Arena arena = new Arena(GameModeKind.Classic, 42, 1f);
+
+            system.ResolveCollisions(arena, null, 1f);
+
+            Assert.Equal(ShipState.Respawning, a.State);
+            Assert.Equal(ShipState.Respawning, b.State);
+            Assert.Equal(1, a.Kills);
+            Assert.Equal(1, b.Kills);
+            Assert.Equal(SnakeConfig.DeathDrops * 2, CountObjects(arena, ObjectKind.Drop));
+        }
+
+        [Fact]
+        public void SnakeCollision_InvulnerableOwnerBody_IsHarmless()
+        {
+            Ship owner = NewShip(422);
+            owner.Position = new Vec2(-400f, 0f);
+            owner.Invulnerability = 2f;
+            owner.Body = new SnakeBody();
+            owner.Body.Reset(owner.Position, Vec2.Up, owner.Radius, owner.Mass);
+
+            Ship head = NewShip(423);
+            head.Position = owner.Body.GetPoint(2);
+            head.Body = new SnakeBody();
+            head.Body.Reset(head.Position, Vec2.Right, head.Radius, head.Mass);
+
+            SnakeSystem system = new SnakeSystem(new Rng(4220));
+            system.Add(owner);
+            system.Add(head);
+            system.ResolveCollisions(null, null, 1f);
+
+            Assert.Equal(ShipState.Alive, head.State);
+        }
+
+        [Fact]
+        public void DeathDrops_ScaleWithVictimMassAndEmitOneClusterEvent()
+        {
+            Arena arena = new Arena(GameModeKind.Classic, 423, 1f);
+            SimLog log = new SimLog();
+            Ship small = NewShip(424);
+            small.Mass = 40f;
+            Ship large = NewShip(425);
+            large.Mass = 400f;
+
+            DeathDropSystem.Spawn(arena, small, log, 1f, new Rng(4240));
+            DeathDropSystem.Spawn(arena, large, log, 1f, new Rng(4250));
+
+            int smallValue = ((Drop)arena.Objects[0]).Value;
+            int largeValue = ((Drop)arena.Objects[SnakeConfig.DeathDrops]).Value;
+            Assert.True(largeValue > smallValue);
+            Assert.Equal(SnakeConfig.DeathDrops * 2, arena.Objects.Count);
+
+            int clusters = 0;
+            List<SimEvent> events = log.Drain();
+            for (int i = 0; i < events.Count; i++)
+                if (DeathDropSystem.IsDropEvent(events[i])) clusters++;
+            Assert.Equal(2, clusters);
+
+            // A second call for the same death is a no-op, even from another death source.
+            DeathDropSystem.Spawn(arena, small, log, 1f, new Rng(4240));
+            Assert.Equal(SnakeConfig.DeathDrops * 2, arena.Objects.Count);
+        }
+
+        [Fact]
+        public void DeathDrops_RemainCollectibleWhileOwnerWaitsToRespawn()
+        {
+            MatchSimulation match = new MatchSimulation(GameModeKind.Classic, 570,
+                Difficulty.Normal, new AccountProfile(), GameConfig.MinParticipants);
+            Ship victim = match.Ships[1];
+            victim.Hp = 0f;
+            victim.Invulnerability = 0f;
+            match.Update(GameConfig.SimulationStep);
+
+            int dropsBefore = CountObjects(match.Arena, ObjectKind.Drop);
+            Assert.True(dropsBefore >= SnakeConfig.DeathDrops);
+            Drop drop = null;
+            for (int i = 0; i < match.Arena.Objects.Count; i++)
+            {
+                drop = match.Arena.Objects[i] as Drop;
+                if (drop != null) break;
+            }
+            Assert.NotNull(drop);
+
+            Ship player = match.Player;
+            player.Position = drop.Position;
+            player.Invulnerability = 30f;
+            float energyBefore = player.EnergyCollected;
+            float massBefore = player.Mass;
+
+            match.Update(GameConfig.SimulationStep);
+
+            Assert.Equal(ShipState.Respawning, victim.State);
+            Assert.True(player.EnergyCollected > energyBefore);
+            Assert.True(player.Mass > massBefore);
+            Assert.True(CountObjects(match.Arena, ObjectKind.Drop) < dropsBefore);
+        }
+
+        [Fact]
+        public void Combat_KillIsReflectedInLeaderboardAndResult()
+        {
+            MatchSimulation match = new MatchSimulation(GameModeKind.Classic, 571,
+                Difficulty.Normal, new AccountProfile(), GameConfig.MinParticipants);
+            Ship player = match.Player;
+            Ship victim = match.Ships[1];
+            float scoreBefore = player.Score;
+            player.Invulnerability = 30f;
+
+            CombatSystem.HandleKill(victim, player, match.Log, match.Time);
+            match.Update(GameConfig.SimulationStep);
+
+            Assert.Equal(1, player.Kills);
+            Assert.True(player.Score > scoreBefore);
+            LeaderboardEntry row = null;
+            for (int i = 0; i < match.Leaderboard.Count; i++)
+                if (match.Leaderboard[i].ShipId == player.Id) { row = match.Leaderboard[i]; break; }
+            Assert.NotNull(row);
+            Assert.Equal(1, row.Kills);
+            Close(player.Score, row.Score, Epsilon);
+            Assert.Equal(player.Rank, row.Rank);
+
+            match.Finish(true);
+            Assert.Equal(1, match.Result.Kills);
+            Close(player.Score, match.Result.Score, Epsilon);
+        }
+
+        [Fact]
+        public void SnakeSegmentIndex_QueryIncludesFatSegmentJustOutsideHeadReach()
+        {
+            SnakeSegmentIndex index = new SnakeSegmentIndex(SnakeConfig.SegmentCellSize);
+            Ship owner = NewShip(426);
+            owner.Mass = 1000f;
+            owner.Radius = Ship.ComputeRadius(owner.Mass);
+            owner.Body = new SnakeBody();
+            Vec2 point = new Vec2(SnakeConfig.SegmentCellSize + 4f, 0f);
+            owner.Body.Reset(point, Vec2.Up, owner.Radius, owner.Mass);
+            List<Ship> snakes = new List<Ship> { owner };
+            index.Rebuild(snakes);
+
+            List<SnakeSegmentRef> hits = new List<SnakeSegmentRef>();
+            float spacing = SnakeConfig.SpacingForRadius(owner.Radius);
+            Vec2 head = point + new Vec2(-8f, -spacing);
+            index.QuerySwept(head, head, 1f, hits);
+
+            Assert.NotEmpty(hits);
+            Assert.Same(owner, hits[0].Owner);
         }
 
         [Fact]

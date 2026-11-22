@@ -43,6 +43,7 @@ namespace Orbit.Galaxy
 
         private readonly List<Ship> _participants = new List<Ship>(GameConfig.MaxParticipants + 8);
         private readonly List<WorldObject> _spawnScratch = new List<WorldObject>(64);
+        private readonly List<SnakeSegmentRef> _spawnSegments = new List<SnakeSegmentRef>(32);
         private readonly List<SimEvent> _highlights = new List<SimEvent>(MaxHighlights);
         private readonly List<Ship> _newBosses = new List<Ship>(8);
         private readonly Dictionary<int, int> _previousKills = new Dictionary<int, int>(64);
@@ -54,6 +55,7 @@ namespace Orbit.Galaxy
         private Rng _nameRng;
         private Rng _spawnRng;
         private Rng _aiRng;
+        private Rng _dropRng;
         private Vec2 _playerMove;
         private Vec2 _playerAim = Vec2.Up;
         private bool _playerBoost;
@@ -67,6 +69,7 @@ namespace Orbit.Galaxy
         private int _nextShipId = 1;
         private int _bossKills;
         private int _archetypeOffset;
+        private float _playerSurvivalTime = -1f;
 
         public MatchSimulation(GameModeKind mode, int seed, Difficulty difficulty, AccountProfile profile)
             : this(mode, seed, difficulty, profile, -1)
@@ -98,6 +101,7 @@ namespace Orbit.Galaxy
             _nameRng = Rng.Fork();
             _spawnRng = Rng.Fork();
             _aiRng = Rng.Fork();
+            _dropRng = Rng.Fork();
             _archetypeOffset = _aiRng.NextInt(0, BotArchetypeCatalog.Count);
             BuildNamePool();
             SpawnParticipants();
@@ -189,6 +193,7 @@ namespace Orbit.Galaxy
             // 5c. Border damage bypasses CombatSystem.ApplyDamage. Resolve every zero-HP ship here
             // so no damage source can leave a ship Alive with no health.
             ResolveDeaths();
+            ResolveDeathDrops();
 
             // 6. World and 7. events.
             if (Arena != null) Arena.Update(dt, Log, Time);
@@ -291,6 +296,8 @@ namespace Orbit.Galaxy
             {
                 Result.Score = Player.Score;
                 Result.Mass = Player.Mass;
+                Result.Length = Player.Body == null ? 0 : Player.Body.Count;
+                Result.SurvivalTime = _playerSurvivalTime >= 0f ? _playerSurvivalTime : Time;
                 Result.Level = (int)Player.Level;
                 Result.Kills = Player.Kills;
                 Result.Deaths = Player.Deaths;
@@ -526,6 +533,21 @@ namespace Orbit.Galaxy
                 float reach = radius + other.Radius + 110f;
                 clearance = Math.Min(clearance, Vec2.Distance(point, other.Position) - reach);
             }
+            if (Snakes != null)
+            {
+                // A long tail spans far more than the head check above. The segment index is
+                // already built, so this is a few cell lookups and prevents respawning inside a
+                // snake body just as its shield ends.
+                _spawnSegments.Clear();
+                Snakes.QuerySegments(point, point, radius + 130f, _spawnSegments);
+                for (int i = 0; i < _spawnSegments.Count; i++)
+                {
+                    SnakeSegmentRef segment = _spawnSegments[i];
+                    if (segment.Owner == null || segment.Owner.State != ShipState.Alive) continue;
+                    float reach = radius + segment.Radius + 90f;
+                    clearance = Math.Min(clearance, Vec2.Distance(point, segment.Point) - reach);
+                }
+            }
             return clearance;
         }
 
@@ -662,7 +684,31 @@ namespace Orbit.Galaxy
                 Ship ship = Ships[i];
                 if (ship == null || ship.State != ShipState.Alive || ship.Hp > 0f) continue;
                 CombatSystem.HandleKill(ship, null, Log, Time);
+                if (ship.IsPlayer && _playerSurvivalTime < 0f) _playerSurvivalTime = Time;
                 if (Arena != null) Arena.ForgetShip(ship.Id);
+            }
+        }
+
+        /// <summary>
+        /// Snake collisions already spawn a pile through DeathDropSystem; this sweep covers every
+        /// other source (projectiles, contacts, hazards, border). The per-victim flag makes it a
+        /// no-op for deaths that were already handled, so one death can never drop twice.
+        /// </summary>
+        private void ResolveDeathDrops()
+        {
+            if (Arena == null) return;
+            for (int i = 0; i < Ships.Count; i++)
+            {
+                Ship ship = Ships[i];
+                if (ship == null) continue;
+                int previous;
+                _previousDeaths.TryGetValue(ship.Id, out previous);
+                if (ship.Deaths <= previous) continue;
+                // Record the death step itself: waiting for the respawn would add the delay to
+                // the survival stat even though the ship was already gone.
+                if (ship.IsPlayer && _playerSurvivalTime < 0f) _playerSurvivalTime = Time;
+                if (ship.IsBoss || ship.DeathDropsSpawned) continue;
+                DeathDropSystem.Spawn(Arena, ship, Log, Time, _dropRng);
             }
         }
 
@@ -678,6 +724,9 @@ namespace Orbit.Galaxy
                 ship.Shield = 0f;
                 ship.Velocity = Vec2.Zero;
                 ship.MoveInput = Vec2.Zero;
+                ship.LastAttackerId = -1;
+                ship.DeathAttackerId = -1;
+                if (ship.IsPlayer && _playerSurvivalTime < 0f) _playerSurvivalTime = Time;
                 if (ship.IsPlayer && Log != null)
                 {
                     Log.Add(SimEventKind.Warning, ship.Id, 0,
@@ -692,6 +741,9 @@ namespace Orbit.Galaxy
             {
                 ship.Position = FindSpawnPoint(Math.Max(GameConfig.BaseRadius, ship.Radius));
                 ship.Velocity = Vec2.Zero;
+                ship.LastAttackerId = -1;
+                ship.DeathAttackerId = -1;
+                ship.DeathDropsSpawned = false;
                 if (ship.Body != null && Snakes != null) Snakes.Reset(ship);
                 BotBrain bot = FindBot(ship);
                 if (bot != null) bot.OnRespawn();
@@ -811,8 +863,13 @@ namespace Orbit.Galaxy
                     }
                 }
 
-                if (deathDelta <= 0 || ship.LastAttackerId <= 0) continue;
-                Ship killer = FindShipById(ship.LastAttackerId);
+                // DeathAttackerId is captured by HandleKill and consumed here. LastAttackerId is
+                // combat scratch data and may belong to an earlier life, so it must not decide who
+                // gets the leader/boss bonus.
+                int deathAttacker = ship.DeathAttackerId;
+                ship.DeathAttackerId = -1;
+                if (deathDelta <= 0 || deathAttacker <= 0) continue;
+                Ship killer = FindShipById(deathAttacker);
                 if (killer == null || killer == ship) continue;
                 if (ship.Rank == 1)
                 {

@@ -112,6 +112,13 @@ namespace Orbit.Galaxy
         internal Vec2 BlackHolePosition;
         internal float BossWeakWindow;
         internal int LastAttackerId;
+
+        /// <summary>Killer captured at the moment of death. Unlike LastAttackerId it cannot leak
+        /// from an earlier life into kill rewards, and it is consumed once by ReconcileKills.</summary>
+        internal int DeathAttackerId;
+
+        /// <summary>Set by the first drop spawn for a death so no source can spawn the pile twice.</summary>
+        internal bool DeathDropsSpawned;
         internal bool BossRewarded;
 
         public Ship()

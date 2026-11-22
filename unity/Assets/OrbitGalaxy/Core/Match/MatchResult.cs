@@ -11,6 +11,12 @@ namespace Orbit.Galaxy
         public int Participants;
         public float Score;
         public float Mass;
+
+        /// <summary>Snake body length at the end of the match, for the result screen's size stat.</summary>
+        public int Length;
+
+        /// <summary>Time until the player's first/final death, or the full match time if alive.</summary>
+        public float SurvivalTime;
         public int Level;
         public int Kills;
         public int Deaths;

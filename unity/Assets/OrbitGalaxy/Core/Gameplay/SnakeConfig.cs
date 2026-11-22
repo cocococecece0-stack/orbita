@@ -49,8 +49,17 @@ namespace Orbit.Galaxy
         /// <summary>Fraction of victim mass transferred to the killer on a body hit.</summary>
         public const float BodyKillMassTransfer = 0.55f;
 
-        /// <summary>Number of energy drops spawned when a snake dies.</summary>
+        /// <summary>Number of energy drops spawned when a ship dies. Bounded so a mass pile-up
+        /// cannot turn into an unbounded object/particle spike on mobile.</summary>
         public const int DeathDrops = 5;
+
+        /// <summary>Share of the victim's mass returned to the arena as drops. The rest is already
+        /// paid to a body killer or to the surrounding fight, so drops never create free mass.</summary>
+        public const float DeathDropMassShare = 0.5f;
+
+        /// <summary>Upper bound for one mote's value. Huge snakes still drop more(total) mass via a
+        /// dense cluster, but no single pickup becomes an instant level-up.</summary>
+        public const int MaxDeathDropValue = 90;
 
         /// <summary>Lifetime of freshly spawned drops.</summary>
         public const float DropLifetime = 22f;

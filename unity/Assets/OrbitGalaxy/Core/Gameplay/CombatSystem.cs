@@ -208,7 +208,10 @@ namespace Orbit.Galaxy
                     for (int j = 0; j < ships.Count; j++)
                     {
                         Ship target = ships[j];
-                        if (target == null || target.Id == p.OwnerId || target.State != ShipState.Alive || target.Hp <= 0f) continue;
+                        // A shielded target must not silently eat projectiles: the shot passes
+                        // through instead of producing a bogus "block" and losing its damage.
+                        if (target == null || target.Id == p.OwnerId || target.State != ShipState.Alive ||
+                            target.Hp <= 0f || target.Invulnerability > 0f) continue;
                         float reach = target.Radius + p.Radius;
                         if (SegmentDistanceSqr(p.PreviousPosition, p.Position, target.Position) > reach * reach) continue;
                         Ship source = FindShipById(ships, p.OwnerId);
@@ -375,13 +378,21 @@ namespace Orbit.Galaxy
         }
 
         /// <summary>
-        /// Single death path for every source of lethal damage (projectiles, contacts, hazards and
-        /// the arena border). The match layer calls this for ships that reach zero HP outside
-        /// <see cref="ApplyDamage"/> so no damage source can leave an "alive" ship with 0 HP.
+        /// Single death path for every source of lethal damage (projectiles, contacts, hazards,
+        /// the arena border and snake bodies). The match layer also calls it for zero-HP ships so
+        /// no damage source can leave an "alive" ship with no health. "KillerMayBeDying" is used by
+        /// simultaneous snake hits: both kills are real even though the first call changes one
+        /// ship's state before the second is registered.
         /// </summary>
-        public static void HandleKill(Ship victim, Ship killer, SimLog log, float time)
+        public static void HandleKill(Ship victim, Ship killer, SimLog log, float time,
+            bool killerMayBeDying = false)
         {
             if (victim == null || victim.State != ShipState.Alive) return;
+
+            Ship credited = killer;
+            if (credited == null || credited == victim) credited = null;
+            else if (credited.State != ShipState.Alive && !killerMayBeDying) credited = null;
+
             victim.Hp = 0f;
             victim.Shield = 0f;
             victim.State = ShipState.Respawning;
@@ -390,36 +401,44 @@ namespace Orbit.Galaxy
             victim.FireTimer = 0f;
             victim.BossWeakWindow = 0f;
             victim.Deaths++;
+            victim.DeathAttackerId = credited == null ? -1 : credited.Id;
             // A death always breaks the victim's streak, even when nobody is credited with the kill.
             victim.Streak = 0;
             victim.MultiKill = 0;
             victim.LastKillTime = -1000f;
             victim.Remember("Уничтожен");
 
-            if (killer == null || killer == victim || killer.State != ShipState.Alive) return;
+            // BossController emits its own dedicated "БОСС ПОВЕРЖЕН" line without an attacker;
+            // suppressing this duplicate keeps the feed readable.
+            if (log != null && (!victim.IsBoss || credited != null))
+            {
+                string text = credited == null ? "ПОГИБ: " + victim.Name : "УНИЧТОЖЕН: " + victim.Name;
+                log.Add(SimEventKind.Kill, credited == null ? -1 : credited.Id, victim.Id, text,
+                    victim.Position, time, credited == null ? 0f : credited.Score);
+            }
 
-            killer.Kills++;
-            killer.Score += 40f + victim.Mass * 1.5f + (victim.IsBoss ? 600f : 0f);
-            if (time - killer.LastKillTime <= GameConfig.MultiKillTime && killer.LastKillTime > 0f) killer.MultiKill++;
-            else killer.MultiKill = 1;
-            killer.LastKillTime = time;
-            killer.Streak++;
-            if (killer.Streak > killer.BestStreak) killer.BestStreak = killer.Streak;
-            killer.Heal(Math.Max(4f, victim.Mass * 0.35f));
+            if (credited == null) return;
+
+            credited.Kills++;
+            credited.Score += 40f + victim.Mass * 1.5f + (victim.IsBoss ? 600f : 0f);
+            if (time - credited.LastKillTime <= GameConfig.MultiKillTime && credited.LastKillTime > 0f) credited.MultiKill++;
+            else credited.MultiKill = 1;
+            credited.LastKillTime = time;
+            credited.Streak++;
+            if (credited.Streak > credited.BestStreak) credited.BestStreak = credited.Streak;
+            if (credited.State == ShipState.Alive) credited.Heal(Math.Max(4f, victim.Mass * 0.35f));
 
             if (log != null)
             {
-                log.Add(SimEventKind.Kill, killer.Id, victim.Id, "УНИЧТОЖЕН: " + victim.Name,
-                    victim.Position, time, killer.Score);
-                if (victim.Rank == 1) log.Add(SimEventKind.LeaderKilled, killer.Id, victim.Id,
+                if (victim.Rank == 1) log.Add(SimEventKind.LeaderKilled, credited.Id, victim.Id,
                     "ПОВЕРЖЕН ЛИДЕР", victim.Position, time);
-                if (killer.Streak > 0 && killer.Streak % 3 == 0)
+                if (credited.Streak > 0 && credited.Streak % 3 == 0)
                 {
-                    log.Add(SimEventKind.Streak, killer.Id, killer.Streak,
-                        "СЕРИЯ " + killer.Streak.ToString(), killer.Position, time, killer.Streak);
+                    log.Add(SimEventKind.Streak, credited.Id, credited.Streak,
+                        "СЕРИЯ " + credited.Streak.ToString(), credited.Position, time, credited.Streak);
                 }
             }
-            killer.Remember("Уничтожен " + victim.Name);
+            credited.Remember("Уничтожен " + victim.Name);
         }
     }
 }

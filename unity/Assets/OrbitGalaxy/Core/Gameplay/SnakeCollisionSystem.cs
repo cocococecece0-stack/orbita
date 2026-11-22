@@ -20,10 +20,10 @@ namespace Orbit.Galaxy
     {
         private readonly float _cellSize;
         private readonly float _invCellSize;
-        private readonly Dictionary<int, List<SnakeSegmentRef>> _buckets =
-            new Dictionary<int, List<SnakeSegmentRef>>(256);
+        private readonly Dictionary<long, List<SnakeSegmentRef>> _buckets =
+            new Dictionary<long, List<SnakeSegmentRef>>(256);
         private readonly Stack<List<SnakeSegmentRef>> _bucketPool = new Stack<List<SnakeSegmentRef>>(64);
-        private readonly List<int> _usedKeys = new List<int>(256);
+        private readonly List<long> _usedKeys = new List<long>(256);
 
         public SnakeSegmentIndex(float cellSize)
         {
@@ -62,7 +62,7 @@ namespace Orbit.Galaxy
                     };
                     int cx, cy;
                     CellOf(segment.Point, out cx, out cy);
-                    int key = CellKey(cx, cy);
+                    long key = CellKey(cx, cy);
                     List<SnakeSegmentRef> bucket;
                     if (!_buckets.TryGetValue(key, out bucket))
                     {
@@ -76,16 +76,19 @@ namespace Orbit.Galaxy
         }
 
         /// <summary>
-        /// Adds every segment whose sampled point lies within reach of the swept head path.
-        /// A segment lives in exactly one cell, so results never contain duplicates.
+        /// Adds every segment whose sampled point lies within reach of the swept head path. The
+        /// cell range is widened by the largest possible segment radius before the narrow test,
+        /// so a fat tail just outside the head's reach is still checked and cannot cause a
+        /// "missed collision" death.
         /// </summary>
         public void QuerySwept(Vec2 from, Vec2 to, float reach, List<SnakeSegmentRef> output)
         {
             if (output == null || reach < 0f) return;
-            float minX = Math.Min(from.X, to.X) - reach;
-            float maxX = Math.Max(from.X, to.X) + reach;
-            float minY = Math.Min(from.Y, to.Y) - reach;
-            float maxY = Math.Max(from.Y, to.Y) + reach;
+            float broadReach = reach + SnakeConfig.MaxCollisionRadius;
+            float minX = Math.Min(from.X, to.X) - broadReach;
+            float maxX = Math.Max(from.X, to.X) + broadReach;
+            float minY = Math.Min(from.Y, to.Y) - broadReach;
+            float maxY = Math.Max(from.Y, to.Y) + broadReach;
             int minCx, minCy, maxCx, maxCy;
             CellOf(new Vec2(minX, minY), out minCx, out minCy);
             CellOf(new Vec2(maxX, maxY), out maxCx, out maxCy);
@@ -113,9 +116,14 @@ namespace Orbit.Galaxy
             cy = (int)Math.Floor(point.Y * _invCellSize);
         }
 
-        private static int CellKey(int cx, int cy)
+        /// <summary>
+        /// Injective for the arena's coordinate range. The old XOR hash could alias two visited
+        /// cells to one bucket and report the same segment twice, which double-counted avoidance
+        /// and made the "no duplicates" invariant false.
+        /// </summary>
+        private static long CellKey(int cx, int cy)
         {
-            return unchecked((cx * 73856093) ^ (cy * 19349663));
+            return unchecked((long)(uint)cx << 32 | (uint)cy);
         }
 
         private static float SegmentDistanceSqr(Vec2 a, Vec2 b, Vec2 point)
@@ -131,16 +139,27 @@ namespace Orbit.Galaxy
 
     /// <summary>
     /// Head-versus-body deaths. Head-to-head contact stays with the existing circle contact code,
-    /// which already handles mass absorption and predictable separation. Every lethal body hit is
-    /// routed through <see cref="CombatSystem.HandleKill"/> so kills, streaks, rewards and the
-    /// leaderboard stay consistent with every other death source.
+    /// which already handles mass absorption and predictable separation. Lethal hits are gathered
+    /// first and applied in three phases, so two snakes that hit each other's bodies on the same
+    /// step both die and both get credit instead of the earlier list entry winning by accident.
+    /// Every death is routed through <see cref="CombatSystem.HandleKill"/> so kills, streaks and
+    /// the leaderboard stay consistent with every other death source.
     /// </summary>
     public sealed class SnakeCollisionSystem
     {
         private const float HeadReachFactor = 0.82f;
 
+        private struct PendingBodyHit
+        {
+            public Ship Head;
+            public Ship Owner;
+            public float VictimMass;
+            public float Reward;
+        }
+
         private readonly SnakeSegmentIndex _index = new SnakeSegmentIndex(SnakeConfig.SegmentCellSize);
         private readonly List<SnakeSegmentRef> _hits = new List<SnakeSegmentRef>(32);
+        private readonly List<PendingBodyHit> _pending = new List<PendingBodyHit>(16);
         private readonly Rng _rng;
 
         public SnakeCollisionSystem(Rng rng)
@@ -161,7 +180,9 @@ namespace Orbit.Galaxy
         {
             if (snakes == null || snakes.Count == 0) return;
             _index.Rebuild(snakes);
+            _pending.Clear();
 
+            // Phase 1: one lethal hit per head, gathered before any state changes.
             for (int i = 0; i < snakes.Count; i++)
             {
                 Ship head = snakes[i];
@@ -176,37 +197,48 @@ namespace Orbit.Galaxy
 
                 for (int h = 0; h < _hits.Count; h++)
                 {
-                    SnakeSegmentRef segment = _hits[h];
-                    Ship owner = segment.Owner;
-                    if (owner == null || owner.State != ShipState.Alive || owner.Hp <= 0f) continue;
-                    // Own body is intentionally harmless. Bots re-steer several times a second and
-                    // sampled tails can cut corners; treating those overlaps as deaths produced
-                    // constant unfair suicides. Other snakes' bodies remain lethal.
-                    if (owner == head) continue;
-
-                    Ship killer = owner;
-                    float reward = head.Mass * SnakeConfig.BodyKillMassTransfer;
-                    if (reward > 0f) killer.AddMass(reward, log, time);
-                    SpawnDrops(arena, head);
-                    CombatSystem.HandleKill(head, killer, log, time);
+                    Ship owner = _hits[h].Owner;
+                    if (!IsLethalOwner(owner, head)) continue;
+                    PendingBodyHit hit = new PendingBodyHit
+                    {
+                        Head = head,
+                        Owner = owner,
+                        VictimMass = head.Mass,
+                        Reward = head.Mass * SnakeConfig.BodyKillMassTransfer
+                    };
+                    _pending.Add(hit);
                     break;
                 }
             }
+            if (_pending.Count == 0) return;
+
+            // Phase 2: pay rewards and spawn drops from the captured mass. A snake that is itself
+            // dying in this step still owns its body hit, and still leaves the same-size pile.
+            for (int i = 0; i < _pending.Count; i++)
+            {
+                PendingBodyHit hit = _pending[i];
+                if (hit.Reward > 0f) hit.Owner.AddMass(hit.Reward, log, time);
+                DeathDropSystem.Spawn(arena, hit.Head, log, time, _rng, hit.VictimMass);
+            }
+
+            // Phase 3: register the deaths. killerMayBeDying lets mutual hits credit both sides.
+            for (int i = 0; i < _pending.Count; i++)
+            {
+                PendingBodyHit hit = _pending[i];
+                if (hit.Head.State != ShipState.Alive) continue;
+                CombatSystem.HandleKill(hit.Head, hit.Owner, log, time, true);
+            }
         }
 
-        private void SpawnDrops(Arena arena, Ship victim)
+        /// <summary>
+        /// Own body is intentionally harmless: bots re-steer several times a second and sampled
+        /// tails can cut corners. A shield covers the whole snake, so an invulnerable owner's body
+        /// is not a hidden lethal obstacle either. Other vulnerable bodies remain lethal.
+        /// </summary>
+        private static bool IsLethalOwner(Ship owner, Ship head)
         {
-            if (arena == null) return;
-            int value = Math.Max(1, (int)(victim.Mass / SnakeConfig.DeathDrops));
-            for (int i = 0; i < SnakeConfig.DeathDrops; i++)
-            {
-                float angle = _rng.Range(0f, 6.2831853f);
-                float radius = _rng.Range(6f, Math.Max(12f, victim.Radius));
-                Vec2 position = arena.ClampToSafe(victim.Position + Vec2.FromAngle(angle) * radius);
-                Drop drop = new Drop(arena.NextId(), position, ResourceKind.Energy,
-                    value, SnakeConfig.DropLifetime);
-                arena.Add(drop);
-            }
+            return owner != null && owner != head && owner.State == ShipState.Alive &&
+                   owner.Hp > 0f && owner.Invulnerability <= 0f;
         }
     }
 }
