@@ -10,6 +10,9 @@ namespace Orbit.Galaxy
     /// </summary>
     public sealed class SnakeBody
     {
+        /// <summary>Set by SnakeSystem so growth upgrades can extend the visible body.</summary>
+        internal Ship Owner;
+
         private readonly Vec2[] _points = new Vec2[SnakeConfig.MaxSegments + 2];
         private Vec2 _lastSample;
         private Vec2 _lastHead;
@@ -36,7 +39,7 @@ namespace Orbit.Galaxy
 
         public void Reset(Vec2 head, Vec2 facing, float radius, float mass)
         {
-            _count = Math.Min(SnakeConfig.InitialSegments, SnakeConfig.MaxSegments);
+            _count = Math.Min(Math.Max(SnakeConfig.InitialSegments, GetTargetCount(mass)), SnakeConfig.MaxSegments);
             _growth = _count;
             _lastHead = head;
             PreviousHead = head;
@@ -61,7 +64,7 @@ namespace Orbit.Galaxy
 
             float spacing = SnakeConfig.SpacingForRadius(radius);
 
-            float target = SnakeConfig.SegmentsForMass(mass);
+            float target = GetTargetCount(mass);
             if (_growth < target) _growth = Math.Min(target, _growth + SnakeConfig.GrowthPerSecond * dt);
             else if (_growth > target) _growth = Math.Max(target, _growth - SnakeConfig.ShrinkPerSecond * dt);
 
@@ -80,6 +83,14 @@ namespace Orbit.Galaxy
             }
 
             while (_count < targetCount) ExtendTail(head, spacing);
+        }
+
+        /// <summary>Includes match-scoped length upgrades; the hard segment cap is still authoritative.</summary>
+        private int GetTargetCount(float mass)
+        {
+            int bonus = 0;
+            if (Owner != null) bonus = Math.Max(0, Owner.SnakeLengthBonus);
+            return Math.Min(SnakeConfig.MaxSegments, SnakeConfig.SegmentsForMass(mass) + bonus);
         }
 
         private void PushFront(Vec2 sample, int maxCount)

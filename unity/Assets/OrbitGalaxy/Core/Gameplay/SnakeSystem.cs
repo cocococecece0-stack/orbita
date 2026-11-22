@@ -34,6 +34,7 @@ namespace Orbit.Galaxy
             if (ship.Body == null)
             {
                 ship.Body = new SnakeBody();
+                ship.Body.Owner = ship;
                 ship.Body.Reset(ship.Position, ship.Facing, ship.Radius, ship.Mass);
             }
             _snakes.Add(ship);

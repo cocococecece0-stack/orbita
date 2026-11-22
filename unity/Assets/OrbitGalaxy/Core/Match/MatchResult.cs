@@ -17,6 +17,12 @@ namespace Orbit.Galaxy
 
         /// <summary>Time until the player's first/final death, or the full match time if alive.</summary>
         public float SurvivalTime;
+
+        /// <summary>Highest snake growth tier reached in this match (0-3).</summary>
+        public int SnakeEvolutionTier;
+
+        /// <summary>Successful player snake ability activations, for cosmetic goal progress.</summary>
+        public int SnakeAbilityUses;
         public int Level;
         public int Kills;
         public int Deaths;

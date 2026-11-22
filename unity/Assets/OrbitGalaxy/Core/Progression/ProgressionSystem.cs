@@ -117,6 +117,7 @@ namespace Orbit.Galaxy
             ApplyAchievements(profile, rewards, metrics);
             ApplyQuests(profile, rewards, metrics, now);
             ApplySecrets(profile, rewards, metrics);
+            SnakeProgression.Apply(profile, result, rewards);
             profile.Sanitize();
             return rewards;
         }

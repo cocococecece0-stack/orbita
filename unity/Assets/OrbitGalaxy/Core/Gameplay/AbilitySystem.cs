@@ -9,7 +9,8 @@ namespace Orbit.Galaxy
     /// </summary>
     public static class AbilitySystem
     {
-        private static float EnergyCost(AbilityKind kind)
+        /// <summary>Base energy price from the shared balance table, exposed for snake ability tuning.</summary>
+        public static float BaseEnergyCost(AbilityKind kind)
         {
             switch (kind)
             {
@@ -44,21 +45,31 @@ namespace Orbit.Galaxy
             if (index < 0 || index >= ship.Cooldowns.Length || index >= ship.EffectTimers.Length) return false;
             if (ship.Cooldowns[index] > 0f) return false;
             if (kind == AbilityKind.Shield && ship.ShieldBonusActive) return false;
-            return ship.Energy >= EnergyCost(kind);
+            return ship.Energy >= BaseEnergyCost(kind);
         }
 
         public static bool Activate(Ship ship, AbilityKind kind, SimLog log, float time)
+        {
+            AbilityDef def = ContentDatabase.FindAbility(kind);
+            return Activate(ship, kind, log, time, def == null ? kind.ToString() : def.Name);
+        }
+
+        /// <summary>
+        /// Same effect with a caller-supplied log label. Snake abilities reuse these proven effects
+        /// but need their own readable names in the feed and HUD without changing protected content.
+        /// </summary>
+        internal static bool Activate(Ship ship, AbilityKind kind, SimLog log, float time, string displayName)
         {
             if (!CanActivate(ship, kind)) return false;
             AbilityDef def = ContentDatabase.FindAbility(kind);
             int index = Index(kind);
 
-            ship.Energy = MathGalaxy.Clamp(ship.Energy - EnergyCost(kind), 0f, GameConfig.MaxEnergy);
+            ship.Energy = MathGalaxy.Clamp(ship.Energy - BaseEnergyCost(kind), 0f, GameConfig.MaxEnergy);
             ship.Cooldowns[index] = Math.Max(0.5f, def.Cooldown);
             ship.EffectTimers[index] = Math.Max(0f, def.Duration);
             if (log != null)
             {
-                log.Add(SimEventKind.Ability, ship.Id, index, def.Name, ship.Position, time, def.Duration);
+                log.Add(SimEventKind.Ability, ship.Id, index, displayName, ship.Position, time, def.Duration);
             }
             ship.Remember("Способность: " + def.Name);
 

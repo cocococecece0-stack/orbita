@@ -58,6 +58,9 @@ namespace Orbit.Galaxy
         public string PrimaryHex;
         public string AccentHex;
 
+        /// <summary>Cosmetic-only tail pattern selected from the profile; never affects stats.</summary>
+        public SnakeTailStyle TailStyle;
+
         public WeaponKind Weapon;
         public AbilityKind ActiveAbility;
 
@@ -80,6 +83,15 @@ namespace Orbit.Galaxy
 
         /// <summary>Optional snake body. Null for bosses and legacy tests that use plain ships.</summary>
         public SnakeBody Body;
+
+        // Match-scoped cosmic snake development. Never persisted: progression unlocks looks, not power.
+        public int SnakeEvolutionTier;
+        public int[] SnakePathsTaken;
+        public float SnakePickupGainMul;
+        public float SnakeAgilityMul;
+        public int SnakeLengthBonus;
+        public float SnakeShieldBonus;
+        public float SnakeMagnetMul;
 
         public EvolutionDef[] EvolutionsTaken;
         public float[] Cooldowns;
@@ -239,10 +251,11 @@ namespace Orbit.Galaxy
                 : 1f;
             float phasing = EffectTimers[(int)AbilityKind.Phase] > 0f ? 1.12f : 1f;
 
+            float snakeAgility = 1f + Math.Min(0.36f, Math.Max(0f, SnakeAgilityMul));
             Speed = GameConfig.BaseSpeed * Math.Max(GameConfig.MinimumSpeedFactor, sizeSpeed)
                 * EvolutionSpeedMul * (1f + ResearchAgility) * overdrive * phasing;
             TurnRate = GameConfig.BaseTurnSpeed * Math.Max(0.55f, sizeSpeed)
-                * (1f + ResearchAgility * 0.5f) * overdrive;
+                * (1f + ResearchAgility * 0.5f) * overdrive * snakeAgility;
             Damage = GameConfig.BaseDamage * sizeDamage * EvolutionDamageMul * (1f + ResearchArmor * 0.25f);
 
             float levelHp = 1f + Math.Max(0f, Level - 1f) * 0.07f;
@@ -251,14 +264,15 @@ namespace Orbit.Galaxy
             MaxHp = Math.Max(1f, newMaxHp);
             Hp = MathGalaxy.Clamp(Hp, 0f, MaxHp);
 
-            float newMaxShield = (PassiveShieldBonus + AbilityShieldBonus) * EvolutionShieldMul;
+            float newMaxShield = (PassiveShieldBonus + AbilityShieldBonus + SnakeShieldBonus) * EvolutionShieldMul;
             MaxShield = Math.Max(0f, newMaxShield);
             Shield = MathGalaxy.Clamp(Shield, 0f, MaxShield);
 
             WeaponDef weaponDef = ContentDatabase.FindWeapon(Weapon);
             FireInterval = Math.Max(0.05f, GameConfig.BaseFireInterval * weaponDef.IntervalMul
                 * EvolutionFireMul / Math.Max(0.2f, overdrive));
-            PickupRadius = GameConfig.BasePickupRadius * EvolutionPickupMul * (1f + ResearchMagnet);
+            PickupRadius = GameConfig.BasePickupRadius * EvolutionPickupMul * (1f + ResearchMagnet)
+                * (1f + Math.Min(0.48f, Math.Max(0f, SnakeMagnetMul)));
 
             DamageReduction = MathGalaxy.Clamp(ResearchArmor * 0.12f
                 + (EffectTimers[(int)AbilityKind.Phase] > 0f ? 0.85f : 0f), 0f, 0.9f);

@@ -96,10 +96,15 @@ namespace Orbit.Galaxy
             switch (kind)
             {
                 case ResourceKind.Energy:
+                {
+                    // Snake collection upgrades improve energy recovery, not mass or XP, so an
+                    // early lead cannot turn into extra size and near-invulnerability.
+                    float snakeGain = 1f + Math.Min(0.36f, Math.Max(0f, ship.SnakePickupGainMul));
                     ship.EnergyCollected += value;
-                    ship.Energy = MathGalaxy.Clamp(ship.Energy + 20f * value, 0f, GameConfig.MaxEnergy);
+                    ship.Energy = MathGalaxy.Clamp(ship.Energy + 20f * value * snakeGain, 0f, GameConfig.MaxEnergy);
                     count = 1;
                     break;
+                }
                 case ResourceKind.Crystal:
                     ship.Crystals += amount;
                     count = amount;

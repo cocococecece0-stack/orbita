@@ -21,11 +21,13 @@ namespace Orbit.Galaxy
         public readonly List<string> Achievements = new List<string>();
         public readonly List<string> Quests = new List<string>();
         public readonly List<string> Secrets = new List<string>();
+        public readonly List<string> SnakeGoals = new List<string>();
         public readonly List<string> Messages = new List<string>();
 
         public int AchievementCount { get { return Achievements.Count; } }
         public int QuestCount { get { return Quests.Count; } }
         public int SecretCount { get { return Secrets.Count; } }
+        public int SnakeGoalCount { get { return SnakeGoals.Count; } }
         public int MessageCount { get { return Messages.Count; } }
 
         public string Summary
@@ -41,6 +43,7 @@ namespace Orbit.Galaxy
                 if (Achievements.Count > 0) text.Append(" Достижения: ").Append(string.Join(", ", Achievements.ToArray()));
                 if (Quests.Count > 0) text.Append(" Задания: ").Append(string.Join(", ", Quests.ToArray()));
                 if (Secrets.Count > 0) text.Append(" Секреты: ").Append(string.Join(", ", Secrets.ToArray()));
+                if (SnakeGoals.Count > 0) text.Append(" Змейка: ").Append(string.Join(", ", SnakeGoals.ToArray()));
                 return text.ToString();
             }
         }
@@ -59,6 +62,7 @@ namespace Orbit.Galaxy
             Achievements.Clear();
             Quests.Clear();
             Secrets.Clear();
+            SnakeGoals.Clear();
             Messages.Clear();
         }
     }

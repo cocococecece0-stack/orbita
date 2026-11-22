@@ -68,6 +68,7 @@ namespace Orbit.Galaxy
         private WorldEventKind? _lastPendingEvent;
         private int _nextShipId = 1;
         private int _bossKills;
+        private int _snakeAbilityUses;
         private int _archetypeOffset;
         private float _playerSurvivalTime = -1f;
 
@@ -256,7 +257,15 @@ namespace Orbit.Galaxy
             }
             if (!valid && PendingEvolutionChoices.Count > 0) return;
 
-            if (EvolutionSystem.IsAvailable(Player, def))
+            if (SnakeEvolutionSystem.IsSnakeOffer(def))
+            {
+                if (SnakeEvolutionSystem.Choose(Player, def, Log, Time))
+                {
+                    AddHighlight(new SimEvent(SimEventKind.Evolution, Player.Id, def.Tier,
+                        "РОСТ ЗМЕЙКИ: " + def.Name, Player.Position, Time, Player.Level));
+                }
+            }
+            else if (EvolutionSystem.IsAvailable(Player, def))
             {
                 EvolutionSystem.Choose(Player, def, Log, Time, Profile);
                 Player.Remember("Эволюция: " + def.Name);
@@ -298,6 +307,8 @@ namespace Orbit.Galaxy
                 Result.Mass = Player.Mass;
                 Result.Length = Player.Body == null ? 0 : Player.Body.Count;
                 Result.SurvivalTime = _playerSurvivalTime >= 0f ? _playerSurvivalTime : Time;
+                Result.SnakeEvolutionTier = Player.SnakeEvolutionTier;
+                Result.SnakeAbilityUses = _snakeAbilityUses;
                 Result.Level = (int)Player.Level;
                 Result.Kills = Player.Kills;
                 Result.Deaths = Player.Deaths;
@@ -419,17 +430,33 @@ namespace Orbit.Galaxy
                 : new Ship(_nextShipId++, name, false, true, personality, position);
             if (isBot) ship.Profile = ContentDatabase.FindBotProfile(personality);
 
+            SnakeCosmeticDef snakeHead = isPlayer && account != null
+                ? SnakeCosmeticCatalog.FindHead(account.SelectedShip)
+                : null;
             ShipVisualDef visual = null;
             if (isPlayer && account != null && !string.IsNullOrEmpty(account.SelectedShip))
                 visual = ContentDatabase.FindShipVisual(account.SelectedShip);
-            if (visual == null)
+            if (visual == null && snakeHead == null)
             {
                 ShipVisualDef[] visuals = ContentDatabase.ShipVisuals;
                 visual = visuals[_aiRng.NextInt(0, visuals.Length)];
             }
-            ship.Hull = visual.Hull;
-            ship.PrimaryHex = visual.PrimaryHex;
-            ship.AccentHex = visual.AccentHex;
+            if (snakeHead != null)
+            {
+                ship.Hull = snakeHead.Hull;
+                ship.PrimaryHex = snakeHead.PrimaryHex;
+                ship.AccentHex = snakeHead.AccentHex;
+            }
+            else if (visual != null)
+            {
+                ship.Hull = visual.Hull;
+                ship.PrimaryHex = visual.PrimaryHex;
+                ship.AccentHex = visual.AccentHex;
+            }
+            SnakeCosmeticDef snakeTail = isPlayer && account != null
+                ? SnakeCosmeticCatalog.FindTail(account.SelectedTrail)
+                : null;
+            ship.TailStyle = snakeTail == null ? SnakeTailStyle.Glow : snakeTail.Style;
             ship.Facing = Vec2.FromAngle(_spawnRng.Range(0f, FullCircle));
             ship.AimInput = ship.Facing;
             ship.MoveInput = Vec2.Zero;
@@ -656,13 +683,14 @@ namespace Orbit.Galaxy
             }
             _playerBoost = boost;
 
-            if (_dashQueued && AbilitySystem.CanActivate(Player, AbilityKind.Dash))
+            if (_dashQueued && SnakeAbilities.CanActivate(Player, SnakeAbilitySlot.Impulse))
             {
-                AbilitySystem.Activate(Player, AbilityKind.Dash, Log, Time);
+                if (SnakeAbilities.Activate(Player, SnakeAbilitySlot.Impulse, Log, Time)) _snakeAbilityUses++;
             }
-            if (_abilityQueued && AbilitySystem.CanActivate(Player, Player.ActiveAbility))
+            if (_abilityQueued && SnakeAbilities.CanActivate(Player, SnakeAbilities.SlotFor(Player.ActiveAbility)))
             {
-                AbilitySystem.Activate(Player, Player.ActiveAbility, Log, Time);
+                if (SnakeAbilities.Activate(Player, SnakeAbilities.SlotFor(Player.ActiveAbility), Log, Time))
+                    _snakeAbilityUses++;
             }
 
             bool autoFire = Profile != null && Profile.Settings != null && Profile.Settings.AutoFire;
@@ -968,30 +996,40 @@ namespace Orbit.Galaxy
 
         private void OfferPlayerEvolution()
         {
-            if (Finished || Player == null || Player.State != ShipState.Alive ||
-                _evolutionOfferActive || Player.EvolutionTier >= 3) return;
-            int nextLevel = EvolutionSystem.NextEvolutionLevel(Player);
-            if (nextLevel <= 0 || Player.Level < nextLevel) return;
+            if (Finished || Player == null || Player.State != ShipState.Alive || _evolutionOfferActive) return;
+            bool snakeDone = Player.SnakeEvolutionTier >= SnakeEvolutionSystem.MaxTier;
+            bool classicDone = Player.EvolutionTier >= 3;
+            if (snakeDone && classicDone) return;
 
-            List<EvolutionDef> offers = EvolutionSystem.Offer(Player, Rng);
+            int snakeLevel = SnakeEvolutionSystem.NextLevel(Player);
+            int classicLevel = EvolutionSystem.NextEvolutionLevel(Player);
+            bool snakeDue = !snakeDone && snakeLevel <= SnakeEvolutionSystem.MaxTier && Player.Level >= snakeLevel;
+            bool classicDue = !classicDone && classicLevel < int.MaxValue && Player.Level >= classicLevel;
+            if (!snakeDue && !classicDue) return;
+
+            List<EvolutionDef> offers = snakeDue
+                ? SnakeEvolutionSystem.Offer(Player, Rng)
+                : EvolutionSystem.Offer(Player, Rng);
             PendingEvolutionChoices.Clear();
             if (offers != null)
             {
                 for (int i = 0; i < offers.Count; i++)
                 {
-                    if (offers[i] != null && EvolutionSystem.IsAvailable(Player, offers[i]))
-                        PendingEvolutionChoices.Add(offers[i]);
+                    EvolutionDef def = offers[i];
+                    if (def == null) continue;
+                    bool available = snakeDue
+                        ? SnakeEvolutionSystem.IsSnakeOffer(def)
+                        : EvolutionSystem.IsAvailable(Player, def);
+                    if (available) PendingEvolutionChoices.Add(def);
                 }
             }
             if (PendingEvolutionChoices.Count == 0) return;
             _evolutionOfferActive = true;
-            AddHighlight(new SimEvent(SimEventKind.Evolution, Player.Id, Player.EvolutionTier + 1,
-                "ВЫБЕРИТЕ ЭВОЛЮЦИЮ", Player.Position, Time, Player.Level));
+            int tier = snakeDue ? Player.SnakeEvolutionTier + 1 : Player.EvolutionTier + 1;
+            string prompt = snakeDue ? "ВЫБЕРИТЕ РОСТ ЗМЕЙКИ" : "ВЫБЕРИТЕ ЭВОЛЮЦИЮ";
+            AddHighlight(new SimEvent(SimEventKind.Evolution, Player.Id, tier, prompt, Player.Position, Time, Player.Level));
             if (Log != null)
-            {
-                Log.Add(SimEventKind.Evolution, Player.Id, Player.EvolutionTier + 1,
-                    "ВЫБЕРИТЕ ЭВОЛЮЦИЮ", Player.Position, Time, Player.Level);
-            }
+                Log.Add(SimEventKind.Evolution, Player.Id, tier, prompt, Player.Position, Time, Player.Level);
         }
 
         private void TrackHighlights()
