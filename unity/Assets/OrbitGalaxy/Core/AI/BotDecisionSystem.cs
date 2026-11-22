@@ -91,7 +91,7 @@ namespace Orbit.Galaxy
                 {
                     float score = p.ResourceScore * (0.9f + greed * 0.75f) + catchUp;
                     if (p.NearestResource != null || p.NearestEnergy != null) score += 1.2f;
-                    score -= snakeThreat * caution * 0.55f;
+                    score -= snakeThreat * caution * 0.25f;
                     if (hpRatio < 0.4f) score -= 1.5f;
                     return score;
                 }
@@ -107,8 +107,9 @@ namespace Orbit.Galaxy
                 }
                 case BotGoal.Flee:
                 {
-                    if (p.NearestThreat == null && p.ThreatScore < 2f && snakeThreat < 1.2f) return -3f;
-                    float danger = p.ThreatScore + snakeThreat * (0.6f + caution * 0.9f);
+                    float snakeDanger = snakeThreat * (0.3f + caution * 0.35f);
+                    if (p.NearestThreat == null && p.ThreatScore < 2f && snakeDanger < 1.2f) return -3f;
+                    float danger = p.ThreatScore + snakeDanger;
                     float score = danger * (0.75f + caution * 1.05f);
                     if (hpRatio < 0.42f) score += (0.42f - hpRatio) * 12f;
                     if (p.NearestThreat != null && p.NearestThreat.IsBoss) score += 2.5f;
@@ -118,7 +119,7 @@ namespace Orbit.Galaxy
                 {
                     if (p.NearestRare == null) return -2f;
                     float score = 2.5f + greed * 4.2f + risk * 1.4f + catchUp;
-                    score -= (p.ThreatScore * (0.55f + caution * 0.45f)) + snakeThreat * caution * 0.45f;
+                    score -= (p.ThreatScore * (0.55f + caution * 0.45f)) + snakeThreat * caution * 0.2f;
                     return score;
                 }
                 case BotGoal.AvoidHazard:

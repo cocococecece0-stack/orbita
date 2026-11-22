@@ -268,8 +268,9 @@ namespace Orbit.Galaxy
                     NearestSnakeThreat = segment.Owner;
                 }
             }
-            SnakeThreatScore = MathGalaxy.Clamp(SnakeThreatScore, 0f, 8f);
-            if (SnakeThreatScore > 0f) ThreatScore = MathGalaxy.Clamp(ThreatScore + SnakeThreatScore * 0.55f, 0f, 12f);
+            // Kept separate from general danger: bodies are avoided by steering, and only a very
+            // close/pressing snake should justify abandoning a resource goal entirely.
+            SnakeThreatScore = MathGalaxy.Clamp(SnakeThreatScore, 0f, 6f);
         }
 
         /// <summary>
