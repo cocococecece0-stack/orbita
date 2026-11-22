@@ -102,7 +102,7 @@ namespace Orbit.Galaxy.Unity
                 ? "АККАУНТ —"
                 : "УРОВЕНЬ " + profile.Level + "    ◈ " + FormatNumber(profile.Credits) + " КР    ✦ " + profile.Crystals +
                   "    СЕРИЯ " + profile.WinStreak;
-            GalaxyUiTheme.Panel(root, "Плашка аккаунта", GalaxyUiTheme.WithAlpha(GalaxyUiTheme.Panel, 0.94f),
+            GalaxyUiTheme.Panel(root, "Плашка аккаунта", GalaxyUiTheme.WithAlpha(GalaxyUiTheme.PanelColor, 0.94f),
                 GBox.At(430f, 384f, 690f, 74f), GalaxyUiTheme.Round);
             GalaxyUiTheme.Label(root, account, 22, GalaxyUiTheme.AccentA, TextAnchor.MiddleCenter,
                 GBox.At(430f, 384f, 660f, 60f), FontStyle.Bold);

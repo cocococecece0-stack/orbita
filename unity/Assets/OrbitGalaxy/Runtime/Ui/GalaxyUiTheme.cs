@@ -122,7 +122,7 @@ namespace Orbit.Galaxy.Unity
     {
         internal static readonly Color Ink = new Color32(8, 12, 30, 255);
         internal static readonly Color Deep = new Color32(6, 9, 22, 255);
-        internal static readonly Color Panel = new Color32(18, 25, 51, 244);
+        internal static readonly Color PanelColor = new Color32(18, 25, 51, 244);
         internal static readonly Color PanelSoft = new Color32(24, 33, 65, 224);
         internal static readonly Color Paper = new Color32(240, 246, 255, 255);
         internal static readonly Color Muted = new Color32(148, 164, 202, 255);
