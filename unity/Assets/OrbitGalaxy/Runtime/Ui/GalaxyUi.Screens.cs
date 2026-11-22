@@ -177,15 +177,22 @@ namespace Orbit.Galaxy.Unity
                 GBox.At(-560f, 398f, 700f, 80f), FontStyle.Bold);
             ModeDef mode = ContentDatabase.FindMode(result.Mode);
             GalaxyUiTheme.Label(root, mode.Name + " · место " + result.Rank + " из " + result.Participants +
-                " · длительность " + FormatTime(result.Duration), 21, GalaxyUiTheme.Muted,
+                " · время выживания " + FormatTime(result.SurvivalTime), 21, GalaxyUiTheme.Muted,
                 TextAnchor.MiddleLeft, GBox.At(-560f, 354f, 900f, 34f));
+
+            Image rankCard = GalaxyUiTheme.Panel(root, "Итоговое место", new Color32(18, 28, 56, 246),
+                GBox.At(520f, 372f, 380f, 88f), GalaxyUiTheme.Round);
+            GalaxyUiTheme.Label(rankCard.transform,
+                "ФИНАЛЬНОЕ МЕСТО\n#" + result.Rank + " / " + result.Participants, 24, tone,
+                TextAnchor.MiddleCenter, GBox.Inset(12f, 8f, 12f, 8f), FontStyle.Bold);
 
             Image stats = GalaxyUiTheme.Panel(root, "Сводка", new Color32(14, 21, 45, 246), GBox.At(-450f, 112f, 660f, 400f), GalaxyUiTheme.Round);
             GalaxyUiTheme.Label(stats.transform, "РЕЗУЛЬТАТ", 20, tone, TextAnchor.MiddleLeft,
                 GBox.Inset(22f, 356f, 22f, 12f), FontStyle.Bold);
             string lines =
                 "Очки              " + FormatNumber(Mathf.RoundToInt(result.Score)) + "\n" +
-                "Масса             " + result.Mass.ToString("F1") + "\n" +
+                "Масса / длина     " + result.Mass.ToString("F1") + " / " + result.Length + "\n" +
+                "Время выживания   " + FormatTime(result.SurvivalTime) + "\n" +
                 "Уровень           " + result.Level + "\n" +
                 "Убийства / смерти " + result.Kills + " / " + result.Deaths + "\n" +
                 "Лучшая серия      " + result.BestStreak + "\n" +
@@ -234,7 +241,7 @@ namespace Orbit.Galaxy.Unity
             GalaxyUiTheme.Label(highlights.transform, BuildHighlights(result), 17, GalaxyUiTheme.Paper, TextAnchor.UpperLeft,
                 GBox.Inset(18f, 14f, 18f, 48f));
 
-            GalaxyUiTheme.MakeButton(root, "Реванш", "РЕМАТЧ", GalaxyUiTheme.AccentA, GalaxyUiTheme.Ink,
+            GalaxyUiTheme.MakeButton(root, "Реванш", "НОВЫЙ МАТЧ", GalaxyUiTheme.AccentA, GalaxyUiTheme.Ink,
                 GBox.At(-260f, -412f, 460f, 76f), 26, delegate { if (_app != null) _app.RestartMatch(); });
             GalaxyUiTheme.MakeButton(root, "Меню", "В МЕНЮ", GalaxyUiTheme.PanelSoft, GalaxyUiTheme.Paper,
                 GBox.At(280f, -412f, 460f, 76f), 26, delegate { if (_app != null) _app.ReturnToMenu(); });

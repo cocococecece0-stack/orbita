@@ -30,6 +30,9 @@ namespace Orbit.Galaxy.Unity
         private RectTransform _feedRoot;
         private RectTransform _evoPanel;
         private RectTransform _pauseOverlay;
+        private RectTransform _deathOverlay;
+        private Text _deathDetail;
+        private string _deathReason = string.Empty;
         private Image _toastPanel;
         private Text _toastLabel;
         private float _toastUntil;
@@ -41,7 +44,7 @@ namespace Orbit.Galaxy.Unity
         private GameModeKind _selectedMode = GameModeKind.Classic;
         private GameModeKind _lastMode = GameModeKind.Classic;
         private MatchSimulation _hudMatch;
-        private string _lastWarningText = string.Empty;
+        private string _lastWorldWarningText = string.Empty;
 
         private Text _hudRank;
         private Text _hudTop;
@@ -239,8 +242,6 @@ namespace Orbit.Galaxy.Unity
                     string cdText = cd > 0.05f ? cd.ToString("F1") : "ГОТОВ";
                     SetText(_abilityLabels[i], def.Name + "\n" + cdText, cd > 0.05f ? GalaxyUiTheme.Muted : GalaxyUiTheme.AccentA);
                 }
-                if (player.State != ShipState.Alive && player.State != ShipState.Dead)
-                    SetWarning("РЕСПАВН " + Mathf.Max(0f, player.RespawnTimer).ToString("F1") + " с");
             }
 
             SetText(_hudTimer, FormatTime(match.Time), GalaxyUiTheme.Paper);
@@ -256,22 +257,42 @@ namespace Orbit.Galaxy.Unity
                 _barBoss.Set(boss.MaxHp > 0f ? boss.Hp / boss.MaxHp : 0f);
             }
 
+            string worldWarning = string.Empty;
             WorldEventSystem events = match.Events;
             if (events != null)
             {
-                string warning = string.Empty;
                 if (events.WarningRemaining > 0f)
-                    warning = "ВНИМАНИЕ · " + (string.IsNullOrEmpty(events.ActiveTitle) ? "СОБЫТИЕ" : events.ActiveTitle) +
-                              " · " + events.WarningRemaining.ToString("F0") + " с";
+                    worldWarning = "ВНИМАНИЕ · " + (string.IsNullOrEmpty(events.ActiveTitle) ? "СОБЫТИЕ" : events.ActiveTitle) +
+                                   " · " + events.WarningRemaining.ToString("F0") + " с";
                 else if (events.ActiveKind.HasValue && !string.IsNullOrEmpty(events.ActiveTitle))
-                    warning = events.ActiveTitle + (string.IsNullOrEmpty(events.ActiveDescription) ? string.Empty : " · " + events.ActiveDescription);
-                SetWarning(warning);
-                if (!string.IsNullOrEmpty(warning) && warning != _lastWarningText)
+                    worldWarning = events.ActiveTitle + (string.IsNullOrEmpty(events.ActiveDescription) ? string.Empty : " · " + events.ActiveDescription);
+                if (!string.IsNullOrEmpty(worldWarning) && worldWarning != _lastWorldWarningText)
                 {
-                    _lastWarningText = warning;
-                    ShowToast(warning);
+                    _lastWorldWarningText = worldWarning;
+                    ShowToast(worldWarning);
                 }
-                if (string.IsNullOrEmpty(warning)) _lastWarningText = string.Empty;
+                if (string.IsNullOrEmpty(worldWarning)) _lastWorldWarningText = string.Empty;
+            }
+
+            // Player death outranks disaster banners: the countdown must never be overwritten by
+            // a world event while the ship is waiting to return.
+            bool respawning = player != null && player.State == ShipState.Respawning;
+            if (respawning)
+            {
+                string countdown = "РЕСПАВН " + Mathf.Max(0f, player.RespawnTimer).ToString("F1") + " с";
+                SetWarning(countdown);
+                if (_deathOverlay != null)
+                {
+                    _deathOverlay.gameObject.SetActive(true);
+                    string cause = string.IsNullOrEmpty(_deathReason) ? "Причина не установлена" : _deathReason;
+                    SetText(_deathDetail, cause + "\n" + countdown, GalaxyUiTheme.Paper);
+                }
+            }
+            else
+            {
+                SetWarning(worldWarning);
+                if (_deathOverlay != null) _deathOverlay.gameObject.SetActive(false);
+                _deathReason = string.Empty;
             }
 
             if (_evoPanel != null)
@@ -293,9 +314,14 @@ namespace Orbit.Galaxy.Unity
             _feed.Add(line);
             if (_feedRoot != null) CreateFeedLabel(line);
 
-            if (ev.Kind == SimEventKind.EventWarning || ev.Kind == SimEventKind.Warning ||
-                ev.Kind == SimEventKind.BossSpawn || ev.Kind == SimEventKind.Victory || ev.Kind == SimEventKind.Defeat)
-                ShowToast(line.Text);
+            MatchSimulation current = _hudMatch != null ? _hudMatch : (_app == null ? null : _app.Match);
+            if (ev.Kind == SimEventKind.Kill && current != null && current.Player != null &&
+                ev.Value == current.Player.Id)
+            {
+                _deathReason = ev.Text;
+            }
+            // Toasts are owned by GalaxyApp.DrainEvents; showing them here as well produced the
+            // same warning twice on screen.
         }
 
         /// <summary>Shows a resume/menu overlay without rebuilding the HUD or clearing its feed.</summary>
@@ -406,6 +432,10 @@ namespace Orbit.Galaxy.Unity
             _hudBuilt = false;
             ClearChildren(_screenLayer);
             _pauseOverlay = null;
+            _deathOverlay = null;
+            _deathDetail = null;
+            _deathReason = string.Empty;
+            _lastWorldWarningText = string.Empty;
             _feedRoot = null;
             _feed.Clear();
             if (_hudLayer != null) _hudLayer.gameObject.SetActive(hudVisible);
@@ -508,6 +538,16 @@ namespace Orbit.Galaxy.Unity
             _hudWarning = GalaxyUiTheme.Label(warning.transform, string.Empty, 19, GalaxyUiTheme.Sun,
                 TextAnchor.MiddleCenter, GBox.Inset(12f, 4f, 12f, 4f), FontStyle.Bold);
             warning.gameObject.SetActive(false);
+
+            Image death = GalaxyUiTheme.Panel(hud, "Смерть", GalaxyUiTheme.WithAlpha(GalaxyUiTheme.Ink, 0.88f),
+                GBox.At(0f, 52f, 760f, 210f), GalaxyUiTheme.Round);
+            death.raycastTarget = false;
+            _deathOverlay = death.rectTransform;
+            GalaxyUiTheme.Label(death.transform, "ВЫ УНИЧТОЖЕНЫ", 46, GalaxyUiTheme.Coral,
+                TextAnchor.MiddleCenter, GBox.Inset(20f, 150f, 20f, 62f), FontStyle.Bold);
+            _deathDetail = GalaxyUiTheme.Label(death.transform, string.Empty, 22, GalaxyUiTheme.Paper,
+                TextAnchor.MiddleCenter, GBox.Inset(20f, 72f, 20f, 14f), FontStyle.Bold);
+            death.gameObject.SetActive(false);
 
             _evoPanel = GalaxyUiTheme.Panel(hud, "Подсказка эволюции", GalaxyUiTheme.WithAlpha(GalaxyUiTheme.AccentA, 0.92f),
                 new GBox(0.5f, 0f, 0.5f, 0f, -290f, 238f, 290f, 294f), GalaxyUiTheme.Round).rectTransform;

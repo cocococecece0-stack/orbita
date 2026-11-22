@@ -181,6 +181,16 @@ namespace Orbit.Galaxy.Unity
         public void OnEvent(SimEvent ev)
         {
             if (ev == null || _particles == null) return;
+
+            // Drop clusters reuse the existing Pickup event kind, but they get their own bloom so
+            // the reward for a kill is readable at a glance without adding a protected enum value.
+            if (DeathDropSystem.IsDropEvent(ev))
+            {
+                SpawnBurst(ev.Position, TextureFactory.Lime, 18, 190f, 11f, 0.8f, true);
+                SpawnBurst(ev.Position, TextureFactory.Cyan, 10, 120f, 8f, 0.55f, false);
+                return;
+            }
+
             switch (ev.Kind)
             {
                 case SimEventKind.Pickup:
@@ -193,6 +203,17 @@ namespace Orbit.Galaxy.Unity
                     SpawnBurst(ev.Position, TextureFactory.Violet, 32, 300f, 14f, 1.1f, true);
                     break;
                 case SimEventKind.Kill:
+                {
+                    bool playerDeath = _app != null && _app.Match != null && _app.Match.Player != null &&
+                                       ev.Value == _app.Match.Player.Id;
+                    if (playerDeath)
+                    {
+                        SpawnBurst(ev.Position, TextureFactory.Coral, 42, 350f, 17f, 1.25f, true);
+                        SpawnBurst(ev.Position, TextureFactory.Sun, 18, 220f, 12f, 0.9f, true);
+                    }
+                    else SpawnBurst(ev.Position, TextureFactory.Coral, 22, 260f, 13f, 0.7f, false);
+                    break;
+                }
                 case SimEventKind.Absorb:
                 case SimEventKind.LeaderKilled:
                     SpawnBurst(ev.Position, TextureFactory.Coral, 22, 260f, 13f, 0.7f, false);
@@ -318,10 +339,15 @@ namespace Orbit.Galaxy.Unity
                     color = new Color(0.58f, 0.63f, 0.72f, 1f);
                     break;
                 case ObjectKind.Drop:
-                    sprite = TextureFactory.Circle();
+                    sprite = TextureFactory.Glow();
                     Drop drop = o as Drop;
                     color = drop == null ? TextureFactory.Paper : DropColor(drop.Resource);
-                    color.a = Mathf.Clamp01(drop == null ? 1f : drop.Lifetime);
+                    // Rich motes read as more valuable; the slow pulse keeps a fresh pile alive
+                    // without any extra per-particle simulation state. Fade only near expiry.
+                    size *= 1.3f * Mathf.Min(1.7f, 1f + Mathf.Max(0, o.Value) * 0.02f) *
+                            (0.92f + 0.08f * Mathf.Sin(Time.unscaledTime * 4f + o.Id));
+                    color.a = Mathf.Clamp01(drop == null ? 1f : drop.Lifetime / 2.5f);
+                    order = 4;
                     break;
                 case ObjectKind.Hazard:
                     sprite = TextureFactory.Ring();
