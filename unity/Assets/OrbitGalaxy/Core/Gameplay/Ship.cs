@@ -78,6 +78,9 @@ namespace Orbit.Galaxy
         public float LastKillTime;
         public int Rank;
 
+        /// <summary>Optional snake body. Null for bosses and legacy tests that use plain ships.</summary>
+        public SnakeBody Body;
+
         public EvolutionDef[] EvolutionsTaken;
         public float[] Cooldowns;
         public float[] EffectTimers;

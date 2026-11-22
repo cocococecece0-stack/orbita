@@ -30,6 +30,7 @@ namespace Orbit.Galaxy
         public WorldEventSystem Events;
         public CombatSystem Combat;
         public BossController Bosses;
+        public SnakeSystem Snakes;
         public SimLog Log;
         public List<Ship> Ships;
         public List<BotBrain> Bots;
@@ -92,6 +93,7 @@ namespace Orbit.Galaxy
             Arena.Initialize();
             Combat = new CombatSystem(Rng.Fork());
             Bosses = new BossController(Rng.Fork());
+            Snakes = new SnakeSystem();
             Events = new WorldEventSystem(Arena, Rng.Fork(), Settings.ChaosEvents);
             Ships = new List<Ship>(GameConfig.MaxParticipants + 16);
             Bots = new List<BotBrain>(GameConfig.MaxParticipants);
@@ -103,6 +105,7 @@ namespace Orbit.Galaxy
             _aiRng = Rng.Fork();
             BuildNamePool();
             SpawnParticipants();
+            Snakes.Initialize(Ships);
             UpdateLeaderboard();
         }
 
@@ -155,6 +158,9 @@ namespace Orbit.Galaxy
             if (Bosses != null) Bosses.Update(dt, Ships, Arena, Log, Time, Combat);
             SpawnModeBosses();
 
+            // 3b. Snake heads turn before combat/fire so the hull points where it is going.
+            if (Snakes != null) Snakes.Steer(dt);
+
             // 4. Combat, contacts and hazards.
             Combat.Update(dt, Ships, Arena, Log, Time, Profile);
 
@@ -177,7 +183,10 @@ namespace Orbit.Galaxy
                 }
             }
 
-            // 5b. Border damage bypasses CombatSystem.ApplyDamage. Resolve every zero-HP ship here
+            // 5b. Tail samples the final head path; this must happen after movement, never before.
+            if (Snakes != null) Snakes.Follow(dt);
+
+            // 5c. Border damage bypasses CombatSystem.ApplyDamage. Resolve every zero-HP ship here
             // so no damage source can leave a ship Alive with no health.
             ResolveDeaths();
 
@@ -381,6 +390,7 @@ namespace Orbit.Galaxy
             _participants.Add(ship);
             _previousKills[ship.Id] = 0;
             _previousDeaths[ship.Id] = 0;
+            if (Snakes != null) Snakes.Add(ship);
 
             Rng brainRng = _aiRng.Fork();
             BotBrain brain = new BotBrain(ship, profile, brainRng, Settings.Difficulty);
@@ -536,6 +546,7 @@ namespace Orbit.Galaxy
                     if (Ships[i] == removed) { inShips = true; break; }
                 }
                 if (inShips) Ships.Remove(removed);
+                if (Snakes != null) Snakes.Remove(removed);
                 removed.State = ShipState.Dead;
             }
         }
@@ -587,12 +598,26 @@ namespace Orbit.Galaxy
                 return;
             }
 
-            Player.MoveInput = _playerMove;
-            if (_playerAim.SqrMagnitude > 0.0001f)
+            if (Player.Body != null)
             {
-                Player.AimInput = _playerAim;
-                float maxTurn = Math.Max(0.01f, Player.TurnRate) * dt;
-                Player.Facing = Vec2.FromAngle(TurnTowards(Player.Facing.Angle(), _playerAim.Angle(), maxTurn));
+                // Snake control: stick/keyboard steers, aim pad is a fallback when no move input
+                // is present. SnakeSystem.Steer performs the actual rate-limited rotation for all
+                // snakes, including bots, so the head always points along the travelled path.
+                Vec2 desired = _playerMove.SqrMagnitude > 0.0001f
+                    ? _playerMove
+                    : (_playerAim.SqrMagnitude > 0.0001f ? _playerAim : Player.Facing);
+                Player.MoveInput = desired;
+                if (_playerAim.SqrMagnitude > 0.0001f) Player.AimInput = _playerAim;
+            }
+            else
+            {
+                Player.MoveInput = _playerMove;
+                if (_playerAim.SqrMagnitude > 0.0001f)
+                {
+                    Player.AimInput = _playerAim;
+                    float maxTurn = Math.Max(0.01f, Player.TurnRate) * dt;
+                    Player.Facing = Vec2.FromAngle(TurnTowards(Player.Facing.Angle(), _playerAim.Angle(), maxTurn));
+                }
             }
 
             bool boost = _playerBoost && Player.Energy > 1f && Player.MoveInput.SqrMagnitude > 0.01f;
@@ -661,6 +686,7 @@ namespace Orbit.Galaxy
             {
                 ship.Position = FindSpawnPoint(Math.Max(GameConfig.BaseRadius, ship.Radius));
                 ship.Velocity = Vec2.Zero;
+                if (ship.Body != null && Snakes != null) Snakes.Reset(ship);
                 ship.Remember("Возвращение в арену");
             }
         }
@@ -699,7 +725,8 @@ namespace Orbit.Galaxy
             float speed = ship.Speed;
             if (ship.IsPlayer && _playerBoost) speed *= GameConfig.BoostMultiplier;
             Vec2 targetVelocity = input * speed;
-            float blend = MathGalaxy.Clamp(dt * 9f, 0f, 1f);
+            // Exponential smoothing is frame-rate independent; a plain dt*9 blend was not.
+            float blend = 1f - (float)Math.Exp(-9f * dt);
             ship.Velocity = Vec2.Lerp(ship.Velocity, targetVelocity, blend);
             ship.Position = ship.Position + ship.Velocity * dt;
 

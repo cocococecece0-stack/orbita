@@ -1314,5 +1314,139 @@ namespace Orbit.Galaxy.Core.Tests
             Close(0f, bot.ResearchEnergy, Epsilon);
             Close(0f, bot.ResearchLuck, Epsilon);
         }
+
+        // 16. Cosmic snake core.
+
+        [Fact]
+        public void SnakeBody_FollowsPathWithStableSpacingAndNoJumps()
+        {
+            SnakeBody body = new SnakeBody();
+            Vec2 head = Vec2.Right * 220f;
+            body.Reset(head, Vec2.Up, 16f, GameConfig.BaseMass);
+            Assert.Equal(SnakeConfig.InitialSegments, body.Count);
+
+            float spacing = SnakeConfig.SpacingForRadius(16f);
+            float maxStep = 0f;
+            Vec2[] previous = new Vec2[SnakeConfig.MaxSegments + 1];
+            int previousCount = body.Count;
+            for (int i = 0; i < previousCount; i++) previous[i] = body.GetPoint(i);
+
+            for (int step = 0; step < 180; step++)
+            {
+                float angle = step * 0.035f;
+                Vec2 next = Vec2.FromAngle(angle) * 220f;
+                maxStep = Math.Max(maxStep, Vec2.Distance(head, next));
+                head = next;
+                body.Update(head, 16f, GameConfig.BaseMass, 1f / 60f);
+
+                for (int i = 0; i < body.Count; i++)
+                {
+                    Assert.False(float.IsNaN(body.GetPoint(i).X) || float.IsNaN(body.GetPoint(i).Y));
+                    if (i < previousCount)
+                        maxStep = Math.Max(maxStep, Vec2.Distance(previous[i], body.GetPoint(i)));
+                    previous[i] = body.GetPoint(i);
+                }
+                previousCount = body.Count;
+                for (int i = 0; i < body.Count - 1; i++)
+                    Close(spacing, Vec2.Distance(body.GetPoint(i), body.GetPoint(i + 1)), 1.2f);
+            }
+
+            Assert.True(maxStep <= spacing * 2f + 1f, "Segment jumped " + maxStep + " in one step.");
+        }
+
+        [Fact]
+        public void SnakeBody_GrowthIsGradualAndCapped()
+        {
+            SnakeBody body = new SnakeBody();
+            body.Reset(Vec2.Zero, Vec2.Up, 16f, GameConfig.BaseMass);
+
+            for (int i = 0; i < 8; i++)
+                body.Update(Vec2.Up * (10f + i * 8f), 16f, 800f, 0.1f);
+            Assert.True(body.Count > SnakeConfig.InitialSegments);
+            Assert.True(body.Count < SnakeConfig.SegmentsForMass(800f));
+
+            for (int i = 0; i < 600; i++)
+                body.Update(Vec2.Up * (10f + i), 22f, 100000f, 1f / 30f);
+
+            Assert.Equal(SnakeConfig.MaxSegments, body.Count);
+            for (int i = 0; i < body.Count - 1; i++)
+            {
+                float distance = Vec2.Distance(body.GetPoint(i), body.GetPoint(i + 1));
+                Assert.True(distance > 0f && distance < SnakeConfig.SpacingForRadius(22f) * 1.5f);
+            }
+        }
+
+        [Fact]
+        public void SnakeSteering_TurnRateLimitedAndFrameRateIndependent()
+        {
+            Ship slow = NewShip(1);
+            slow.Body = new SnakeBody();
+            slow.Body.Reset(Vec2.Zero, Vec2.Right, slow.Radius, slow.Mass);
+            Ship fast = NewShip(2);
+            fast.Body = new SnakeBody();
+            fast.Body.Reset(Vec2.Zero, Vec2.Right, fast.Radius, fast.Mass);
+            SnakeSystem system = new SnakeSystem();
+            system.Add(slow);
+            system.Add(fast);
+
+            slow.MoveInput = Vec2.Up;
+            fast.MoveInput = Vec2.Up;
+            for (int i = 0; i < 15; i++) system.Steer(1f / 30f);
+            for (int i = 0; i < 60; i++) system.Steer(1f / 120f);
+
+            Close(slow.Facing.Angle(), fast.Facing.Angle(), 0.001f);
+            Assert.True(slow.Facing.Y > 0.9f);
+            Close(1f, slow.MoveInput.Magnitude, 0.001f);
+            Assert.Equal(2, system.Count);
+        }
+
+        [Fact]
+        public void MatchSimulation_SnakesExistFollowAndReplayDeterministically()
+        {
+            MatchSimulation match = new MatchSimulation(GameModeKind.Classic, 7788,
+                Difficulty.Normal, new AccountProfile(), GameConfig.MinParticipants);
+            MatchSimulation replay = new MatchSimulation(GameModeKind.Classic, 7788,
+                Difficulty.Normal, new AccountProfile(), GameConfig.MinParticipants);
+
+            Assert.NotNull(match.Snakes);
+            Assert.Equal(match.Ships.Count - CountBosses(match), match.Snakes.Count);
+            Assert.NotNull(match.Player.Body);
+
+            match.PlayerMove(Vec2.Up);
+            replay.PlayerMove(Vec2.Up);
+            for (int step = 0; step < 120; step++)
+            {
+                if (match.IsEvolutionPaused) match.PlayerChooseEvolution(null);
+                if (replay.IsEvolutionPaused) replay.PlayerChooseEvolution(null);
+                match.Update(GameConfig.SimulationStep);
+                replay.Update(GameConfig.SimulationStep);
+            }
+
+            SnakeBody body = match.Player.Body;
+            Assert.True(body.Count >= SnakeConfig.InitialSegments);
+            Assert.True(match.Player.Facing.Y > 0.8f);
+            for (int i = 0; i < body.Count; i++)
+            {
+                Assert.True(CloseVec(body.GetPoint(i), replay.Player.Body.GetPoint(i), 0.001f));
+                Assert.True(Vec2.Distance(body.GetPoint(i), match.Player.Position) < 2000f);
+            }
+
+            for (int i = 0; i < match.Ships.Count; i++)
+            {
+                Ship ship = match.Ships[i];
+                if (ship.Body == null) continue;
+                for (int s = 0; s < ship.Body.Count - 1; s++)
+                    Close(SnakeConfig.SpacingForRadius(ship.Radius),
+                        Vec2.Distance(ship.Body.GetPoint(s), ship.Body.GetPoint(s + 1)), 2f);
+            }
+        }
+
+        private static int CountBosses(MatchSimulation match)
+        {
+            int count = 0;
+            for (int i = 0; i < match.Ships.Count; i++)
+                if (match.Ships[i] != null && match.Ships[i].IsBoss) count++;
+            return count;
+        }
     }
 }
