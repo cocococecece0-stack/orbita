@@ -95,6 +95,10 @@ that file in the CI checkout only. The committed project file is not changed. Th
 runs on `macos-15` (arm64) and installs Unity Hub 3.22.5 because GameCI v4 still calls the
 legacy Hub headless installer that Hub 4.x removed.
 
+`Assets/OrbitGalaxy/Runtime/LegacyOrbitUiCompatibility.cs` provides thin uGUI subclasses in
+the `Orbit.Unity` namespace so the frozen legacy scripts compile without editing
+`Assets/Orbit`. They inherit the real `CanvasScaler` and `GraphicRaycaster` components.
+
 The Android job verifies package id `com.orbit.galaxy`, version `4.1.0` (code `4100`),
 minSdk 23 and `lib/arm64-v8a`, then uploads `orbita-galaxy-android` with the stable file
 name `OrbitaGalaxy-Android.apk`. The iOS job exports an unsigned Xcode `.app`, packages it
