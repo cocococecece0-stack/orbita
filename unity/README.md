@@ -88,6 +88,13 @@ and, in officially supported Unity flows, must first be activated from Unity Hub
 machine; an `.alf` request is not a supported Personal activation path. Without a license
 the workflow fails with an explicit error instead of publishing a fake binary release.
 
+CI builds with Unity **2022.3.62f1**, the last public 2022.3 LTS usable with Unity Personal.
+The version pinned in `ProjectSettings/ProjectVersion.txt` is `2022.3.74f1`, which is
+Extended LTS and requires Unity Industry/Enterprise, so the workflow temporarily rewrites
+that file in the CI checkout only. The committed project file is not changed. The iOS job
+runs on `macos-15` (arm64) and installs Unity Hub 3.22.5 because GameCI v4 still calls the
+legacy Hub headless installer that Hub 4.x removed.
+
 The Android job verifies package id `com.orbit.galaxy`, version `4.1.0` (code `4100`),
 minSdk 23 and `lib/arm64-v8a`, then uploads `orbita-galaxy-android` with the stable file
 name `OrbitaGalaxy-Android.apk`. The iOS job exports an unsigned Xcode `.app`, packages it

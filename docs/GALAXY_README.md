@@ -5,7 +5,9 @@
 
 ## Запуск
 
-1. Открыть `unity/` в Unity 2022.3.74f1.
+1. Открыть `unity/` в Unity 2022.3.62f1 — последней публичной 2022.3 LTS, совместимой с Personal.
+   Указанная в файле проекта `2022.3.74f1` — Extended LTS и требует Industry/Enterprise; CI временно
+   выравнивает версию в своей копии, не меняя репозиторий.
 2. В меню выбрать **ORBITA GALAXY → Activate Galaxy profile**. Это создаст сцену
    `Assets/OrbitGalaxy/Scenes/Arena.unity`, настроит `PlayerSettings.productName = ORBITA GALAXY`,
    URP 2D и сделает арену единственной активной сценой.

@@ -19,7 +19,9 @@ permissions:
   contents: read
 
 env:
-  UNITY_VERSION: "2022.3.74f1"
+  # 2022.3.74f1 is Extended LTS (Unity Industry/Enterprise only).
+  # 2022.3.62f1 is the last public 2022.3 LTS usable with Unity Personal.
+  UNITY_VERSION: "2022.3.62f1"
   ANDROID_APK: "OrbitaGalaxy-Android.apk"
   IOS_IPA: "OrbitaGalaxy-iOS-Unsigned.ipa"
   BUNDLE_ID: "com.orbit.galaxy"
@@ -98,6 +100,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-unity-galaxy-library-
 
+      - name: Pin editor version for Unity Personal
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'm_EditorVersion: %s\n' "$UNITY_VERSION" > unity/ProjectSettings/ProjectVersion.txt
+          cat unity/ProjectSettings/ProjectVersion.txt
+          echo "CI uses Unity $UNITY_VERSION: 2022.3.74f1 is Extended LTS and cannot be activated with Unity Personal."
+
       - name: Build Android APK
         uses: game-ci/unity-builder@v4
         with:
@@ -105,6 +115,7 @@ jobs:
           unityVersion: ${{ env.UNITY_VERSION }}
           targetPlatform: Android
           buildMethod: Orbit.Galaxy.Editor.GalaxyBuildScript.BuildAndroid
+          allowDirtyBuild: true
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
@@ -186,13 +197,42 @@ jobs:
     name: iOS Unsigned IPA
     needs: credentials
     if: needs.credentials.outputs.available == 'true'
-    runs-on: macos-latest
+    # GameCI v4 still calls the legacy Unity Hub headless CLI, removed in Hub 4.x.
+    # Pin macOS 15/arm64 so the Hub 3.x installer below can be used.
+    runs-on: macos-15
     timeout-minutes: 120
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           lfs: true
+
+      - name: Install Unity Hub 3.x
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$(uname -m)" != "arm64" ]; then
+            echo "::error::Expected an arm64 macOS runner for the pinned Unity Hub 3.x installer"
+            exit 1
+          fi
+          HUB_VERSION="3.22.5"
+          DMG="UnityHubSetup-${HUB_VERSION}-arm64.dmg"
+          URL="https://public-cdn.cloud.unity3d.com/hub/prod/${HUB_VERSION}/${DMG}"
+          curl -fsSL "$URL" -o "$RUNNER_TEMP/$DMG"
+          MOUNT="$RUNNER_TEMP/unity-hub-mount"
+          mkdir -p "$MOUNT"
+          hdiutil attach "$RUNNER_TEMP/$DMG" -mountpoint "$MOUNT" -nobrowse -quiet
+          APP="$(find "$MOUNT" -maxdepth 2 -type d -name 'Unity Hub.app' -print -quit 2>/dev/null)"
+          if [ -z "$APP" ]; then
+            echo "::error::Unity Hub 3.x app not found in $DMG"
+            hdiutil detach "$MOUNT" -quiet || true
+            exit 1
+          fi
+          rm -rf "/Applications/Unity Hub.app"
+          cp -R "$APP" "/Applications/Unity Hub.app"
+          hdiutil detach "$MOUNT" -quiet
+          test -x "/Applications/Unity Hub.app/Contents/MacOS/Unity Hub"
+          echo "Installed Unity Hub $HUB_VERSION at /Applications/Unity Hub.app"
 
       - name: Cache Unity Library
         uses: actions/cache@v4
@@ -202,6 +242,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-unity-galaxy-library-
 
+      - name: Pin editor version for Unity Personal
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'm_EditorVersion: %s\n' "$UNITY_VERSION" > unity/ProjectSettings/ProjectVersion.txt
+          cat unity/ProjectSettings/ProjectVersion.txt
+          echo "CI uses Unity $UNITY_VERSION: 2022.3.74f1 is Extended LTS and cannot be activated with Unity Personal."
+
       - name: Build iOS Xcode project
         uses: game-ci/unity-builder@v4
         with:
@@ -209,6 +257,7 @@ jobs:
           unityVersion: ${{ env.UNITY_VERSION }}
           targetPlatform: iOS
           buildMethod: Orbit.Galaxy.Editor.GalaxyBuildScript.BuildIOS
+          allowDirtyBuild: true
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
@@ -437,7 +486,8 @@ jobs:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: "ORBITA Galaxy ${{ steps.tag.outputs.tag }}"
           body: |
-            ORBITA GALAXY — одиночная offline .io-арена на Unity 2022.3.74f1.
+            ORBITA GALAXY — одиночная offline .io-арена на Unity 2022.3.62f1
+            (последняя публичная 2022.3 LTS для Personal; 2022.3.74f1 — Extended LTS).
 
             - `OrbitaGalaxy-Android.apk` — ARM64 APK для установки и тестирования (debug-подпись Unity).
             - `OrbitaGalaxy-iOS-Unsigned.ipa` — неподписанный IPA в структуре `Payload/*.app`; подпиши его своим сертификатом перед установкой.

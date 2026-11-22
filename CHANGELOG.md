@@ -13,6 +13,7 @@
 - Гайд по игре: `docs/GALAXY_README.md`; проверки: `galaxy-core.yml`, legacy regression и сборка по тегу `g*`
 - Galaxy build workflow собирает и проверяет `OrbitaGalaxy-Android.apk` (ARM64) и `OrbitaGalaxy-iOS-Unsigned.ipa` (arm64, iOS 13+), хранит их отдельными артефактами и публикует оба файла в успешном релизе `g*`
 - Без легального `UNITY_LICENSE` workflow завершается ошибкой с инструкцией: Unity Personal требует однократной активации через Unity Hub, `.alf`-путь для Personal не поддерживается
+- CI собирает бинарники на Unity 2022.3.62f1: 2022.3.74f1 — Extended LTS и недоступна для Personal; iOS-задача фиксирует macOS 15/arm64 и Unity Hub 3.22.5 для GameCI v4
 - Исторический релиз `g4.1.0` остаётся исходным: бинарники без лицензии Unity не создаются
 
 ## Unity Arcade Rush — заморожено (`u4.0.0`)
