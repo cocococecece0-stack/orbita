@@ -37,14 +37,14 @@ namespace Orbit.Galaxy
         /// <summary>Tail taper: the last segment is this fraction of the head radius.</summary>
         public const float TailRadiusFactor = 0.48f;
 
-        /// <summary>
-        /// Body segments this close to a snake's own head are never lethal to another head.
-        /// Prevents accidental deaths when two heads pass each other.
-        /// </summary>
-        public const int IgnoreLeadingSegments = 2;
-
         /// <summary>Cell size for the dedicated segment broadphase.</summary>
         public const float SegmentCellSize = 96f;
+
+        /// <summary>
+        /// Hitboxes stop growing at the base radius. Visuals keep scaling with mass, but if the
+        /// collision radius grew too, a normal turn would cross the snake's own third segment.
+        /// </summary>
+        public const float MaxCollisionRadius = GameConfig.BaseRadius;
 
         /// <summary>Fraction of victim mass transferred to the killer on a body hit.</summary>
         public const float BodyKillMassTransfer = 0.55f;

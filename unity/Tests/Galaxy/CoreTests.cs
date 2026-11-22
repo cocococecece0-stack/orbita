@@ -1473,7 +1473,7 @@ namespace Orbit.Galaxy.Core.Tests
         }
 
         [Fact]
-        public void SnakeCollision_SelfNeckIsSafeButTailIsLethal()
+        public void SnakeCollision_OwnBodyNeverKills()
         {
             Ship ship = NewShip(3);
             ship.Radius = 4f;
@@ -1489,7 +1489,7 @@ namespace Orbit.Galaxy.Core.Tests
 
             ship.Position = ship.Body.GetPoint(ship.Body.Count - 1);
             system.ResolveCollisions(arena, null, 1f);
-            Assert.Equal(ShipState.Respawning, ship.State);
+            Assert.Equal(ShipState.Alive, ship.State);
         }
 
         [Fact]
@@ -1534,6 +1534,115 @@ namespace Orbit.Galaxy.Core.Tests
             hits.Clear();
             index.QuerySwept(new Vec2(0f, 0f), new Vec2(40f, 40f), 2f, hits);
             Assert.Empty(hits);
+        }
+
+        [Fact]
+        public void SnakeCollision_NormalTurnAtHighMass_DoesNotSelfKill()
+        {
+            Ship ship = NewShip(8);
+            ship.Mass = 1000f;
+            ship.Radius = Ship.ComputeRadius(ship.Mass);
+            ship.Body = new SnakeBody();
+            ship.Body.Reset(Vec2.Zero, Vec2.Right, ship.Radius, ship.Mass);
+            SnakeSystem system = new SnakeSystem(new Rng(5));
+            system.Add(ship);
+            Arena arena = new Arena(GameModeKind.Classic, 9, 1f);
+
+            float turnRadius = GameConfig.BaseSpeed / GameConfig.BaseTurnSpeed;
+            Vec2 center = Vec2.Up * turnRadius;
+            float angle = -1.5707963f;
+            for (int step = 0; step < 240; step++)
+            {
+                angle += (GameConfig.BaseSpeed / turnRadius) / 30f;
+                Vec2 head = center + Vec2.FromAngle(angle) * turnRadius;
+                ship.Position = head;
+                ship.Body.Update(head, ship.Radius, ship.Mass, 1f / 30f);
+                system.ResolveCollisions(arena, null, step / 30f);
+                Assert.Equal(ShipState.Alive, ship.State);
+            }
+        }
+
+        // 18. Full-loop snake scenarios.
+
+        [Fact]
+        public void SnakeGameplay_EnergyGain_GraduallyAddsSegments()
+        {
+            Ship ship = NewShip(10);
+            ship.Body = new SnakeBody();
+            ship.Body.Reset(Vec2.Zero, Vec2.Right, ship.Radius, ship.Mass);
+            int initial = ship.Body.Count;
+
+            for (int i = 0; i < 60; i++)
+            {
+                ship.AddMass(GameConfig.MassGainEnergy * 4f, null, i / 30f);
+                ship.Body.Update(ship.Position + Vec2.Right * (i + 1) * 8f,
+                    ship.Radius, ship.Mass, 1f / 30f);
+            }
+
+            Assert.True(ship.Body.Count > initial + 3);
+            Assert.True(ship.Body.Count <= SnakeConfig.MaxSegments);
+            for (int i = 0; i < ship.Body.Count - 1; i++)
+                Close(SnakeConfig.SpacingForRadius(ship.Radius),
+                    Vec2.Distance(ship.Body.GetPoint(i), ship.Body.GetPoint(i + 1)), 1.2f);
+        }
+
+        [Fact]
+        public void SnakeGameplay_SamePathAtDifferentFps_ProducesSameBody()
+        {
+            SnakeBody slow = new SnakeBody();
+            SnakeBody fast = new SnakeBody();
+            slow.Reset(Vec2.Zero, Vec2.Right, 16f, GameConfig.BaseMass);
+            fast.Reset(Vec2.Zero, Vec2.Right, 16f, GameConfig.BaseMass);
+
+            for (int i = 1; i <= 120; i++)
+                slow.Update(HeadOnPath(i / 30f), 16f, GameConfig.BaseMass, 1f / 30f);
+            for (int i = 1; i <= 576; i++)
+                fast.Update(HeadOnPath(i / 144f), 16f, GameConfig.BaseMass, 1f / 144f);
+
+            Assert.Equal(slow.Count, fast.Count);
+            float worst = 0f;
+            for (int i = 0; i < slow.Count; i++)
+                worst = Math.Max(worst, Vec2.Distance(slow.GetPoint(i), fast.GetPoint(i)));
+            // Arc-length sampling is frame-rate independent up to the phase of the newest sample.
+            Assert.True(worst <= 3f, "Worst segment drift across FPS: " + worst);
+        }
+
+        private static Vec2 HeadOnPath(float time)
+        {
+            return Vec2.FromAngle(time * 1.2f) * 300f;
+        }
+
+        [Fact]
+        public void SnakeGameplay_LongRun_KeepsBodiesAndDropsBounded()
+        {
+            MatchSimulation match = new MatchSimulation(GameModeKind.Chaos, 9137,
+                Difficulty.Hard, new AccountProfile(), GameConfig.MaxParticipants);
+            int totalSteps = (int)(120f / GameConfig.SimulationStep);
+            int maxSegments = 0;
+
+            for (int step = 0; step < totalSteps; step++)
+            {
+                if (match.IsEvolutionPaused) match.PlayerChooseEvolution(null);
+                match.Update(GameConfig.SimulationStep);
+                match.Log.Drain();
+
+                for (int i = 0; i < match.Ships.Count; i++)
+                {
+                    Ship ship = match.Ships[i];
+                    if (ship == null) continue;
+                    Assert.False(float.IsNaN(ship.Position.X) || float.IsNaN(ship.Position.Y));
+                    if (ship.Body == null) continue;
+                    Assert.True(ship.Body.Count <= SnakeConfig.MaxSegments);
+                    if (ship.Body.Count > maxSegments) maxSegments = ship.Body.Count;
+                }
+            }
+
+            Assert.True(maxSegments <= SnakeConfig.MaxSegments);
+            Assert.Equal(match.Arena.Objects.Count, match.Arena.Index.Count);
+            int drops = 0;
+            for (int i = 0; i < match.Arena.Objects.Count; i++)
+                if (match.Arena.Objects[i].Kind == ObjectKind.Drop) drops++;
+            Assert.True(drops < 500, "Drops accumulated: " + drops);
         }
 
         private static int CountBosses(MatchSimulation match)

@@ -58,7 +58,7 @@ namespace Orbit.Galaxy
                         Owner = ship,
                         Index = s,
                         Point = body.GetPoint(s),
-                        Radius = body.GetRadius(s, ship.Radius)
+                        Radius = body.GetRadius(s, Math.Min(ship.Radius, SnakeConfig.MaxCollisionRadius))
                     };
                     int cx, cy;
                     CellOf(segment.Point, out cx, out cy);
@@ -159,7 +159,8 @@ namespace Orbit.Galaxy
                 if (head == null || head.Body == null || head.State != ShipState.Alive ||
                     head.Hp <= 0f || head.Invulnerability > 0f) continue;
 
-                float reach = Math.Max(4f, head.Radius * HeadReachFactor);
+                float reach = Math.Max(4f,
+                    Math.Min(head.Radius, SnakeConfig.MaxCollisionRadius) * HeadReachFactor);
                 _hits.Clear();
                 _index.QuerySwept(head.Body.PreviousHead, head.Position, reach, _hits);
                 if (_hits.Count == 0) continue;
@@ -169,11 +170,14 @@ namespace Orbit.Galaxy
                     SnakeSegmentRef segment = _hits[h];
                     Ship owner = segment.Owner;
                     if (owner == null || owner.State != ShipState.Alive || owner.Hp <= 0f) continue;
-                    if (owner == head && segment.Index <= SnakeConfig.IgnoreLeadingSegments) continue;
+                    // Own body is intentionally harmless. Bots re-steer several times a second and
+                    // sampled tails can cut corners; treating those overlaps as deaths produced
+                    // constant unfair suicides. Other snakes' bodies remain lethal.
+                    if (owner == head) continue;
 
-                    Ship killer = owner == head ? null : owner;
+                    Ship killer = owner;
                     float reward = head.Mass * SnakeConfig.BodyKillMassTransfer;
-                    if (killer != null && reward > 0f) killer.AddMass(reward, log, time);
+                    if (reward > 0f) killer.AddMass(reward, log, time);
                     SpawnDrops(arena, head);
                     CombatSystem.HandleKill(head, killer, log, time);
                     break;
