@@ -133,13 +133,14 @@ jobs:
           fi
 
           unzip -tq "$APK" >/dev/null
+          APK_ENTRIES="$(unzip -l "$APK")"
           for entry in AndroidManifest.xml classes.dex; do
-            if ! unzip -l "$APK" | grep -Fq "$entry"; then
+            if [[ "$APK_ENTRIES" != *"$entry"* ]]; then
               echo "::error::APK is missing $entry"
               exit 1
             fi
           done
-          if ! unzip -l "$APK" | grep -Fq 'lib/arm64-v8a/'; then
+          if [[ "$APK_ENTRIES" != *"lib/arm64-v8a/"* ]]; then
             echo "::error::APK has no arm64-v8a native libraries; ARM64 target was not applied"
             exit 1
           fi
@@ -166,9 +167,14 @@ jobs:
 
           check_badging() {
             local description="$1"
-            local pattern="$2"
-            if ! printf '%s\n' "$BADGING" | grep -Eq "$pattern"; then
-              echo "::error::APK $description does not match required value ($pattern)"
+            local expected="$2"
+            # Literal substring check: grep -q under pipefail can fail spuriously
+            # when it exits before printf has written all of the badging output.
+            if [[ "$BADGING" != *"$expected"* ]]; then
+              echo "::error::APK $description does not match required value ($expected)"
+              echo "----- aapt badging -----"
+              printf '%s\n' "$BADGING"
+              echo "------------------------"
               exit 1
             fi
           }
@@ -371,8 +377,9 @@ jobs:
             echo "::error::Ad-hoc signature detected (_CodeSignature/CodeResources)"
             exit 1
           fi
-          if find "$APP_SRC" -name 'embedded.mobileprovision' -print -quit | grep -q .; then
-            echo "::error::Provisioning profile found inside the .app"
+          PROFILE="$(find "$APP_SRC" -name 'embedded.mobileprovision' -print -quit 2>/dev/null)"
+          if [ -n "$PROFILE" ]; then
+            echo "::error::Provisioning profile found inside the .app: $PROFILE"
             exit 1
           fi
 
@@ -396,7 +403,8 @@ jobs:
           mkdir -p "$VERIFY"
           unzip -q "$IPA" -d "$VERIFY"
           plutil -lint "$VERIFY/Payload/$APP_NAME/Info.plist"
-          if unzip -Z1 "$IPA" | grep -q 'embedded.mobileprovision$'; then
+          IPA_ENTRIES="$(unzip -Z1 "$IPA")"
+          if printf '%s\n' "$IPA_ENTRIES" | grep -E 'embedded\.mobileprovision$' >/dev/null; then
             echo "::error::IPA contains embedded.mobileprovision"
             exit 1
           fi
