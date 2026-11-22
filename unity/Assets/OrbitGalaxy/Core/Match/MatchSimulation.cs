@@ -93,7 +93,7 @@ namespace Orbit.Galaxy
             Arena.Initialize();
             Combat = new CombatSystem(Rng.Fork());
             Bosses = new BossController(Rng.Fork());
-            Snakes = new SnakeSystem();
+            Snakes = new SnakeSystem(Rng.Fork());
             Events = new WorldEventSystem(Arena, Rng.Fork(), Settings.ChaosEvents);
             Ships = new List<Ship>(GameConfig.MaxParticipants + 16);
             Bots = new List<BotBrain>(GameConfig.MaxParticipants);
@@ -184,7 +184,11 @@ namespace Orbit.Galaxy
             }
 
             // 5b. Tail samples the final head path; this must happen after movement, never before.
-            if (Snakes != null) Snakes.Follow(dt);
+            if (Snakes != null)
+            {
+                Snakes.Follow(dt);
+                Snakes.ResolveCollisions(Arena, Log, Time);
+            }
 
             // 5c. Border damage bypasses CombatSystem.ApplyDamage. Resolve every zero-HP ship here
             // so no damage source can leave a ship Alive with no health.

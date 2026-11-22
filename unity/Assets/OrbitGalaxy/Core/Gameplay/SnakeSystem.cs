@@ -12,6 +12,12 @@ namespace Orbit.Galaxy
     public sealed class SnakeSystem
     {
         private readonly List<Ship> _snakes = new List<Ship>(GameConfig.MaxParticipants + 8);
+        private readonly SnakeCollisionSystem _collisions;
+
+        public SnakeSystem(Rng rng)
+        {
+            _collisions = new SnakeCollisionSystem(rng);
+        }
 
         public int Count { get { return _snakes.Count; } }
 
@@ -80,6 +86,12 @@ namespace Orbit.Galaxy
                 if (ship.State != ShipState.Alive || ship.Hp <= 0f) continue;
                 ship.Body.Update(ship.Position, ship.Radius, ship.Mass, dt);
             }
+        }
+
+        /// <summary>Resolves head-into-body deaths using the post-movement tails.</summary>
+        public void ResolveCollisions(Arena arena, SimLog log, float time)
+        {
+            _collisions.Resolve(_snakes, arena, log, time);
         }
 
         private static float TurnAngle(float current, float target, float maxStep)

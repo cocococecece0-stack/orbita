@@ -41,7 +41,7 @@ namespace Orbit.Galaxy
         /// Body segments this close to a snake's own head are never lethal to another head.
         /// Prevents accidental deaths when two heads pass each other.
         /// </summary>
-        public const int IgnoreLeadingSegments = 4;
+        public const int IgnoreLeadingSegments = 2;
 
         /// <summary>Cell size for the dedicated segment broadphase.</summary>
         public const float SegmentCellSize = 96f;

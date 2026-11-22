@@ -1385,7 +1385,7 @@ namespace Orbit.Galaxy.Core.Tests
             Ship fast = NewShip(2);
             fast.Body = new SnakeBody();
             fast.Body.Reset(Vec2.Zero, Vec2.Right, fast.Radius, fast.Mass);
-            SnakeSystem system = new SnakeSystem();
+            SnakeSystem system = new SnakeSystem(new Rng(31));
             system.Add(slow);
             system.Add(fast);
 
@@ -1439,6 +1439,101 @@ namespace Orbit.Galaxy.Core.Tests
                     Close(SnakeConfig.SpacingForRadius(ship.Radius),
                         Vec2.Distance(ship.Body.GetPoint(s), ship.Body.GetPoint(s + 1)), 2f);
             }
+        }
+
+        // 17. Snake collisions and segment broadphase.
+
+        [Fact]
+        public void SnakeCollision_HeadIntoOtherBody_KillsHeadAndFeedsOwner()
+        {
+            Ship body = NewShip(1);
+            body.Position = new Vec2(500f, 0f);
+            body.Body = new SnakeBody();
+            body.Body.Reset(body.Position, Vec2.Up, body.Radius, body.Mass);
+
+            Ship head = NewShip(2);
+            head.Position = body.Body.GetPoint(3);
+            head.Radius = 4f;
+            head.Body = new SnakeBody();
+            head.Body.Reset(head.Position, Vec2.Right, head.Radius, head.Mass);
+
+            SnakeSystem system = new SnakeSystem(new Rng(4321));
+            system.Add(body);
+            system.Add(head);
+            Arena arena = new Arena(GameModeKind.Classic, 9, 1f);
+            SimLog log = new SimLog();
+            float massBefore = body.Mass;
+
+            system.ResolveCollisions(arena, log, 1f);
+
+            Assert.Equal(ShipState.Respawning, head.State);
+            Assert.True(body.Mass > massBefore);
+            Assert.Equal(SnakeConfig.DeathDrops, arena.Objects.Count);
+            Assert.True(HasEvent(log.Drain(), SimEventKind.Kill));
+        }
+
+        [Fact]
+        public void SnakeCollision_SelfNeckIsSafeButTailIsLethal()
+        {
+            Ship ship = NewShip(3);
+            ship.Radius = 4f;
+            ship.Body = new SnakeBody();
+            ship.Body.Reset(Vec2.Zero, Vec2.Up, ship.Radius, ship.Mass);
+            SnakeSystem system = new SnakeSystem(new Rng(77));
+            system.Add(ship);
+            Arena arena = new Arena(GameModeKind.Classic, 9, 1f);
+
+            ship.Position = ship.Body.GetPoint(0);
+            system.ResolveCollisions(arena, null, 1f);
+            Assert.Equal(ShipState.Alive, ship.State);
+
+            ship.Position = ship.Body.GetPoint(ship.Body.Count - 1);
+            system.ResolveCollisions(arena, null, 1f);
+            Assert.Equal(ShipState.Respawning, ship.State);
+        }
+
+        [Fact]
+        public void SnakeCollision_InvulnerableHead_IgnoresBody()
+        {
+            Ship body = NewShip(4);
+            body.Position = new Vec2(-500f, 0f);
+            body.Body = new SnakeBody();
+            body.Body.Reset(body.Position, Vec2.Up, body.Radius, body.Mass);
+
+            Ship head = NewShip(5);
+            head.Position = body.Body.GetPoint(2);
+            head.Radius = 4f;
+            head.Invulnerability = 2f;
+            head.Body = new SnakeBody();
+            head.Body.Reset(head.Position, Vec2.Right, head.Radius, head.Mass);
+
+            SnakeSystem system = new SnakeSystem(new Rng(19));
+            system.Add(body);
+            system.Add(head);
+
+            system.ResolveCollisions(null, null, 1f);
+
+            Assert.Equal(ShipState.Alive, head.State);
+        }
+
+        [Fact]
+        public void SnakeSegmentIndex_SweptQueryFindsCrossedSegmentsOnly()
+        {
+            SnakeSegmentIndex index = new SnakeSegmentIndex(SnakeConfig.SegmentCellSize);
+            Ship owner = NewShip(6);
+            owner.Body = new SnakeBody();
+            owner.Body.Reset(new Vec2(300f, 300f), Vec2.Up, owner.Radius, owner.Mass);
+            List<Ship> snakes = new List<Ship> { owner };
+            index.Rebuild(snakes);
+
+            List<SnakeSegmentRef> hits = new List<SnakeSegmentRef>();
+            index.QuerySwept(new Vec2(300f, 200f), new Vec2(300f, 400f), 2f, hits);
+            Assert.True(hits.Count >= 5);
+            for (int i = 0; i < hits.Count; i++) Assert.Same(owner, hits[i].Owner);
+
+            hits.Clear();
+            index.QuerySwept(new Vec2(0f, 0f), new Vec2(40f, 40f), 2f, hits);
+            Assert.Empty(hits);
         }
 
         private static int CountBosses(MatchSimulation match)
