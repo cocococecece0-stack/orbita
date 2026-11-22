@@ -71,7 +71,7 @@ namespace Orbit.Galaxy
             {
                 log.Add(SimEventKind.Ability, ship.Id, index, displayName, ship.Position, time, def.Duration);
             }
-            ship.Remember("Способность: " + def.Name);
+            ship.Remember("Способность: " + displayName);
 
             switch (kind)
             {

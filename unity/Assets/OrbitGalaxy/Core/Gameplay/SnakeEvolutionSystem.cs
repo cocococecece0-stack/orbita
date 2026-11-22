@@ -112,7 +112,8 @@ namespace Orbit.Galaxy
         {
             if (ship == null || def == null || ship.SnakeEvolutionTier >= MaxTier) return false;
             if (def.Tier != ship.SnakeEvolutionTier + 1) return false;
-            return TakenPath(ship, def.Tier) < 0;
+            // Zero means the tier is still free; chosen paths are stored as 1..5.
+            return TakenPath(ship, def.Tier) <= 0;
         }
 
         /// <summary>Three distinct paths from the next tier, in a deterministic random order.</summary>

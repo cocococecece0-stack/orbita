@@ -2151,6 +2151,212 @@ namespace Orbit.Galaxy.Core.Tests
             Assert.True(drops < 500, "Drops accumulated: " + drops);
         }
 
+        [Fact]
+        public void SnakeGrowth_OffersThreeDistinctPathsAndStaysBounded()
+        {
+            Ship ship = NewShip(1);
+            Assert.Equal(2, SnakeEvolutionSystem.NextLevel(ship));
+
+            List<EvolutionDef> first = SnakeEvolutionSystem.Offer(ship, new Rng(91u));
+            List<EvolutionDef> replay = SnakeEvolutionSystem.Offer(ship, new Rng(91u));
+            Assert.Equal(3, first.Count);
+            Assert.True(AllDistinctIds(first));
+            for (int i = 0; i < first.Count; i++)
+            {
+                Assert.True(SnakeEvolutionSystem.IsSnakeOffer(first[i]));
+                Assert.Equal(first[i].Id, replay[i].Id);
+            }
+
+            float expectedGain = 0f;
+            for (int tier = 1; tier <= SnakeEvolutionSystem.MaxTier; tier++)
+            {
+                SnakeUpgradeDef upgrade = SnakeEvolutionSystem.Find("snake_collect_" + tier);
+                Assert.NotNull(upgrade);
+                Assert.True(SnakeEvolutionSystem.IsAvailable(ship, upgrade));
+                SnakeEvolutionSystem.Apply(ship, upgrade);
+                expectedGain += upgrade.Value;
+            }
+            Close(expectedGain, ship.SnakePickupGainMul, Epsilon);
+            Assert.Equal(SnakeEvolutionSystem.MaxTier, ship.SnakeEvolutionTier);
+            Assert.Equal(int.MaxValue, SnakeEvolutionSystem.NextLevel(ship));
+            Assert.Empty(SnakeEvolutionSystem.Offer(ship, new Rng(92u)));
+
+            // Collection growth must not increase combat stats: no early snowball.
+            Close(GameConfig.BaseMass, ship.Mass, Epsilon);
+            Close(GameConfig.BaseDamage, ship.Damage, Epsilon);
+            Close(GameConfig.BaseSpeed, ship.Speed, Epsilon);
+        }
+
+        [Fact]
+        public void SnakeGrowth_SizeProtectionAndMagnet_HaveVisibleButCappedEffects()
+        {
+            Ship longSnake = NewShip(2);
+            SnakeBody body = new SnakeBody();
+            body.Owner = longSnake;
+            body.Reset(longSnake.Position, longSnake.Facing, longSnake.Radius, longSnake.Mass);
+            int baseCount = body.Count;
+            for (int tier = 1; tier <= SnakeEvolutionSystem.MaxTier; tier++)
+                SnakeEvolutionSystem.Apply(longSnake, SnakeEvolutionSystem.Find("snake_size_" + tier));
+            Assert.Equal(7, longSnake.SnakeLengthBonus);
+            body.Reset(longSnake.Position, longSnake.Facing, longSnake.Radius, longSnake.Mass);
+            Assert.True(body.Count > baseCount);
+            Assert.True(body.Count <= SnakeConfig.MaxSegments);
+
+            Ship guarded = NewShip(3);
+            for (int tier = 1; tier <= SnakeEvolutionSystem.MaxTier; tier++)
+                SnakeEvolutionSystem.Apply(guarded, SnakeEvolutionSystem.Find("snake_guard_" + tier));
+            Assert.True(guarded.MaxShield >= 20f);
+
+            Ship magnet = NewShip(4);
+            for (int tier = 1; tier <= SnakeEvolutionSystem.MaxTier; tier++)
+                SnakeEvolutionSystem.Apply(magnet, SnakeEvolutionSystem.Find("snake_magnet_" + tier));
+            Assert.True(magnet.PickupRadius > GameConfig.BasePickupRadius);
+            Assert.True(magnet.PickupRadius <= GameConfig.BasePickupRadius * 1.5f);
+            Close(GameConfig.BaseSpeed, magnet.Speed, Epsilon);
+        }
+
+        [Fact]
+        public void SnakeAbilities_HaveBoundedCostsCooldownsAndReadableEffects()
+        {
+            Ship impulse = NewShip(5);
+            SnakeAbilityDef impulseDef = SnakeAbilities.Get(SnakeAbilitySlot.Impulse);
+            Assert.True(SnakeAbilities.CanActivate(impulse, SnakeAbilitySlot.Impulse));
+            Assert.True(SnakeAbilities.Activate(impulse, SnakeAbilitySlot.Impulse, new SimLog(), 1f));
+            Close(GameConfig.MaxEnergy - impulseDef.Cost, impulse.Energy, Epsilon);
+            Close(impulseDef.Cooldown, impulse.Cooldowns[(int)AbilityKind.Dash], Epsilon);
+            Close(impulseDef.Duration, impulse.EffectTimers[(int)AbilityKind.Dash], Epsilon);
+            Assert.True(impulse.Invulnerability > 0f);
+            Assert.True(SnakeAbilities.IsActive(impulse, SnakeAbilitySlot.Impulse));
+            Assert.StartsWith("АКТ", SnakeAbilities.Status(impulse, SnakeAbilitySlot.Impulse));
+            Assert.False(SnakeAbilities.CanActivate(impulse, SnakeAbilitySlot.Impulse));
+
+            Ship phase = NewShip(6);
+            SnakeAbilityDef phaseDef = SnakeAbilities.Get(SnakeAbilitySlot.PhaseDash);
+            Assert.True(SnakeAbilities.Activate(phase, SnakeAbilitySlot.PhaseDash, new SimLog(), 2f));
+            Close(phaseDef.Duration, phase.EffectTimers[(int)AbilityKind.Phase], Epsilon);
+            Close(phaseDef.Duration, phase.Invulnerability, Epsilon);
+            Close(0.85f, phase.DamageReduction, Epsilon);
+
+            Ship trail = NewShip(7);
+            SnakeAbilityDef trailDef = SnakeAbilities.Get(SnakeAbilitySlot.Trail);
+            Assert.True(SnakeAbilities.Activate(trail, SnakeAbilitySlot.Trail, new SimLog(), 3f));
+            Close(trailDef.Duration, trail.EffectTimers[(int)AbilityKind.Overdrive], Epsilon);
+            Assert.True(SnakeAbilities.IsTrailActive(trail));
+            Assert.True(trail.Speed > GameConfig.BaseSpeed);
+
+            Ship poor = NewShip(8);
+            poor.Energy = 5f;
+            Assert.False(SnakeAbilities.CanActivate(poor, SnakeAbilitySlot.Shield));
+            Assert.False(SnakeAbilities.Activate(poor, SnakeAbilitySlot.Shield, new SimLog(), 4f));
+        }
+
+        [Fact]
+        public void MatchSimulation_SnakeGrowthChoices_UseSharedEvolutionFlow()
+        {
+            MatchSimulation match = new MatchSimulation(GameModeKind.Classic, 777, Difficulty.Normal, null);
+            match.Player.Level = 2f;
+            match.Update(GameConfig.SimulationStep);
+            Assert.True(match.IsEvolutionPaused);
+            Assert.True(match.PendingEvolutionChoices.Count > 0);
+            for (int i = 0; i < match.PendingEvolutionChoices.Count; i++)
+                Assert.True(SnakeEvolutionSystem.IsSnakeOffer(match.PendingEvolutionChoices[i]));
+
+            EvolutionDef first = match.PendingEvolutionChoices[0];
+            float massBefore = match.Player.Mass;
+            float damageBefore = match.Player.Damage;
+            match.PlayerChooseEvolution(first);
+            Assert.Equal(1, match.Player.SnakeEvolutionTier);
+            Assert.False(match.IsEvolutionPaused);
+            Close(massBefore, match.Player.Mass, Epsilon);
+            Close(damageBefore, match.Player.Damage, Epsilon);
+
+            match.Player.Level = 3f;
+            match.Update(GameConfig.SimulationStep);
+            Assert.True(match.IsEvolutionPaused);
+            Assert.True(match.PendingEvolutionChoices.Count > 0);
+            Assert.False(SnakeEvolutionSystem.IsSnakeOffer(match.PendingEvolutionChoices[0]));
+        }
+
+        [Fact]
+        public void SnakeProgression_UnlocksCosmeticsOnceAndSurvivesSaveRoundTrip()
+        {
+            AccountProfile profile = new AccountProfile();
+            MatchResult result = new MatchResult();
+            result.Length = 80;
+            result.SurvivalTime = 200f;
+            result.SnakeEvolutionTier = 3;
+            result.SnakeAbilityUses = 25;
+            result.Score = 0f;
+            result.Credits = 0;
+            result.CrystalsReward = 0;
+            result.Xp = 0;
+            result.AccountXp = 0;
+
+            ProgressionRewards rewards = ProgressionSystem.ApplyMatchResult(profile, result, new DateTime(2026, 1, 1));
+            Assert.True(rewards.SnakeGoalCount > 0);
+            Assert.Equal(80, profile.Stat(SnakeProgression.StatBestLength));
+            Assert.Equal(3, profile.Stat(SnakeProgression.StatBestGrowth));
+            Assert.Equal(200, profile.Stat(SnakeProgression.StatBestSurvival));
+            Assert.Equal(25, profile.Stat(SnakeProgression.StatAbilityUses));
+            Assert.Equal(80, profile.Records[SnakeProgression.StatBestLength]);
+            Assert.Equal(200, profile.Records[SnakeProgression.StatBestSurvival]);
+
+            string[] unlocks =
+            {
+                "snake_head_aurora", "snake_head_magma", "snake_head_prism",
+                "snake_head_voidglass", "snake_head_neon", "snake_tail_comet",
+                "snake_tail_pulse", "snake_tail_ribbon", "snake_tail_spectrum", "snake_tail_eclipse"
+            };
+            for (int i = 0; i < unlocks.Length; i++) Assert.True(profile.IsUnlocked(unlocks[i]));
+
+            ProgressionRewards replay = ProgressionSystem.ApplyMatchResult(profile, result, new DateTime(2026, 1, 2));
+            Assert.Empty(replay.SnakeGoals);
+
+            profile.SelectedShip = "snake_head_voidglass";
+            profile.SelectedTrail = "snake_tail_spectrum";
+            AccountProfile loaded = SaveMigration.FromJson(SaveMigration.ToJson(profile));
+            Assert.Equal(profile.Stat(SnakeProgression.StatBestLength), loaded.Stat(SnakeProgression.StatBestLength));
+            Assert.Equal(profile.Stat(SnakeProgression.StatAbilityUses), loaded.Stat(SnakeProgression.StatAbilityUses));
+            Assert.Equal(profile.Records[SnakeProgression.StatBestLength], loaded.Records[SnakeProgression.StatBestLength]);
+            Assert.Equal(profile.SelectedShip, loaded.SelectedShip);
+            Assert.Equal(profile.SelectedTrail, loaded.SelectedTrail);
+            for (int i = 0; i < unlocks.Length; i++) Assert.True(loaded.IsUnlocked(unlocks[i]));
+
+            MatchSimulation cosmeticMatch = new MatchSimulation(GameModeKind.Classic, 812, Difficulty.Normal, loaded);
+            SnakeCosmeticDef head = SnakeCosmeticCatalog.FindHead(loaded.SelectedShip);
+            SnakeCosmeticDef tail = SnakeCosmeticCatalog.FindTail(loaded.SelectedTrail);
+            Assert.NotNull(head);
+            Assert.NotNull(tail);
+            Assert.Equal(head.Hull, cosmeticMatch.Player.Hull);
+            Assert.Equal(head.PrimaryHex, cosmeticMatch.Player.PrimaryHex);
+            Assert.Equal(tail.Style, cosmeticMatch.Player.TailStyle);
+        }
+
+        [Fact]
+        public void SnakeCosmeticCatalog_GoalsAreUniqueAndCosmeticOnly()
+        {
+            HashSet<string> ids = new HashSet<string>(StringComparer.Ordinal);
+            for (int i = 0; i < SnakeCosmeticCatalog.All.Length; i++)
+            {
+                SnakeCosmeticDef def = SnakeCosmeticCatalog.All[i];
+                Assert.True(ids.Add(def.Id));
+                Assert.Same(def, SnakeCosmeticCatalog.Find(def.Id));
+                Assert.True(def.Category == "head" || def.Category == "tail");
+                Assert.NotNull(SnakeProgression.Find(def.GoalId));
+                Assert.False(string.IsNullOrEmpty(def.PrimaryHex));
+                Assert.False(string.IsNullOrEmpty(def.AccentHex));
+            }
+            for (int i = 0; i < SnakeProgression.Goals.Length; i++)
+            {
+                bool linked = false;
+                for (int j = 0; j < SnakeCosmeticCatalog.All.Length; j++)
+                {
+                    if (SnakeCosmeticCatalog.All[j].GoalId == SnakeProgression.Goals[i].Id) linked = true;
+                }
+                Assert.True(linked, "No cosmetic for goal " + SnakeProgression.Goals[i].Id);
+            }
+        }
+
         private static int CountBosses(MatchSimulation match)
         {
             int count = 0;

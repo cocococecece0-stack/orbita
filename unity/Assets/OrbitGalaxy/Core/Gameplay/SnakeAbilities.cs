@@ -17,18 +17,20 @@ namespace Orbit.Galaxy
         public SnakeAbilitySlot Slot;
         public AbilityKind Kind;
         public string Name;
+        public string HudName;
         public string Purpose;
         public string Shortcut;
         public float Cost;
         public float Cooldown;
         public float Duration;
 
-        public SnakeAbilityDef(SnakeAbilitySlot slot, AbilityKind kind, string name, string purpose,
-            string shortcut, float cost, float cooldown, float duration)
+        public SnakeAbilityDef(SnakeAbilitySlot slot, AbilityKind kind, string name, string hudName,
+            string purpose, string shortcut, float cost, float cooldown, float duration)
         {
             Slot = slot;
             Kind = kind;
             Name = name;
+            HudName = hudName;
             Purpose = purpose;
             Shortcut = shortcut;
             Cost = cost;
@@ -48,15 +50,15 @@ namespace Orbit.Galaxy
 
         public static readonly SnakeAbilityDef[] All =
         {
-            new SnakeAbilityDef(SnakeAbilitySlot.Impulse, AbilityKind.Dash, "ИМПУЛЬС",
+            new SnakeAbilityDef(SnakeAbilitySlot.Impulse, AbilityKind.Dash, "ИМПУЛЬС", "ИМПУЛЬС",
                 "Короткий рывок вперёд с кратким иммунитетом.", "1 / Q", 12f, 6.5f, 0.24f),
-            new SnakeAbilityDef(SnakeAbilitySlot.Shield, AbilityKind.Shield, "ЩИТ",
+            new SnakeAbilityDef(SnakeAbilitySlot.Shield, AbilityKind.Shield, "ЩИТ", "ЩИТ",
                 "Временный барьер, поглощающий урон.", "2 / E", 18f, 13f, 4.2f),
-            new SnakeAbilityDef(SnakeAbilitySlot.Magnet, AbilityKind.Magnet, "МАГНИТ",
+            new SnakeAbilityDef(SnakeAbilitySlot.Magnet, AbilityKind.Magnet, "МАГНИТ", "МАГНИТ",
                 "Притягивает ресурсы рядом со змейкой.", "3 / E", 10f, 18f, 6f),
-            new SnakeAbilityDef(SnakeAbilitySlot.Trail, AbilityKind.Overdrive, "ЭНЕРГЕТИЧЕСКИЙ СЛЕД",
+            new SnakeAbilityDef(SnakeAbilitySlot.Trail, AbilityKind.Overdrive, "ЭНЕРГЕТИЧЕСКИЙ СЛЕД", "СЛЕД",
                 "Короткий разгон и яркий светящийся хвост.", "4 / E", 22f, 20f, 4.5f),
-            new SnakeAbilityDef(SnakeAbilitySlot.PhaseDash, AbilityKind.Phase, "ФАЗОВЫЙ РЫВОК",
+            new SnakeAbilityDef(SnakeAbilitySlot.PhaseDash, AbilityKind.Phase, "ФАЗОВЫЙ РЫВОК", "ФАЗА",
                 "Короткий проход сквозь опасности и тела.", "5 / E", 16f, 22f, 1.4f)
         };
 
@@ -103,7 +105,7 @@ namespace Orbit.Galaxy
             if (slot == SnakeAbilitySlot.PhaseDash)
             {
                 // The shared Phase definition is longer than the snake dash: keep the effect short.
-                ship.Invulnerability = Math.Max(ship.Invulnerability, def.Duration);
+                ship.Invulnerability = def.Duration;
                 ship.RecalculateStats(null);
             }
             else if (slot == SnakeAbilitySlot.Trail)
@@ -118,12 +120,23 @@ namespace Orbit.Galaxy
             return ship != null && AbilitySystem.IsActive(ship, AbilityKind.Overdrive);
         }
 
+        public static bool IsActive(Ship ship, SnakeAbilitySlot slot)
+        {
+            SnakeAbilityDef def = Get(slot);
+            return def != null && AbilitySystem.IsActive(ship, def.Kind);
+        }
+
         public static string Status(Ship ship, SnakeAbilitySlot slot)
         {
             SnakeAbilityDef def = Get(slot);
             if (def == null || ship == null || ship.Cooldowns == null) return string.Empty;
             int index = (int)def.Kind;
             if (index < 0 || index >= ship.Cooldowns.Length) return "НЕТ";
+            if (IsActive(ship, slot))
+            {
+                float remain = ship.EffectTimers[index];
+                return "АКТ " + remain.ToString("F1") + "с";
+            }
             float cd = ship.Cooldowns[index];
             if (cd > 0.05f) return cd.ToString("F1") + "с";
             return ship.Energy >= def.Cost ? "ГОТОВ" : "ЭНЕРГИЯ";

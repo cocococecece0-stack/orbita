@@ -243,7 +243,13 @@ namespace Orbit.Galaxy
         /// <summary>Применяет результат матча: награды, квесты, достижения, секреты, рекорды.</summary>
         public void ApplyResult(MatchResult result, DateTime now)
         {
-            ProgressionSystem.ApplyMatchResult(this, result, now);
+            ApplyResultWithRewards(result, now);
+        }
+
+        /// <summary>Same result application with the reward summary for result screens.</summary>
+        public ProgressionRewards ApplyResultWithRewards(MatchResult result, DateTime now)
+        {
+            return ProgressionSystem.ApplyMatchResult(this, result, now);
         }
 
         public int Stat(string key)

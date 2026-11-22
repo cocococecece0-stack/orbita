@@ -72,6 +72,10 @@ namespace Orbit.Galaxy
             SetMax(profile, StatBestGrowth, Math.Max(0, result.SnakeEvolutionTier));
             SetMax(profile, StatBestSurvival, (int)Math.Max(0f, result.SurvivalTime));
             profile.AddStat(StatAbilityUses, Math.Max(0, result.SnakeAbilityUses));
+            SetRecord(profile, StatBestLength, profile.Stat(StatBestLength));
+            SetRecord(profile, StatBestGrowth, profile.Stat(StatBestGrowth));
+            SetRecord(profile, StatBestSurvival, profile.Stat(StatBestSurvival));
+            SetRecord(profile, StatAbilityUses, profile.Stat(StatAbilityUses));
 
             if (rewards == null) return;
             for (int i = 0; i < Goals.Length; i++)
@@ -84,6 +88,14 @@ namespace Orbit.Galaxy
                 profile.AddCredits(def.Credits);
                 profile.AddCrystals(def.Crystals);
                 profile.Unlock(def.UnlockCosmetic);
+                // A goal can highlight one reward while also unlocking its matching head and tail.
+                for (int j = 0; j < SnakeCosmeticCatalog.All.Length; j++)
+                {
+                    SnakeCosmeticDef cosmetic = SnakeCosmeticCatalog.All[j];
+                    if (cosmetic != null &&
+                        string.Equals(cosmetic.GoalId, def.Id, StringComparison.OrdinalIgnoreCase))
+                        profile.Unlock(cosmetic.Id);
+                }
                 rewards.Credits += def.Credits;
                 rewards.Crystals += def.Crystals;
                 rewards.SnakeGoals.Add(def.Name);
@@ -95,6 +107,14 @@ namespace Orbit.Galaxy
         {
             if (value <= profile.Stat(key)) return;
             profile.Stats[key] = value;
+        }
+
+        private static void SetRecord(AccountProfile profile, string key, int value)
+        {
+            if (profile.Records == null) return;
+            int current;
+            if (profile.Records.TryGetValue(key, out current) && current >= value) return;
+            profile.Records[key] = value;
         }
     }
 }

@@ -831,7 +831,9 @@ namespace Orbit.Galaxy
             if (ship.IsPlayer && _playerBoost) speed *= GameConfig.BoostMultiplier;
             Vec2 targetVelocity = input * speed;
             // Exponential smoothing is frame-rate independent; a plain dt*9 blend was not.
-            float blend = 1f - (float)Math.Exp(-9f * dt);
+            // Snake acceleration upgrades sharpen the response without changing top speed.
+            float snakeAgility = 1f + MathGalaxy.Clamp(ship.SnakeAgilityMul, 0f, 0.36f);
+            float blend = 1f - (float)Math.Exp(-9f * snakeAgility * dt);
             ship.Velocity = Vec2.Lerp(ship.Velocity, targetVelocity, blend);
             ship.Position = ship.Position + ship.Velocity * dt;
 
