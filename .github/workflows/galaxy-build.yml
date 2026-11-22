@@ -181,7 +181,15 @@ jobs:
           check_badging "package id" "name='$BUNDLE_ID'"
           check_badging "version name" "versionName='$BUNDLE_VERSION'"
           check_badging "version code" "versionCode='$ANDROID_VERSION_CODE'"
-          check_badging "minimum SDK" "sdkVersion:'23'"
+          # aapt prints sdkVersion:'23', aapt2 prints minSdkVersion:'23'.
+          if [[ "$BADGING" != *"sdkVersion:'23'"* && "$BADGING" != *"minSdkVersion:'23'"* ]]; then
+            echo "::error::APK minimum SDK does not match required value (23)"
+            echo "----- aapt badging -----"
+            printf '%s\n' "$BADGING"
+            echo "------------------------"
+            exit 1
+          fi
+          check_badging "landscape orientation" "android.hardware.screen.landscape"
 
           TREE="$("$AAPT" dump xmltree "$APK" AndroidManifest.xml 2>/dev/null || true)"
           ORIENTATION="$(printf '%s\n' "$TREE" | grep -A1 'screenOrientation' | tail -n 1 || true)"
@@ -240,14 +248,9 @@ jobs:
           test -x "/Applications/Unity Hub.app/Contents/MacOS/Unity Hub"
           echo "Installed Unity Hub $HUB_VERSION at /Applications/Unity Hub.app"
 
-      - name: Cache Unity Library
-        uses: actions/cache@v4
-        with:
-          path: unity/Library
-          key: ${{ runner.os }}-unity-galaxy-library-${{ hashFiles('unity/Assets/**','unity/Packages/**','unity/ProjectSettings/**') }}
-          restore-keys: |
-            ${{ runner.os }}-unity-galaxy-library-
-
+      # Do not restore a cached Library here. Unity 2022.3's Package Manager can
+      # crash ("async hook stack has become corrupted") when it resumes a cached
+      # resolved-package state on macOS arm64; a clean Library built reliably.
       - name: Pin editor version for Unity Personal
         shell: bash
         run: |
