@@ -395,16 +395,16 @@ namespace Orbit.Galaxy.Core.Tests
             SimLog log = new SimLog();
 
             combat.Fire(shooter, Vec2.Right, log, 1f);
-            Assert.Equal(1, combat.Projectiles.Count);
+            Assert.Single(combat.Projectiles);
             Assert.Equal(shooter.Id, combat.Projectiles[0].OwnerId);
             Assert.True(shooter.FireTimer > 0f);
 
             combat.Fire(shooter, Vec2.Right, log, 1f);
-            Assert.Equal(1, combat.Projectiles.Count);
+            Assert.Single(combat.Projectiles);
 
             combat.Update(0.3f, ships, null, log, 1.1f, null);
             Assert.True(target.Hp < target.MaxHp);
-            Assert.Equal(0, combat.Projectiles.Count);
+            Assert.Empty(combat.Projectiles);
         }
 
         [Fact]
@@ -600,7 +600,7 @@ namespace Orbit.Galaxy.Core.Tests
             EvolutionSystem.Choose(ship, third[0], new SimLog(), 3f, null);
             Assert.Equal(3, ship.EvolutionTier);
             Assert.Equal(int.MaxValue, EvolutionSystem.NextEvolutionLevel(ship));
-            Assert.Equal(0, EvolutionSystem.Offer(ship, new Rng(47u)).Count);
+            Assert.Empty(EvolutionSystem.Offer(ship, new Rng(47u)));
         }
 
         [Fact]
