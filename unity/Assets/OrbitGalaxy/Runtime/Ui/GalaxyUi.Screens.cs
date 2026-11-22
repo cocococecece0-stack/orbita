@@ -510,7 +510,7 @@ namespace Orbit.Galaxy.Unity
             GalaxyUiTheme.SetScrollHeight(content, y + 12f);
         }
 
-        private static float DrawCosmeticRow(RectTransform content, CosmeticDef def, HullShape hull, float y, AccountProfile p, bool equipped)
+        private float DrawCosmeticRow(RectTransform content, CosmeticDef def, HullShape hull, float y, AccountProfile p, bool equipped)
         {
             const float h = 88f;
             Color accent = ParseHex(def.Hex, GalaxyUiTheme.AccentC);

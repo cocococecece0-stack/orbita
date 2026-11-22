@@ -88,7 +88,7 @@ namespace Orbit.Galaxy.Unity
 
         public void Apply(bool on, Color accent)
         {
-            if (Background != null) Background.color = on ? WithAlpha(accent, 0.42f) : new Color32(30, 38, 66, 255);
+            if (Background != null) Background.color = on ? GalaxyUiTheme.WithAlpha(accent, 0.42f) : new Color32(30, 38, 66, 255);
             if (Knob != null) Knob.color = on ? accent : new Color32(150, 162, 196, 255);
             if (Knob == null) return;
             RectTransform rt = Knob.rectTransform;

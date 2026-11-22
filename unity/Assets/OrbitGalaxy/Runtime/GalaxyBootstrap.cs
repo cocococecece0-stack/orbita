@@ -65,7 +65,7 @@ namespace Orbit.Galaxy.Unity
             }
         }
 
-        private static void CreateGalaxyScene()
+        internal static void CreateGalaxyScene()
         {
             GameObject root = new GameObject("GalaxyRoot");
             UnityEngine.Object.DontDestroyOnLoad(root);

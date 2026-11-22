@@ -598,7 +598,7 @@ namespace Orbit.Galaxy.Unity
             for (int i = 0; i < match.Ships.Count; i++)
             {
                 Ship s = match.Ships[i];
-                if (s != null && s.IsBoss && s.Alive) return s;
+                if (s != null && s.IsBoss && s.State == ShipState.Alive && s.Hp > 0f) return s;
             }
             return null;
         }
