@@ -777,6 +777,271 @@ namespace Orbit.Galaxy.Core.Tests
             Assert.Contains("S200", brain.DebugInfo());
         }
 
+        // 10b. Bot archetypes, skill and living-world scenarios.
+
+        [Fact]
+        public void Bots_SixArchetypesAreDistinctAndPresentFromFirstSpawn()
+        {
+            MatchSimulation match = new MatchSimulation(GameModeKind.Classic, 4242, Difficulty.Normal, null);
+            Assert.True(match.Bots.Count >= 6);
+
+            HashSet<string> ids = new HashSet<string>();
+            HashSet<string> signatures = new HashSet<string>();
+            for (int i = 0; i < 6; i++)
+            {
+                BotBrain brain = match.Bots[i];
+                Assert.NotNull(brain.Archetype);
+                Assert.NotNull(brain.Tuning);
+                Assert.Same(brain.Archetype.Profile, brain.Profile);
+                Assert.Same(brain.Archetype.Profile, brain.Ship.Profile);
+                Assert.Equal(brain.Archetype.Personality, brain.Ship.Personality);
+                Assert.True(ids.Add(brain.Archetype.Id));
+                BotProfile p = brain.Profile;
+                signatures.Add(p.Aggression.ToString("F2") + "/" + p.Greed.ToString("F2") + "/" +
+                               p.Caution.ToString("F2") + "/" + p.Risk.ToString("F2") + "/" +
+                               p.PreferredRange.ToString("F0"));
+            }
+            Assert.Equal(6, ids.Count);
+            Assert.Equal(6, signatures.Count);
+            Assert.Equal(6, BotArchetypeCatalog.Count);
+        }
+
+        [Fact]
+        public void Bots_DifficultyImprovesDecisionsWithoutChangingSpeed()
+        {
+            MatchSimulation casual = new MatchSimulation(GameModeKind.Classic, 777, Difficulty.Casual, null);
+            MatchSimulation expert = new MatchSimulation(GameModeKind.Classic, 777, Difficulty.Expert, null);
+            BotBrain easy = casual.Bots[0];
+            BotBrain hard = expert.Bots[0];
+            Assert.Equal(easy.Archetype.Id, hard.Archetype.Id);
+            Assert.Equal(easy.Ship.Mass, hard.Ship.Mass);
+
+            easy.ThinkTimer = 0f;
+            hard.ThinkTimer = 0f;
+            easy.Update(GameConfig.SimulationStep, casual, casual.Log);
+            hard.Update(GameConfig.SimulationStep, expert, expert.Log);
+
+            Assert.True(easy.LodInterval > hard.LodInterval, "Experts must re-plan more often.");
+            Assert.True(easy.AimJitter > hard.AimJitter, "Experts must aim more accurately.");
+            Assert.True(easy.Tuning.DecisionQuality < hard.Tuning.DecisionQuality);
+            Assert.True(easy.Tuning.Aggression < hard.Tuning.Aggression);
+            Assert.Equal(easy.Ship.Speed, hard.Ship.Speed);
+            Assert.Equal(easy.Ship.FireInterval, hard.Ship.FireInterval);
+        }
+
+        [Fact]
+        public void Bots_PredictMovingTargetAndLeadTheIntercept()
+        {
+            Ship self = NewShip(310);
+            self.Position = Vec2.Zero;
+            Ship prey = NewShip(311);
+            prey.Position = new Vec2(500f, 0f);
+            prey.Velocity = new Vec2(0f, 180f);
+            prey.Speed = 180f;
+
+            Vec2 predicted = BotPerception.Predict(self.Position, prey, 2f);
+            Assert.True(predicted.Y > prey.Position.Y);
+            Assert.True(predicted.X <= prey.Position.X + 0.01f);
+
+            MatchSimulation match = new MatchSimulation(GameModeKind.Classic, 312, Difficulty.Normal, null);
+            match.Arena.Objects.Clear();
+            match.Arena.Index.Clear();
+            match.Arena.Hazards.Clear();
+            match.Arena.Anomalies.Clear();
+            self.Mass = 40f;
+            self.Speed = 230f;
+            prey.Mass = 10f;
+            match.Ships.Clear();
+            match.Ships.Add(self);
+            match.Ships.Add(prey);
+
+            BotArchetype archetype = BotArchetypeCatalog.Get(1);
+            BotBrain brain = new BotBrain(self, archetype.Profile, new Rng(9u), Difficulty.Normal, archetype);
+            self.Profile = archetype.Profile;
+            brain.Goal = BotGoal.Hunt;
+            brain.ThinkTimer = 0f;
+            brain.Update(GameConfig.SimulationStep, match, match.Log);
+            Assert.Equal(BotGoal.Hunt, brain.Goal);
+            Assert.True(brain.TargetPoint.Y > 20f, "Hunt goal should aim ahead of a moving prey.");
+        }
+
+        [Fact]
+        public void Bots_NavigationAvoidsOtherSnakeBodies()
+        {
+            MatchSimulation match = new MatchSimulation(GameModeKind.Classic, 313, Difficulty.Normal, null);
+            match.Arena.Objects.Clear();
+            match.Arena.Index.Clear();
+            match.Arena.Hazards.Clear();
+            match.Arena.Anomalies.Clear();
+
+            Ship self = NewShip(320);
+            self.Position = Vec2.Zero;
+            self.Velocity = Vec2.Right * 100f;
+            self.Facing = Vec2.Right;
+            self.Body = new SnakeBody();
+            self.Body.Reset(self.Position, Vec2.Right, self.Radius, self.Mass);
+
+            Ship enemy = NewShip(321);
+            enemy.Position = new Vec2(160f, 0f);
+            enemy.Mass = 20f;
+            enemy.RecalculateStats(null);
+            enemy.Body = new SnakeBody();
+            enemy.Body.Reset(enemy.Position, Vec2.Right, enemy.Radius, enemy.Mass);
+
+            match.Ships.Clear();
+            match.Ships.Add(self);
+            match.Ships.Add(enemy);
+            match.Snakes.Initialize(match.Ships);
+            match.Snakes.ResolveCollisions(match.Arena, match.Log, 0f);
+
+            BotArchetype archetype = BotArchetypeCatalog.Get(2);
+            BotBrain brain = new BotBrain(self, archetype.Profile, new Rng(11u), Difficulty.Normal, archetype);
+            Vec2 goal = new Vec2(400f, 0f);
+            Vec2 withBody = brain.Navigation.Steer(brain, self, goal, match);
+
+            match.Snakes.Remove(enemy);
+            match.Snakes.ResolveCollisions(match.Arena, match.Log, 0f);
+            Vec2 withoutBody = brain.Navigation.Steer(brain, self, goal, match);
+
+            Assert.True(withBody.Y < withoutBody.Y - 0.05f,
+                "A cautious snake should slide away from a body blocking its route.");
+        }
+
+        [Fact]
+        public void Bots_CompetitorValuesResourcesMoreWhenBehindTheLeader()
+        {
+            MatchSimulation match = new MatchSimulation(GameModeKind.Classic, 314, Difficulty.Normal, null);
+            Ship self = NewShip(330);
+            self.Position = Vec2.Zero;
+            BotArchetype archetype = BotArchetypeCatalog.Get(4);
+            BotBrain brain = new BotBrain(self, archetype.Profile, new Rng(12u), Difficulty.Normal, archetype);
+            self.Profile = archetype.Profile;
+            BotPerception p = new BotPerception();
+            p.ResourceScore = 3f;
+            p.NearestResource = new EnergyNode(900, new Vec2(80f, 0f), 10);
+
+            self.Rank = match.Leaderboard.Count;
+            float behind = BotDecisionSystem.ScoreGoal(BotGoal.Farm, brain, self, p, match);
+            self.Rank = 1;
+            float leading = BotDecisionSystem.ScoreGoal(BotGoal.Farm, brain, self, p, match);
+            Assert.True(behind > leading + 1f, "A competitor behind the leader must chase value harder.");
+        }
+
+        [Fact]
+        public void Bots_UnpredictableBotsChangeRouteMoreOftenThanCautiousOnes()
+        {
+            MatchSimulation match = new MatchSimulation(GameModeKind.Classic, 606, Difficulty.Normal, null);
+            match.Arena.Objects.Clear();
+            match.Arena.Index.Clear();
+            match.Arena.Hazards.Clear();
+            match.Arena.Anomalies.Clear();
+            Ship self = NewShip(340);
+            self.Facing = Vec2.Right;
+            match.Ships.Clear();
+            match.Ships.Add(self);
+
+            BotArchetype wildType = BotArchetypeCatalog.Get(5);
+            BotArchetype calmType = BotArchetypeCatalog.Get(2);
+            BotBrain wild = new BotBrain(self, wildType.Profile, new Rng(31u), Difficulty.Normal, wildType);
+            BotBrain calm = new BotBrain(self, calmType.Profile, new Rng(31u), Difficulty.Normal, calmType);
+
+            for (int i = 0; i < 120; i++)
+            {
+                self.Position = new Vec2(i * 8f, 0f);
+                wild.ThinkTimer = 0f;
+                calm.ThinkTimer = 0f;
+                wild.Update(0.05f, match, match.Log);
+                calm.Update(0.05f, match, match.Log);
+            }
+            Assert.Equal(0, CountActions(calm, "Смена маршрута"));
+            Assert.True(CountActions(wild, "Смена маршрута") > 2,
+                "Unpredictable bots must vary their routes, not move randomly every frame.");
+        }
+
+        private static int CountActions(BotBrain brain, string needle)
+        {
+            int count = 0;
+            for (int i = 0; i < brain.Actions.Count; i++)
+                if (brain.Actions[i].Contains(needle)) count++;
+            return count;
+        }
+
+        [Fact]
+        public void Bots_BotVsBotBodyCollision_UsesCentralDeathPath()
+        {
+            MatchSimulation match = new MatchSimulation(GameModeKind.Classic, 808, Difficulty.Normal, null);
+            match.Arena.Objects.Clear();
+            match.Arena.Index.Clear();
+            match.Arena.Hazards.Clear();
+            match.Arena.Anomalies.Clear();
+
+            Ship killer = match.Bots[1].Ship;
+            Ship victim = match.Bots[0].Ship;
+            killer.Position = new Vec2(600f, 0f);
+            killer.Body.Reset(killer.Position, Vec2.Right, killer.Radius, killer.Mass);
+            victim.Position = killer.Body.GetPoint(3);
+            victim.Body.Reset(victim.Position, Vec2.Right, victim.Radius, victim.Mass);
+            victim.Invulnerability = 0f;
+            float massBefore = killer.Mass;
+            int killsBefore = killer.Kills;
+
+            match.Update(GameConfig.SimulationStep);
+            Assert.Equal(ShipState.Respawning, victim.State);
+            Assert.True(killer.Kills > killsBefore);
+            Assert.True(killer.Mass > massBefore);
+        }
+
+        [Fact]
+        public void Bots_ParticipantCountCanChangeAtRuntime()
+        {
+            MatchSimulation match = new MatchSimulation(GameModeKind.Classic, 909, Difficulty.Normal, null,
+                GameConfig.MinParticipants);
+            Assert.Equal(GameConfig.MinParticipants - 1, match.Bots.Count);
+
+            match.SetParticipantCount(GameConfig.MaxParticipants);
+            match.Update(GameConfig.SimulationStep);
+            Assert.Equal(GameConfig.MaxParticipants - 1, match.Bots.Count);
+            Assert.Equal(GameConfig.MaxParticipants, match.Ships.Count - CountBosses(match));
+
+            match.SetParticipantCount(GameConfig.MinParticipants);
+            match.Update(GameConfig.SimulationStep);
+            Assert.Equal(GameConfig.MinParticipants - 1, match.Bots.Count);
+            for (int i = 0; i < match.Bots.Count; i++) Assert.NotNull(match.Bots[i].Archetype);
+        }
+
+        [Fact]
+        public void Bots_LongMatch_HasDeathsRespawnsAndDifferentGoals()
+        {
+            MatchSimulation match = new MatchSimulation(GameModeKind.Chaos, 1010, Difficulty.Hard,
+                new AccountProfile(), GameConfig.MaxParticipants);
+            HashSet<BotGoal> goals = new HashSet<BotGoal>();
+            HashSet<string> archetypes = new HashSet<string>();
+            int totalSteps = (int)(90f / GameConfig.SimulationStep);
+
+            for (int step = 0; step < totalSteps; step++)
+            {
+                if (match.IsEvolutionPaused) match.PlayerChooseEvolution(null);
+                match.Update(GameConfig.SimulationStep);
+                match.Log.Drain();
+                for (int i = 0; i < match.Bots.Count; i++)
+                {
+                    BotBrain bot = match.Bots[i];
+                    goals.Add(bot.Goal);
+                    archetypes.Add(bot.Archetype.Id);
+                    Assert.True(bot.Actions.Count <= 12);
+                    Assert.True(bot.Ship.ActionHistory.Count <= 24);
+                    Assert.False(float.IsNaN(bot.Ship.Position.X) || float.IsNaN(bot.Ship.Position.Y));
+                }
+            }
+
+            int deaths = 0;
+            for (int i = 0; i < match.Bots.Count; i++) deaths += match.Bots[i].Ship.Deaths;
+            Assert.True(deaths > 0, "Bots must die and respawn to make the arena feel alive.");
+            Assert.True(goals.Count >= 3, "Bots should pursue different goals: " + goals.Count);
+            Assert.Equal(6, archetypes.Count);
+            Assert.Equal(match.Arena.Objects.Count, match.Arena.Index.Count);
+        }
+
         // 11. World events.
 
         [Fact]

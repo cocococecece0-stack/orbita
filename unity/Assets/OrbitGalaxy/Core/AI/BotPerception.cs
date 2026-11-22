@@ -14,13 +14,20 @@ namespace Orbit.Galaxy
         public Ship NearestBoss;
         public WorldObject NearestResource;
         public WorldObject NearestRare;
+        public WorldObject NearestEnergy;
+        public Ship NearestSnakeThreat;
+        public Vec2 PredictedPreyPoint;
+        public Vec2 PredictedThreatPoint;
         public HazardZone NearestHazard;
         public Anomaly NearestAnomaly;
         public float ThreatScore;
         public float ResourceScore;
+        public float SnakeThreatScore;
         public readonly List<WorldObject> NearbyObjects = new List<WorldObject>(64);
         public readonly List<Ship> NearbyShips = new List<Ship>(16);
 
+        private readonly List<SnakeSegmentRef> _segments = new List<SnakeSegmentRef>(32);
+        private float _bestEnergyWeight;
         private float _bestThreatWeight;
         private float _bestPreyWeight;
         private float _bestBossWeight;
@@ -36,10 +43,16 @@ namespace Orbit.Galaxy
             NearestBoss = null;
             NearestResource = null;
             NearestRare = null;
+            NearestEnergy = null;
+            NearestSnakeThreat = null;
+            PredictedPreyPoint = Vec2.Zero;
+            PredictedThreatPoint = Vec2.Zero;
             NearestHazard = null;
             NearestAnomaly = null;
             ThreatScore = 0f;
             ResourceScore = 0f;
+            SnakeThreatScore = 0f;
+            _bestEnergyWeight = 0f;
             _bestThreatWeight = 0f;
             _bestPreyWeight = 0f;
             _bestBossWeight = 0f;
@@ -58,6 +71,7 @@ namespace Orbit.Galaxy
             float hpFactor = self.MaxHp > 0f ? MathGalaxy.Clamp(1f - self.Hp / self.MaxHp, 0f, 1f) : 0f;
             float aggression = brain == null || brain.Profile == null ? 0.5f : brain.Profile.Aggression;
             float greed = brain == null || brain.Profile == null ? 0.5f : brain.Profile.Greed;
+            float predictHorizon = 1.4f * (brain == null || brain.Tuning == null ? 1f : brain.Tuning.DecisionQuality);
 
             Arena arena = match.Arena;
             arena.QueryInto(self.Position, radius, NearbyObjects);
@@ -103,8 +117,15 @@ namespace Orbit.Galaxy
                 if (!IsPickup(obj.Kind)) continue;
 
                 bool rare = IsRare(obj);
+                bool energy = obj.Kind == ObjectKind.Energy ||
+                              (obj is Drop && ((Drop)obj).Resource == ResourceKind.Energy);
                 float baseWeight = WeightOf(obj);
                 float weightForRank = baseWeight * proximity * (0.65f + Math.Max(1f, obj.Value) / 28f);
+                if (energy && weightForRank > _bestEnergyWeight)
+                {
+                    _bestEnergyWeight = weightForRank;
+                    NearestEnergy = obj;
+                }
                 if (rare)
                 {
                     if (weightForRank > _bestRareWeight)
@@ -151,6 +172,7 @@ namespace Orbit.Galaxy
                     {
                         _bestThreatWeight = weight;
                         NearestThreat = other;
+                        PredictedThreatPoint = Predict(self.Position, other, predictHorizon);
                     }
                     ThreatScore += weight * (1f + hpFactor * 0.9f) * (1f - aggression * 0.25f);
                 }
@@ -161,6 +183,7 @@ namespace Orbit.Galaxy
                     {
                         _bestPreyWeight = weight;
                         NearestPrey = other;
+                        PredictedPreyPoint = Predict(self.Position, other, predictHorizon);
                     }
                     ResourceScore += weight * aggression * 0.35f;
                 }
@@ -193,6 +216,8 @@ namespace Orbit.Galaxy
                 }
             }
 
+            ScanSnakes(self, match, myMass, brain);
+
             // The arena border is a permanent threat for every bot.
             float border = arena.DangerAt(self.Position);
             if (border > 0f)
@@ -209,6 +234,55 @@ namespace Orbit.Galaxy
             ResourceScore *= (1f + MathGalaxy.Clamp(80f / (self.Mass + 80f), 0f, 0.7f));
             ThreatScore = MathGalaxy.Clamp(ThreatScore, 0f, 12f);
             ResourceScore = MathGalaxy.Clamp(ResourceScore, 0f, 12f);
+        }
+
+        /// <summary>
+        /// Samples nearby body segments through the match's spatial hash. One narrow query per
+        /// think, no all-to-all segment scan: a snake body is lethal on contact even though its
+        /// segments are not separate ships.
+        /// </summary>
+        private void ScanSnakes(Ship self, MatchSimulation match, float myMass, BotBrain brain)
+        {
+            if (match == null || match.Snakes == null || self == null || self.Body == null) return;
+            _segments.Clear();
+            Vec2 from = self.Position - self.Velocity * 0.15f;
+            Vec2 to = self.Position + self.Velocity * 0.35f;
+            float reach = self.Radius + 110f;
+            match.Snakes.QuerySegments(from, to, reach, _segments);
+            float best = 0f;
+            float caution = brain == null || brain.Tuning == null ? 1f : brain.Tuning.Caution;
+            for (int i = 0; i < _segments.Count; i++)
+            {
+                SnakeSegmentRef segment = _segments[i];
+                if (segment.Owner == null || segment.Owner == self ||
+                    segment.Owner.State != ShipState.Alive) continue;
+                float dist = Vec2.Distance(self.Position, segment.Point);
+                float influence = reach + segment.Radius;
+                if (dist > influence) continue;
+                float massRatio = MathGalaxy.Clamp(segment.Owner.Mass / Math.Max(1f, myMass), 0.5f, 3f);
+                float weight = (1f - dist / influence) * massRatio * (0.6f + caution * 0.7f);
+                SnakeThreatScore += weight;
+                if (weight > best)
+                {
+                    best = weight;
+                    NearestSnakeThreat = segment.Owner;
+                }
+            }
+            SnakeThreatScore = MathGalaxy.Clamp(SnakeThreatScore, 0f, 8f);
+            if (SnakeThreatScore > 0f) ThreatScore = MathGalaxy.Clamp(ThreatScore + SnakeThreatScore * 0.55f, 0f, 12f);
+        }
+
+        /// <summary>
+        /// Constant-velocity intercept estimate capped by a skill-dependent horizon. Higher skill
+        /// looks further ahead; the result is always clamped by the same arena rules as the target.
+        /// </summary>
+        public static Vec2 Predict(Vec2 self, Ship other, float horizon)
+        {
+            if (other == null) return self;
+            float distance = Vec2.Distance(self, other.Position);
+            float speed = Math.Max(80f, other.Speed);
+            float time = MathGalaxy.Clamp(distance / speed, 0f, Math.Max(0.1f, horizon));
+            return other.Position + other.Velocity * time;
         }
 
         /// <summary>True when the object can be absorbed as a resource pickup.</summary>

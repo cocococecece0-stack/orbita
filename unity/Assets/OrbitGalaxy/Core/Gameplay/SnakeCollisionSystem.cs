@@ -148,6 +148,15 @@ namespace Orbit.Galaxy
             _rng = rng;
         }
 
+        /// <summary>
+        /// Read-only narrow query over the index built on the previous step. AI uses it for body
+        /// avoidance; because the grid is already built, this adds no rebuild or all-to-all scan.
+        /// </summary>
+        public void QuerySwept(Vec2 from, Vec2 to, float reach, List<SnakeSegmentRef> output)
+        {
+            _index.QuerySwept(from, to, reach, output);
+        }
+
         public void Resolve(List<Ship> snakes, Arena arena, SimLog log, float time)
         {
             if (snakes == null || snakes.Count == 0) return;

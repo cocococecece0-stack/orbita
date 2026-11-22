@@ -22,20 +22,22 @@ namespace Orbit.Galaxy
 
             BotProfile profile = brain == null ? self.Profile : brain.Profile;
             if (profile == null) profile = ContentDatabase.BotProfiles[1];
+            BotTuning tuning = brain == null ? null : brain.Tuning;
+            float switchRate = Math.Max(0.5f, tuning == null ? 1f : tuning.SwitchRate);
             BotGoal current = brain == null ? BotGoal.Idle : brain.Goal;
-            float currentScore = ScoreGoal(current, self, perception, match);
+            float currentScore = ScoreGoal(current, brain, self, perception, match);
             float bestScore = float.NegativeInfinity;
             BotGoal best = current;
 
             // Keeping the current goal is cheap; switching must beat that inherent advantage.
-            float hysteresis = 1.05f + profile.Reaction * 1.55f;
-            if (brain != null && brain.IsElite) hysteresis += 0.35f;
-            if (profile.Personality == BotPersonality.Chaotic) hysteresis *= 0.45f;
+            // Archetype switch rate replaces the old hard-coded Chaotic special case.
+            float hysteresis = (1.05f + profile.Reaction * 1.55f) / switchRate;
+            if (brain != null && brain.IsElite) hysteresis += 0.35f / switchRate;
 
             for (int i = 0; i < AllGoals.Length; i++)
             {
                 BotGoal goal = AllGoals[i];
-                float score = ScoreGoal(goal, self, perception, match);
+                float score = ScoreGoal(goal, brain, self, perception, match);
                 if (goal == current) score += hysteresis;
                 if (score > bestScore)
                 {
@@ -44,28 +46,52 @@ namespace Orbit.Galaxy
                 }
             }
 
-            float margin = 0.35f + profile.Reaction * 0.55f;
-            if (profile.Personality == BotPersonality.Chaotic) margin = 0.15f;
+            float margin = (0.35f + profile.Reaction * 0.55f) / switchRate;
             if (best != current && bestScore - currentScore < margin) return current;
             return best;
         }
 
         public static float ScoreGoal(BotGoal goal, Ship self, BotPerception p, MatchSimulation match)
         {
+            return ScoreGoal(goal, null, self, p, match);
+        }
+
+        /// <summary>
+        /// Scores one goal with the bot's archetype and difficulty tuning applied. The four-argument
+        /// overload above keeps the original utility signature for plain ships and tests.
+        /// </summary>
+        public static float ScoreGoal(BotGoal goal, BotBrain brain, Ship self, BotPerception p,
+            MatchSimulation match)
+        {
             if (self == null || self.State != ShipState.Alive || p == null) return 0f;
-            BotProfile profile = self.Profile != null ? self.Profile : ContentDatabase.BotProfiles[1];
-            float aggression = MathGalaxy.Clamp(profile.Aggression, 0f, 1f);
-            float greed = MathGalaxy.Clamp(profile.Greed, 0f, 1f);
-            float caution = MathGalaxy.Clamp(profile.Caution, 0f, 1f);
-            float risk = MathGalaxy.Clamp(profile.Risk, 0f, 1f);
+            BotProfile profile = brain != null && brain.Profile != null ? brain.Profile :
+                                 (self.Profile != null ? self.Profile : ContentDatabase.BotProfiles[1]);
+            BotTuning tuning = brain == null ? null : brain.Tuning;
+            float aggression = MathGalaxy.Clamp(profile.Aggression * (tuning == null ? 1f : tuning.Aggression), 0f, 1f);
+            float greed = MathGalaxy.Clamp(profile.Greed * (tuning == null ? 1f : tuning.Greed), 0f, 1f);
+            float caution = MathGalaxy.Clamp(profile.Caution * (tuning == null ? 1f : tuning.Caution), 0f, 1f);
+            float risk = MathGalaxy.Clamp(profile.Risk * (tuning == null ? 1f : tuning.Risk), 0f, 1f);
             float hpRatio = self.MaxHp > 0f ? MathGalaxy.Clamp(self.Hp / self.MaxHp, 0f, 1f) : 1f;
+
+            // Other snakes' segments are lethal to a head. Awareness of them feeds danger scoring
+            // and makes cautious bots pick safer routes instead of blindly taking the closest mote.
+            float snakeThreat = p.SnakeThreatScore;
+            float catchUp = 0f;
+            bool competitor = brain != null && brain.Archetype != null &&
+                              string.Equals(brain.Archetype.Id, "competitor", StringComparison.Ordinal);
+            if (competitor && match != null && self.Rank > 0 && match.Leaderboard.Count > 1)
+            {
+                float standing = (float)self.Rank / match.Leaderboard.Count;
+                catchUp = MathGalaxy.Clamp(standing - 0.35f, 0f, 1f) * 3.2f;
+            }
 
             switch (goal)
             {
                 case BotGoal.Farm:
                 {
-                    float score = p.ResourceScore * (0.9f + greed * 0.75f);
-                    if (p.NearestResource != null) score += 1.2f;
+                    float score = p.ResourceScore * (0.9f + greed * 0.75f) + catchUp;
+                    if (p.NearestResource != null || p.NearestEnergy != null) score += 1.2f;
+                    score -= snakeThreat * caution * 0.55f;
                     if (hpRatio < 0.4f) score -= 1.5f;
                     return score;
                 }
@@ -73,15 +99,17 @@ namespace Orbit.Galaxy
                 {
                     if (p.NearestPrey == null) return -2f;
                     float ratio = Math.Max(0.01f, self.Mass / Math.Max(1f, p.NearestPrey.Mass));
-                    float score = 2.2f + aggression * 4.6f + MathGalaxy.Clamp(ratio - 1f, 0f, 2f) * 1.8f;
+                    float score = 2.2f + aggression * 4.6f + MathGalaxy.Clamp(ratio - 1f, 0f, 2f) * 1.8f + catchUp;
                     score -= p.ThreatScore * (0.5f + caution * 0.6f);
+                    score -= snakeThreat * (0.2f + caution * 0.4f);
                     if (hpRatio < 0.35f) score -= 3f;
                     return score;
                 }
                 case BotGoal.Flee:
                 {
-                    if (p.NearestThreat == null && p.ThreatScore < 2f) return -3f;
-                    float score = p.ThreatScore * (0.75f + caution * 1.05f);
+                    if (p.NearestThreat == null && p.ThreatScore < 2f && snakeThreat < 1.2f) return -3f;
+                    float danger = p.ThreatScore + snakeThreat * (0.6f + caution * 0.9f);
+                    float score = danger * (0.75f + caution * 1.05f);
                     if (hpRatio < 0.42f) score += (0.42f - hpRatio) * 12f;
                     if (p.NearestThreat != null && p.NearestThreat.IsBoss) score += 2.5f;
                     return score;
@@ -89,8 +117,8 @@ namespace Orbit.Galaxy
                 case BotGoal.CollectRare:
                 {
                     if (p.NearestRare == null) return -2f;
-                    float score = 2.5f + greed * 4.2f + risk * 1.4f;
-                    score -= p.ThreatScore * (0.55f + caution * 0.45f);
+                    float score = 2.5f + greed * 4.2f + risk * 1.4f + catchUp;
+                    score -= (p.ThreatScore * (0.55f + caution * 0.45f)) + snakeThreat * caution * 0.45f;
                     return score;
                 }
                 case BotGoal.AvoidHazard:
@@ -110,7 +138,7 @@ namespace Orbit.Galaxy
                     bool warning = match.Events.PendingKind.HasValue;
                     if (!active && !warning) return -3f;
                     float score = active ? 4.8f : 3.4f;
-                    score += greed * 1.7f + risk * 1.4f + aggression * 0.8f;
+                    score += greed * 1.7f + risk * 1.4f + aggression * 0.8f + catchUp;
                     score -= p.ThreatScore * caution * 0.45f;
                     if (hpRatio < 0.3f) score -= 2f;
                     return score;

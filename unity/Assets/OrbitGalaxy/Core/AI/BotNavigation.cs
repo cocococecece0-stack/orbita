@@ -10,6 +10,7 @@ namespace Orbit.Galaxy
     public sealed class BotNavigation
     {
         private readonly List<WorldObject> _nearby = new List<WorldObject>(48);
+        private readonly List<SnakeSegmentRef> _snakeSegments = new List<SnakeSegmentRef>(24);
 
         public Vec2 Steer(BotBrain brain, Ship self, Vec2 goal, MatchSimulation match)
         {
@@ -47,6 +48,7 @@ namespace Orbit.Galaxy
 
             desired = desired + Separation(self, match) * 0.85f;
             desired = desired + AvoidObstacles(self, desired, match) * 1.25f;
+            desired = desired + AvoidSnakeBodies(brain, self, match) * 1.4f;
 
             float safeRadius = Math.Max(10f, match.Arena.SafeRadius);
             float fromCenter = self.Position.Magnitude;
@@ -83,7 +85,9 @@ namespace Orbit.Galaxy
                     Vec2 nudge = desired.Perpendicular * brain.StuckSign;
                     desired = desired + nudge * MathGalaxy.Clamp(brain.StuckTimer * 0.9f, 0f, 1.2f);
                 }
-                float wander = profile.Risk * 0.12f + (brain.IsElite ? 0.02f : 0f);
+                float variance = brain.Tuning == null ? 1f : brain.Tuning.RouteVariance;
+                float wander = Math.Min(0.32f,
+                    (profile.Risk * 0.12f + (brain.IsElite ? 0.02f : 0f)) * variance);
                 if (wander > 0f)
                 {
                     Rng rng = brain.Rng;
@@ -103,6 +107,47 @@ namespace Orbit.Galaxy
                 desired = desired * MathGalaxy.Clamp(distance / 220f, 0.35f, 1f);
             }
             return desired;
+        }
+
+        /// <summary>
+        /// Repulsion from other snakes' sampled bodies. Only snake ships can die this way, and the
+        /// query uses the match's existing segment grid, so this stays a handful of cell lookups.
+        /// Cautious bots react more strongly; aggressives accept more risk when intercepting.
+        /// </summary>
+        private Vec2 AvoidSnakeBodies(BotBrain brain, Ship self, MatchSimulation match)
+        {
+            if (self == null || self.Body == null || match == null || match.Snakes == null) return Vec2.Zero;
+            _snakeSegments.Clear();
+            Vec2 from = self.Position - self.Velocity * 0.15f;
+            Vec2 to = self.Position + self.Velocity * 0.35f;
+            float reach = self.Radius + 110f;
+            match.Snakes.QuerySegments(from, to, reach, _snakeSegments);
+            if (_snakeSegments.Count == 0) return Vec2.Zero;
+
+            float caution = brain == null || brain.Tuning == null ? 1f : brain.Tuning.Caution;
+            float aggression = brain == null || brain.Tuning == null ? 1f : brain.Tuning.Aggression;
+            Vec2 result = Vec2.Zero;
+            for (int i = 0; i < _snakeSegments.Count; i++)
+            {
+                SnakeSegmentRef segment = _snakeSegments[i];
+                if (segment.Owner == null || segment.Owner == self ||
+                    segment.Owner.State != ShipState.Alive) continue;
+                Vec2 away = self.Position - segment.Point;
+                float influence = reach + segment.Radius;
+                float distSqr = away.SqrMagnitude;
+                if (distSqr > influence * influence) continue;
+                float dist = (float)Math.Sqrt(distSqr);
+                if (dist < 0.01f) away = Vec2.Up;
+                else away = away / dist;
+                float massRatio = MathGalaxy.Clamp(segment.Owner.Mass / Math.Max(1f, self.Mass), 0.5f, 2.5f);
+                float strength = (1f - dist / influence) * massRatio * caution / (0.7f + aggression * 0.5f);
+                result = result + away * strength;
+                float sideSign = Vec2.Cross(to - from, away) >= 0f ? 1f : -1f;
+                result = result + away.Perpendicular * (sideSign * strength * 0.35f);
+            }
+            float magnitude = result.Magnitude;
+            if (magnitude > 2f) result = result / magnitude * 2f;
+            return result;
         }
 
         /// <summary>

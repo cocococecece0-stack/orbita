@@ -15,12 +15,6 @@ namespace Orbit.Galaxy
         private const float FullCircle = 6.2831853f;
 
         private static readonly Comparison<LeaderboardEntry> EntryComparator = CompareEntries;
-        private static readonly BotPersonality[] PersonalityCycle =
-        {
-            BotPersonality.Aggressive, BotPersonality.Farmer, BotPersonality.Hunter,
-            BotPersonality.Survivor, BotPersonality.Scavenger, BotPersonality.Elite,
-            BotPersonality.Chaotic
-        };
 
         public GameModeKind Mode;
         public ModeSettings Settings;
@@ -72,6 +66,7 @@ namespace Orbit.Galaxy
         private WorldEventKind? _lastPendingEvent;
         private int _nextShipId = 1;
         private int _bossKills;
+        private int _archetypeOffset;
 
         public MatchSimulation(GameModeKind mode, int seed, Difficulty difficulty, AccountProfile profile)
             : this(mode, seed, difficulty, profile, -1)
@@ -103,6 +98,7 @@ namespace Orbit.Galaxy
             _nameRng = Rng.Fork();
             _spawnRng = Rng.Fork();
             _aiRng = Rng.Fork();
+            _archetypeOffset = _aiRng.NextInt(0, BotArchetypeCatalog.Count);
             BuildNamePool();
             SpawnParticipants();
             Snakes.Initialize(Ships);
@@ -385,11 +381,17 @@ namespace Orbit.Galaxy
 
         private void SpawnBot(int index)
         {
-            BotPersonality personality = PersonalityCycle[index % PersonalityCycle.Length];
-            if (index > 0 && index % 11 == 0) personality = BotPersonality.Elite;
-            BotProfile profile = ContentDatabase.FindBotProfile(personality);
+            BotArchetype archetype = BotArchetypeCatalog.Pick(index + _archetypeOffset, Settings.Difficulty);
+            BotPersonality personality = archetype.Personality;
+            BotProfile profile = archetype.Profile;
             Vec2 position = FindSpawnPoint(GameConfig.BaseRadius);
             Ship ship = CreateShip(UniqueBotName(index), false, true, personality, position, null);
+            // Shared profiles are read-only during a match, so the archetype profile must be
+            // installed on the ship as well: utility scoring reads Ship.Profile.
+            ship.Profile = profile;
+            // Visible size variety from the first second. This is size, not difficulty: bigger
+            // snakes are stronger but slower through the existing mass curve.
+            ship.AddMass(GameConfig.BaseMass * _aiRng.Range(-0.16f, 0.42f), null, 0f);
             Ships.Add(ship);
             _participants.Add(ship);
             _previousKills[ship.Id] = 0;
@@ -397,9 +399,9 @@ namespace Orbit.Galaxy
             if (Snakes != null) Snakes.Add(ship);
 
             Rng brainRng = _aiRng.Fork();
-            BotBrain brain = new BotBrain(ship, profile, brainRng, Settings.Difficulty);
+            BotBrain brain = new BotBrain(ship, profile, brainRng, Settings.Difficulty, archetype);
             Bots.Add(brain);
-            ship.Remember("Выход в арену: " + profile.Name);
+            ship.Remember("Выход в арену: " + archetype.Label);
         }
 
         private Ship CreateShip(string name, bool isPlayer, bool isBot, BotPersonality personality,
@@ -531,11 +533,11 @@ namespace Orbit.Galaxy
         {
             int target = MathGalaxy.Clamp(Settings.Participants, GameConfig.MinParticipants,
                 GameConfig.MaxParticipants);
-            while (_participants.Count - 1 < target)
+            while (_participants.Count < target)
             {
                 SpawnBot(_participants.Count - 1);
             }
-            while (_participants.Count - 1 > target)
+            while (_participants.Count > target)
             {
                 int last = _participants.Count - 1;
                 Ship removed = _participants[last];
@@ -691,8 +693,27 @@ namespace Orbit.Galaxy
                 ship.Position = FindSpawnPoint(Math.Max(GameConfig.BaseRadius, ship.Radius));
                 ship.Velocity = Vec2.Zero;
                 if (ship.Body != null && Snakes != null) Snakes.Reset(ship);
+                BotBrain bot = FindBot(ship);
+                if (bot != null) bot.OnRespawn();
                 ship.Remember("Возвращение в арену");
             }
+        }
+
+        private BotBrain FindBot(Ship ship)
+        {
+            if (ship == null) return null;
+            for (int i = 0; i < Bots.Count; i++)
+                if (Bots[i] != null && Bots[i].Ship == ship) return Bots[i];
+            return null;
+        }
+
+        /// <summary>
+        /// Runtime bot-count control. The next Update adds or removes bots through the existing
+        /// participant bookkeeping, so ranks, leaderboard and snake registry stay consistent.
+        /// </summary>
+        public void SetParticipantCount(int count)
+        {
+            Settings.Participants = MathGalaxy.Clamp(count, GameConfig.MinParticipants, GameConfig.MaxParticipants);
         }
 
         private bool CanRespawn(Ship ship)

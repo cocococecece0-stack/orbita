@@ -88,6 +88,12 @@ namespace Orbit.Galaxy
             }
         }
 
+        /// <summary>Narrow body query used by bot navigation and perception.</summary>
+        public void QuerySegments(Vec2 from, Vec2 to, float reach, List<SnakeSegmentRef> output)
+        {
+            if (_collisions != null) _collisions.QuerySwept(from, to, reach, output);
+        }
+
         /// <summary>Resolves head-into-body deaths using the post-movement tails.</summary>
         public void ResolveCollisions(Arena arena, SimLog log, float time)
         {
