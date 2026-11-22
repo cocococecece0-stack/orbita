@@ -14,9 +14,9 @@ namespace Orbit.Galaxy.Unity
         private int _collectionTab;
         private int _statsTab;
 
-        private static readonly string[] ProfileTabs = { "ОБЗОР", "ЗАДАНИЯ", "ДОСТИЖЕНИЯ" };
+        private static readonly string[] ProfileTabs = { "ОБЗОР", "ЗАДАНИЯ", "ДОСТИЖЕНИЯ", "ЗМЕЙКА" };
         private static readonly string[] ShopTabs = { "КОРАБЛИ", "СНАРЯЖЕНИЕ", "ИССЛЕДОВАНИЯ" };
-        private static readonly string[] CollectionTabs = { "КОРАБЛИ", "ЭФФЕКТЫ", "ПРОЧЕЕ" };
+        private static readonly string[] CollectionTabs = { "КОРАБЛИ", "ЭФФЕКТЫ", "ПРОЧЕЕ", "ЗМЕЙКА" };
         private static readonly string[] StatsTabs = { "ОБЗОР", "РЕКОРДЫ", "ДОСТИЖЕНИЯ" };
         private static readonly string[] QualityTokens =
         {
@@ -193,14 +193,16 @@ namespace Orbit.Galaxy.Unity
                 "Очки              " + FormatNumber(Mathf.RoundToInt(result.Score)) + "\n" +
                 "Масса / длина     " + result.Mass.ToString("F1") + " / " + result.Length + "\n" +
                 "Время выживания   " + FormatTime(result.SurvivalTime) + "\n" +
+                "Рост змейки       " + result.SnakeEvolutionTier + " / " + SnakeEvolutionSystem.MaxTier + "\n" +
+                "Способности       " + result.SnakeAbilityUses + "\n" +
                 "Уровень           " + result.Level + "\n" +
                 "Убийства / смерти " + result.Kills + " / " + result.Deaths + "\n" +
                 "Лучшая серия      " + result.BestStreak + "\n" +
                 "Энергия           " + result.EnergyCollected.ToString("F0") + "\n" +
                 "Кристаллы / ТМ    " + result.Crystals + " / " + result.DarkMatter + "\n" +
                 "Артефакты / боссы " + result.Artifacts + " / " + result.BossKills;
-            GalaxyUiTheme.Label(stats.transform, lines, 22, GalaxyUiTheme.Paper, TextAnchor.UpperLeft,
-                GBox.Inset(24f, 22f, 24f, 52f));
+            GalaxyUiTheme.Label(stats.transform, lines, 19, GalaxyUiTheme.Paper, TextAnchor.UpperLeft,
+                GBox.Inset(24f, 18f, 24f, 52f));
 
             Image rewards = GalaxyUiTheme.Panel(root, "Награды", new Color32(20, 32, 46, 246), GBox.At(250f, 250f, 620f, 124f), GalaxyUiTheme.Round);
             GalaxyUiTheme.Label(rewards.transform, "НАГРАДЫ", 19, GalaxyUiTheme.AccentA, TextAnchor.MiddleLeft,
@@ -222,6 +224,12 @@ namespace Orbit.Galaxy.Unity
             GalaxyUiTheme.Label(achievements.transform, "ДОСТИЖЕНИЯ МАТЧА", 19, GalaxyUiTheme.Sun, TextAnchor.MiddleLeft,
                 GBox.Inset(18f, 88f, 18f, 8f), FontStyle.Bold);
             List<string> earned = EarnedAchievements(result, profile);
+            ProgressionRewards rewards = _app == null ? null : _app.LastRewards;
+            if (rewards != null)
+            {
+                for (int i = 0; i < rewards.SnakeGoals.Count && earned.Count < 8; i++)
+                    earned.Add("ЗМЕЙКА: " + rewards.SnakeGoals[i]);
+            }
             string earnedText = earned.Count == 0
                 ? "В этом матче новых достижений нет — продолжайте охоту."
                 : string.Join("   ·   ", earned.ToArray());
@@ -337,7 +345,8 @@ namespace Orbit.Galaxy.Unity
 
             if (_profileTab == 0) DrawProfileOverview(root);
             else if (_profileTab == 1) DrawQuests(root);
-            else DrawAchievementList(root);
+            else if (_profileTab == 2) DrawAchievementList(root);
+            else DrawSnakeGoalsScreen(root);
         }
 
         private void DrawProfileOverview(RectTransform root)
@@ -675,6 +684,11 @@ namespace Orbit.Galaxy.Unity
             DrawHeader(root, "КОЛЛЕКЦИЯ", "Открыто " + ownedCount + " из " + ContentDatabase.Cosmetics.Length +
                 " предметов · сведений: " + (p == null || p.Secrets == null ? 0 : p.Secrets.Count), ShowMenu);
             DrawTabs(root, CollectionTabs, _collectionTab, delegate(int index) { _collectionTab = index; ShowCollection(); });
+            if (_collectionTab == 3)
+            {
+                DrawSnakeCollection(root);
+                return;
+            }
 
             RectTransform content;
             GalaxyUiTheme.Scroll(root, "Коллекция", GBox.At(0f, -50f, 1520f, 610f), out content);
@@ -727,6 +741,138 @@ namespace Orbit.Galaxy.Unity
             GalaxyUiTheme.SetScrollHeight(content, y + 12f);
             GalaxyUiTheme.MakeButton(root, "В магазин", "ОТКРЫТЬ МАГАЗИН", GalaxyUiTheme.PanelSoft, GalaxyUiTheme.Paper,
                 GBox.At(540f, -408f, 400f, 62f), 19, ShowShop);
+        }
+
+        // ───────────────────────────── Snake progression ─────────────────────────────
+
+        private void DrawSnakeGoalsScreen(RectTransform root)
+        {
+            RectTransform content;
+            GalaxyUiTheme.Scroll(root, "Цели змейки", GBox.At(0f, -50f, 1520f, 610f), out content);
+            AccountProfile p = _app == null ? null : _app.Profile;
+            GalaxyUiTheme.Label(content,
+                "Рост змейки и способности не дают постоянного преимущества: награды открывают только внешний вид.",
+                19, GalaxyUiTheme.Muted, TextAnchor.MiddleLeft, GBox.TopRow(0f, 40f, 22f, 22f));
+
+            float y = 52f;
+            for (int i = 0; i < SnakeProgression.Goals.Length; i++)
+            {
+                SnakeGoalDef def = SnakeProgression.Goals[i];
+                int current = p == null ? 0 : p.Stat(def.StatKey);
+                bool done = p != null && p.Achievements != null && p.Achievements.Contains(def.Id);
+                const float h = 96f;
+                Image row = GalaxyUiTheme.Panel(content, "Цель " + def.Id,
+                    done ? new Color32(22, 46, 40, 248) : new Color32(16, 23, 48, 248),
+                    GBox.TopRow(y, h, 18f, 18f), GalaxyUiTheme.Round);
+                GalaxyUiTheme.Label(row.transform, def.Name, 21, done ? GalaxyUiTheme.AccentA : GalaxyUiTheme.Paper,
+                    TextAnchor.MiddleLeft, new GBox(0f, 0f, 1f, 1f, 22f, 58f, -420f, -6f), FontStyle.Bold);
+                GalaxyUiTheme.Label(row.transform, def.Description, 16, GalaxyUiTheme.Muted, TextAnchor.MiddleLeft,
+                    new GBox(0f, 0f, 1f, 1f, 22f, 30f, -420f, -54f));
+                GBar bar = GalaxyUiTheme.Bar(row.transform, "Прогресс " + def.Id, new Color32(30, 38, 66, 255),
+                    GalaxyUiTheme.Violet, new GBox(0f, 0f, 1f, 1f, 980f, 24f, -420f, -56f));
+                bar.Set(def.Target > 0 ? Mathf.Clamp01(current / (float)def.Target) : 0f);
+                string status = done ? "ВЫПОЛНЕНО" : Mathf.Min(current, def.Target) + " / " + def.Target;
+                GalaxyUiTheme.Label(row.transform, status, 18, done ? GalaxyUiTheme.AccentA : GalaxyUiTheme.AccentC,
+                    TextAnchor.MiddleRight, new GBox(0f, 0f, 1f, 1f, 1060f, 20f, -22f, -20f), FontStyle.Bold);
+                y += h + 10f;
+            }
+            GalaxyUiTheme.Label(content, "СПОСОБНОСТИ ЗМЕЙКИ", 21, GalaxyUiTheme.AccentC, TextAnchor.MiddleLeft,
+                GBox.TopRow(y + 8f, 38f, 22f, 22f), FontStyle.Bold);
+            y += 52f;
+            for (int i = 0; i < SnakeAbilities.All.Length; i++)
+            {
+                SnakeAbilityDef def = SnakeAbilities.All[i];
+                const float h = 76f;
+                Image row = GalaxyUiTheme.Panel(content, "Способность " + def.Slot,
+                    new Color32(16, 23, 48, 248), GBox.TopRow(y, h, 18f, 18f), GalaxyUiTheme.Round);
+                GalaxyUiTheme.Label(row.transform, def.Name, 20, GalaxyUiTheme.Sun, TextAnchor.MiddleLeft,
+                    new GBox(0f, 0f, 1f, 1f, 22f, 50f, -420f, -4f), FontStyle.Bold);
+                GalaxyUiTheme.Label(row.transform, def.Purpose, 15, GalaxyUiTheme.Paper, TextAnchor.MiddleLeft,
+                    new GBox(0f, 0f, 1f, 1f, 22f, 27f, -420f, -44f));
+                GalaxyUiTheme.Label(row.transform,
+                    "Клавиша " + def.Shortcut + "   Энергия " + def.Cost.ToString("F0") +
+                    "   Перезарядка " + def.Cooldown.ToString("F1") + "с   Действие " + def.Duration.ToString("F1") + "с",
+                    14, GalaxyUiTheme.Muted, TextAnchor.MiddleLeft,
+                    new GBox(0f, 0f, 1f, 1f, 22f, 5f, -420f, -66f));
+                y += h + 8f;
+            }
+            GalaxyUiTheme.Label(content, "Награды: кредиты, кристаллы и косметика змейки. Ни один бонус не повышает боевые статы.",
+                18, GalaxyUiTheme.Muted, TextAnchor.MiddleLeft, GBox.TopRow(y, 40f, 22f, 22f));
+            y += 48f;
+            GalaxyUiTheme.SetScrollHeight(content, y + 12f);
+        }
+
+        private void DrawSnakeCollection(RectTransform root)
+        {
+            RectTransform content;
+            GalaxyUiTheme.Scroll(root, "Змеиная коллекция", GBox.At(0f, -50f, 1520f, 610f), out content);
+            AccountProfile p = _app == null ? null : _app.Profile;
+            float y = 0f;
+            y = DrawSnakeSection(content, "ГОЛОВЫ", "head", p, y);
+            y = DrawSnakeSection(content, "ЭНЕРГЕТИЧЕСКИЕ ХВОСТЫ", "tail", p, y);
+            GalaxyUiTheme.Label(content, "Все образцы открываются целями змейки — без покупок и без бонусов к силе.",
+                18, GalaxyUiTheme.Muted, TextAnchor.MiddleLeft, GBox.TopRow(y, 40f, 22f, 22f));
+            y += 48f;
+            GalaxyUiTheme.SetScrollHeight(content, y + 12f);
+            GalaxyUiTheme.MakeButton(root, "Цели змейки", "ЦЕЛИ ЗМЕЙКИ", GalaxyUiTheme.PanelSoft, GalaxyUiTheme.Paper,
+                GBox.At(540f, -408f, 400f, 62f), 19, delegate { _profileTab = 3; ShowProfile(); });
+        }
+
+        private float DrawSnakeSection(RectTransform content, string caption, string category, AccountProfile p, float y)
+        {
+            GalaxyUiTheme.Label(content, caption, 21, GalaxyUiTheme.AccentC, TextAnchor.MiddleLeft,
+                GBox.TopRow(y, 38f, 22f, 22f), FontStyle.Bold);
+            y += 44f;
+            for (int i = 0; i < SnakeCosmeticCatalog.All.Length; i++)
+            {
+                SnakeCosmeticDef def = SnakeCosmeticCatalog.All[i];
+                if (def.Category != category) continue;
+                bool owned = IsOwned(p, def.Id);
+                bool equipped = IsSnakeEquipped(p, def);
+                const float h = 72f;
+                Image row = GalaxyUiTheme.Panel(content, "Змейный предмет " + def.Id,
+                    equipped ? new Color32(24, 44, 40, 248) : new Color32(16, 23, 48, 248),
+                    GBox.TopRow(y, h, 18f, 18f), GalaxyUiTheme.Round);
+                Color tint = ParseHex(def.PrimaryHex, GalaxyUiTheme.AccentA);
+                Image dot = GalaxyUiTheme.CircleImage(row.transform, "Образец", owned ? tint : new Color32(62, 72, 104, 255),
+                    new GBox(0f, 0.5f, 0f, 0.5f, 20f, -16f, 52f, 16f));
+                dot.raycastTarget = false;
+                GalaxyUiTheme.Label(row.transform, owned ? def.Name : "???", 21,
+                    owned ? (def.Rare ? GalaxyUiTheme.Sun : GalaxyUiTheme.Paper) : GalaxyUiTheme.Muted,
+                    TextAnchor.MiddleLeft, new GBox(0f, 0f, 1f, 1f, 68f, 36f, -520f, -4f), FontStyle.Bold);
+                GalaxyUiTheme.Label(row.transform, def.Hint, 15, GalaxyUiTheme.Muted, TextAnchor.MiddleLeft,
+                    new GBox(0f, 0f, 1f, 1f, 68f, 6f, -520f, -38f));
+                GalaxyUiTheme.Label(row.transform, equipped ? "НАДЕТО" : (owned ? "В АНГАРЕ" : "ЗАКРЫТО"), 18,
+                    equipped ? GalaxyUiTheme.AccentA : GalaxyUiTheme.Muted, TextAnchor.MiddleRight,
+                    new GBox(0f, 0f, 1f, 1f, 1080f, 8f, -22f, -8f), FontStyle.Bold);
+                if (owned && !equipped)
+                {
+                    SnakeCosmeticDef captured = def;
+                    GalaxyUiTheme.MakeButton(row.transform, "Надеть змейку", "НАДЕТЬ", GalaxyUiTheme.PanelSoft,
+                        GalaxyUiTheme.Paper, new GBox(0f, 0f, 1f, 1f, 1240f, 16f, -20f, -16f), 17,
+                        delegate { EquipSnakeCosmetic(captured); });
+                }
+                y += h + 8f;
+            }
+            return y + 18f;
+        }
+
+        private static bool IsSnakeEquipped(AccountProfile p, SnakeCosmeticDef def)
+        {
+            if (p == null || def == null) return false;
+            return def.Category == "head" ? p.SelectedShip == def.Id : p.SelectedTrail == def.Id;
+        }
+
+        private void EquipSnakeCosmetic(SnakeCosmeticDef def)
+        {
+            AccountProfile p = _app == null ? null : _app.Profile;
+            if (p == null || def == null || !p.IsUnlocked(def.Id)) return;
+            if (def.Category == "head") p.SelectedShip = def.Id;
+            else if (def.Category == "tail") p.SelectedTrail = def.Id;
+            else return;
+            Persist();
+            ShowToast("Надето: " + def.Name);
+            ShowCollection();
         }
 
         // ───────────────────────────── Stats ─────────────────────────────
@@ -1045,6 +1191,10 @@ namespace Orbit.Galaxy.Unity
                 case "bestStreak": return "Лучшая серия";
                 case "recordCount": return "Новые рекорды";
                 case "evolutionTier": return "Уровень эволюции";
+                case "snakeBestLength": return "Длина змейки";
+                case "snakeBestGrowth": return "Рост змейки";
+                case "snakeBestSurvival": return "Выживание змейки";
+                case "snakeAbilityUses": return "Способности змейки";
                 case "artifacts": return "Артефакты";
                 default: return field;
             }

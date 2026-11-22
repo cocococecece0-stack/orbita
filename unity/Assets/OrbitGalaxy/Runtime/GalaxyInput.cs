@@ -34,6 +34,7 @@ namespace Orbit.Galaxy.Unity
         private Vec2 _aim;
         private bool _boostHeld;
         private bool _abilityPressed;
+        private int _abilitySlot = -1;
         private bool _dashPressed;
         private bool _firePressed;
         private bool _pausePressed;
@@ -45,6 +46,8 @@ namespace Orbit.Galaxy.Unity
         public Vec2 Aim { get { return _aim; } }
         public bool BoostHeld { get { return _boostHeld; } }
         public bool AbilityPressed { get { return _abilityPressed; } }
+        /// <summary>-1 when no number key was pressed; otherwise the snake ability slot 0-4.</summary>
+        public int AbilitySlot { get { return _abilitySlot; } }
         public bool DashPressed { get { return _dashPressed; } }
         public bool FirePressed { get { return _firePressed; } }
         public bool PausePressed { get { return _pausePressed; } }
@@ -80,6 +83,7 @@ namespace Orbit.Galaxy.Unity
         public void Consume()
         {
             _abilityPressed = false;
+            _abilitySlot = -1;
             _dashPressed = false;
             _firePressed = false;
             _pausePressed = false;
@@ -154,6 +158,11 @@ namespace Orbit.Galaxy.Unity
             bool overInterface = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
             if (!overInterface)
             {
+                if (KeyDown(UnityEngine.KeyCode.Alpha1) || KeyDown(UnityEngine.KeyCode.Keypad1)) _abilitySlot = 0;
+                if (KeyDown(UnityEngine.KeyCode.Alpha2) || KeyDown(UnityEngine.KeyCode.Keypad2)) _abilitySlot = 1;
+                if (KeyDown(UnityEngine.KeyCode.Alpha3) || KeyDown(UnityEngine.KeyCode.Keypad3)) _abilitySlot = 2;
+                if (KeyDown(UnityEngine.KeyCode.Alpha4) || KeyDown(UnityEngine.KeyCode.Keypad4)) _abilitySlot = 3;
+                if (KeyDown(UnityEngine.KeyCode.Alpha5) || KeyDown(UnityEngine.KeyCode.Keypad5)) _abilitySlot = 4;
                 if (MouseDown(0) || KeyDown(UnityEngine.KeyCode.E) || KeyDown(UnityEngine.KeyCode.LeftControl))
                     _abilityPressed = true;
                 if (MouseDown(1) || KeyDown(UnityEngine.KeyCode.Q) || KeyDown(UnityEngine.KeyCode.RightControl))

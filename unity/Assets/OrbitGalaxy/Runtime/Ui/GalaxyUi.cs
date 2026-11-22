@@ -63,9 +63,10 @@ namespace Orbit.Galaxy.Unity
         private GBar _barBoss;
         private RectTransform _bossPanel;
         private readonly Text[] _abilityLabels = new Text[5];
-        private readonly AbilityKind[] _abilityKinds =
+        private readonly SnakeAbilitySlot[] _abilitySlots =
         {
-            AbilityKind.Dash, AbilityKind.Shield, AbilityKind.Nova, AbilityKind.Magnet, AbilityKind.Overdrive
+            SnakeAbilitySlot.Impulse, SnakeAbilitySlot.Shield, SnakeAbilitySlot.Magnet,
+            SnakeAbilitySlot.Trail, SnakeAbilitySlot.PhaseDash
         };
 
         private readonly List<FeedLine> _feed = new List<FeedLine>();
@@ -234,13 +235,17 @@ namespace Orbit.Galaxy.Unity
                 _barHp.Set(player.MaxHp > 0f ? player.Hp / player.MaxHp : 0f);
                 _barShield.Set(player.MaxShield > 0f ? player.Shield / player.MaxShield : 0f);
                 _barEnergy.Set(GameConfig.MaxEnergy > 0f ? player.Energy / GameConfig.MaxEnergy : 0f);
-                for (int i = 0; i < _abilityLabels.Length && i < _abilityKinds.Length; i++)
+                for (int i = 0; i < _abilityLabels.Length && i < _abilitySlots.Length; i++)
                 {
-                    AbilityKind kind = _abilityKinds[i];
-                    float cd = player.Cooldowns != null && (int)kind < player.Cooldowns.Length ? player.Cooldowns[(int)kind] : 0f;
-                    AbilityDef def = ContentDatabase.FindAbility(kind);
-                    string cdText = cd > 0.05f ? cd.ToString("F1") : "ГОТОВ";
-                    SetText(_abilityLabels[i], def.Name + "\n" + cdText, cd > 0.05f ? GalaxyUiTheme.Muted : GalaxyUiTheme.AccentA);
+                    SnakeAbilitySlot slot = _abilitySlots[i];
+                    SnakeAbilityDef def = SnakeAbilities.Get(slot);
+                    if (def == null) continue;
+                    string state = SnakeAbilities.Status(player, slot);
+                    bool selected = player.ActiveAbility == def.Kind;
+                    bool active = SnakeAbilities.IsActive(player, slot);
+                    string text = def.HudName + "\n" + def.Cost.ToString("F0") + "Э " + state;
+                    SetText(_abilityLabels[i], text, active || selected ? GalaxyUiTheme.Sun
+                        : (state == "ГОТОВ" ? GalaxyUiTheme.AccentA : GalaxyUiTheme.Muted));
                 }
             }
 
@@ -514,16 +519,17 @@ namespace Orbit.Galaxy.Unity
             AddBar(bars.transform, "ЩИТ", 46, GalaxyUiTheme.AccentC, out _barShield);
             AddBar(bars.transform, "ЭНЕРГИЯ", 92, GalaxyUiTheme.AccentA, out _barEnergy);
 
-            for (int i = 0; i < _abilityKinds.Length; i++)
+            for (int i = 0; i < _abilitySlots.Length; i++)
             {
                 float x = 20f + i * 76f;
-                AbilityKind kind = _abilityKinds[i];
-                AbilityKind captured = kind;
+                SnakeAbilitySlot captured = _abilitySlots[i];
+                SnakeAbilityDef def = SnakeAbilities.Get(captured);
                 int slot = i;
-                Button btn = GalaxyUiTheme.MakeButton(hud, "Способность " + i, ContentDatabase.FindAbility(kind).Name,
+                string label = def == null ? "—" : def.HudName;
+                Button btn = GalaxyUiTheme.MakeButton(hud, "Способность " + i, label + "\n" + (def == null ? "" : def.Shortcut),
                     new Color32(18, 25, 51, 220), GalaxyUiTheme.Paper,
                     new GBox(0f, 1f, 0f, 1f, x, -412f, x + 70f, -360f), 15,
-                    delegate { if (_app != null) _app.SetAbility(captured); });
+                    delegate { if (_app != null) _app.SetAbilitySlot(captured); });
                 _abilityLabels[slot] = btn.GetComponentInChildren<Text>();
             }
 

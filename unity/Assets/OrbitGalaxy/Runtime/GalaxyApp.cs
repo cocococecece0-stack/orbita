@@ -15,6 +15,7 @@ namespace Orbit.Galaxy.Unity
 
         private MatchSimulation _match;
         private AccountProfile _profile;
+        private ProgressionRewards _lastRewards;
         private SaveManager _saves;
         private GalaxyAudio _audio;
         private GalaxyInput _input;
@@ -28,6 +29,7 @@ namespace Orbit.Galaxy.Unity
         private bool _resultApplied;
         private bool _evolutionShown;
         private bool _abilityEdge;
+        private int _abilitySlotEdge = -1;
         private bool _dashEdge;
         private bool _fireEdge;
         private bool _showFps;
@@ -38,6 +40,7 @@ namespace Orbit.Galaxy.Unity
 
         public MatchSimulation Match { get { return _match; } }
         public AccountProfile Profile { get { return _profile; } }
+        public ProgressionRewards LastRewards { get { return _lastRewards; } }
         public SaveManager Saves { get { return _saves; } }
         public GalaxyAudio Audio { get { return _audio; } }
         public GalaxyInput Input { get { return _input; } }
@@ -86,6 +89,7 @@ namespace Orbit.Galaxy.Unity
             if (_input != null) _input.SetVisible(active);
             _stepsThisFrame = 0;
             _abilityEdge = _input != null && _input.AbilityPressed;
+            _abilitySlotEdge = _input == null ? -1 : _input.AbilitySlot;
             _dashEdge = _input != null && _input.DashPressed;
             _fireEdge = _input != null && _input.FirePressed;
 
@@ -106,6 +110,7 @@ namespace Orbit.Galaxy.Unity
                     _accumulator -= GameConfig.SimulationStep;
                     _stepsThisFrame++;
                     _abilityEdge = false;
+                    _abilitySlotEdge = -1;
                     _dashEdge = false;
                     _fireEdge = false;
                     if (_match.Finished)
@@ -148,6 +153,8 @@ namespace Orbit.Galaxy.Unity
             Vec2 aim = input.Aim;
             if (aim.SqrMagnitude > 0.00001f) _match.PlayerAim(aim);
 
+            if (_abilitySlotEdge >= 0 && _abilitySlotEdge < SnakeAbilities.Count)
+                SetAbilitySlot((SnakeAbilitySlot)_abilitySlotEdge);
             _match.PlayerMove(input.Move);
             _match.PlayerBoost(input.BoostHeld);
             if (_abilityEdge) _match.PlayerActivateAbility();
@@ -202,7 +209,7 @@ namespace Orbit.Galaxy.Unity
 
             if (_profile != null)
             {
-                _profile.ApplyResult(result, DateTime.UtcNow);
+                _lastRewards = _profile.ApplyResultWithRewards(result, DateTime.UtcNow);
                 if (_saves != null) _saves.Save(_profile);
             }
             if (_audio != null) _audio.SetMusicIntensity(0f, 0f);
@@ -241,6 +248,7 @@ namespace Orbit.Galaxy.Unity
             _accumulator = 0f;
             _hudRefreshTimer = 0f;
             _resultApplied = false;
+            _lastRewards = null;
             _evolutionShown = false;
             _abilityEdge = false;
             _dashEdge = false;
@@ -327,10 +335,16 @@ namespace Orbit.Galaxy.Unity
 
         public void SetAbility(AbilityKind kind)
         {
+            SetAbilitySlot(SnakeAbilities.SlotFor(kind));
+        }
+
+        public void SetAbilitySlot(SnakeAbilitySlot slot)
+        {
             if (_match == null || _match.Player == null) return;
-            _match.Player.ActiveAbility = kind;
-            AbilityDef def = ContentDatabase.FindAbility(kind);
-            if (_ui != null && def != null) _ui.ShowToast("СПОСОБНОСТЬ: " + def.Name);
+            SnakeAbilityDef def = SnakeAbilities.Get(slot);
+            if (def == null) return;
+            _match.Player.ActiveAbility = def.Kind;
+            if (_ui != null) _ui.ShowToast(def.Name + ": " + def.Purpose);
         }
 
         public void ApplySettings()

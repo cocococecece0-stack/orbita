@@ -401,7 +401,15 @@ namespace Orbit.Galaxy.Unity
 
             Color primary = TextureFactory.Parse(ship.PrimaryHex, TextureFactory.Cyan);
             Color accent = TextureFactory.Parse(ship.AccentHex, TextureFactory.Lime);
-            Sprite sprite = TextureFactory.Glow();
+            Sprite sprite = TailSprite(ship.TailStyle);
+            bool energyTrail = SnakeAbilities.IsTrailActive(ship);
+            if (energyTrail)
+            {
+                primary = TextureFactory.Cyan;
+                accent = Color.white;
+                sprite = TextureFactory.Glow();
+            }
+            if (AbilitySystem.IsActive(ship, AbilityKind.Phase)) accent = TextureFactory.Violet;
 
             for (int i = count - 1; i >= 0; i -= stride)
             {
@@ -411,10 +419,28 @@ namespace Orbit.Galaxy.Unity
                 if (!Visible(point, radius, center, halfWidth, halfHeight, margin)) continue;
 
                 float along = i / (float)Math.Max(1, count - 1);
+                float wave = ship.TailStyle == SnakeTailStyle.Pulse || energyTrail
+                    ? 0.76f + 0.24f * Mathf.Abs(Mathf.Sin(Time.unscaledTime * 9f + i * 0.32f))
+                    : 1f;
                 Color color = Color.Lerp(accent, primary, along);
-                color.a = alpha * (0.58f + 0.34f * along);
-                Spawn(point, Mathf.Max(6f, radius * 2f), color, sprite, 0f, 9);
+                if (ship.TailStyle == SnakeTailStyle.Spectrum && !energyTrail)
+                    color = Color.Lerp(color, TextureFactory.Violet, 0.35f * Mathf.Abs(Mathf.Sin(i * 0.4f)));
+                color.a = alpha * (0.58f + 0.34f * along) * wave;
+                float size = Mathf.Max(6f, radius * 2f) * wave
+                    * (ship.TailStyle == SnakeTailStyle.Ribbon ? 1.2f : 1f);
+                Spawn(point, size, color, sprite, 0f, 9);
                 _segmentsDrawn++;
+            }
+        }
+
+        private static Sprite TailSprite(SnakeTailStyle style)
+        {
+            switch (style)
+            {
+                case SnakeTailStyle.Spark: return TextureFactory.Star();
+                case SnakeTailStyle.Ribbon: return TextureFactory.Circle();
+                case SnakeTailStyle.Spectrum: return TextureFactory.Diamond();
+                default: return TextureFactory.Glow();
             }
         }
 
