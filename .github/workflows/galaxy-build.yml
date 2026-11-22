@@ -404,10 +404,12 @@ jobs:
           unzip -q "$IPA" -d "$VERIFY"
           plutil -lint "$VERIFY/Payload/$APP_NAME/Info.plist"
           IPA_ENTRIES="$(unzip -Z1 "$IPA")"
-          if printf '%s\n' "$IPA_ENTRIES" | grep -E 'embedded\.mobileprovision$' >/dev/null; then
-            echo "::error::IPA contains embedded.mobileprovision"
-            exit 1
-          fi
+          while IFS= read -r entry; do
+            if [[ "$entry" == */embedded.mobileprovision ]]; then
+              echo "::error::IPA contains embedded.mobileprovision: $entry"
+              exit 1
+            fi
+          done <<< "$IPA_ENTRIES"
 
           {
             echo "### iOS unsigned IPA"
