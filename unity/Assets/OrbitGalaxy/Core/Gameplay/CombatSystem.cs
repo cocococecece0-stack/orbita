@@ -374,8 +374,14 @@ namespace Orbit.Galaxy
             if (target.Hp <= 0f) HandleKill(target, source, log, time);
         }
 
-        private static void HandleKill(Ship victim, Ship killer, SimLog log, float time)
+        /// <summary>
+        /// Single death path for every source of lethal damage (projectiles, contacts, hazards and
+        /// the arena border). The match layer calls this for ships that reach zero HP outside
+        /// <see cref="ApplyDamage"/> so no damage source can leave an "alive" ship with 0 HP.
+        /// </summary>
+        public static void HandleKill(Ship victim, Ship killer, SimLog log, float time)
         {
+            if (victim == null || victim.State != ShipState.Alive) return;
             victim.Hp = 0f;
             victim.Shield = 0f;
             victim.State = ShipState.Respawning;
@@ -384,6 +390,10 @@ namespace Orbit.Galaxy
             victim.FireTimer = 0f;
             victim.BossWeakWindow = 0f;
             victim.Deaths++;
+            // A death always breaks the victim's streak, even when nobody is credited with the kill.
+            victim.Streak = 0;
+            victim.MultiKill = 0;
+            victim.LastKillTime = -1000f;
             victim.Remember("Уничтожен");
 
             if (killer == null || killer == victim || killer.State != ShipState.Alive) return;

@@ -177,6 +177,10 @@ namespace Orbit.Galaxy
                 }
             }
 
+            // 5b. Border damage bypasses CombatSystem.ApplyDamage. Resolve every zero-HP ship here
+            // so no damage source can leave a ship Alive with no health.
+            ResolveDeaths();
+
             // 6. World and 7. events.
             if (Arena != null) Arena.Update(dt, Log, Time);
             if (Events != null) Events.Update(dt, this, Log);
@@ -615,6 +619,22 @@ namespace Orbit.Galaxy
             _fireQueued = false;
         }
 
+        /// <summary>
+        /// Central death resolution. Combat damage already calls CombatSystem.HandleKill directly;
+        /// this pass covers the remaining sources (the shrinking border) and keeps a single
+        /// authoritative death path for the whole simulation.
+        /// </summary>
+        private void ResolveDeaths()
+        {
+            for (int i = 0; i < Ships.Count; i++)
+            {
+                Ship ship = Ships[i];
+                if (ship == null || ship.State != ShipState.Alive || ship.Hp > 0f) continue;
+                CombatSystem.HandleKill(ship, null, Log, Time);
+                if (Arena != null) Arena.ForgetShip(ship.Id);
+            }
+        }
+
         private void HandleRespawn(Ship ship, float dt)
         {
             if (ship == null) return;
@@ -783,6 +803,13 @@ namespace Orbit.Galaxy
             {
                 Ship ship = Ships[i];
                 if (ship == null) continue;
+                // A defeated boss stays in Ships until its reward is paid, but it must not keep
+                // occupying a permanent TOP row (bosses never respawn).
+                if (ship.IsBoss && ship.State != ShipState.Alive)
+                {
+                    ship.Rank = 0;
+                    continue;
+                }
                 LeaderboardEntry entry;
                 if (count < Leaderboard.Count) entry = Leaderboard[count];
                 else

@@ -99,6 +99,16 @@ namespace Orbit.Galaxy.Unity
             _dangerTarget = Mathf.Clamp01(danger);
         }
 
+        private void OnDestroy()
+        {
+            for (int i = 0; i < _generated.Count; i++)
+            {
+                if (_generated[i] != null) Destroy(_generated[i]);
+            }
+            _generated.Clear();
+            _clips.Clear();
+        }
+
         private void Update()
         {
             if (!_configured) return;

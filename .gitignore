@@ -27,3 +27,5 @@ unity/[Uu]ser[Ss]ettings/
 unity/*.csproj
 unity/*.sln
 unity/[Bb]uild/
+unity/[Tt]ests/**/[Bb]in/
+unity/[Tt]ests/**/[Oo]bj/

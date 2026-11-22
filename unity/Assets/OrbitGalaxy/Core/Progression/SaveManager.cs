@@ -49,18 +49,25 @@ namespace Orbit.Galaxy
 
         public static AccountProfile Load()
         {
+            // Each path is isolated: an unreadable main file must not hide a healthy backup.
+            AccountProfile profile = TryLoadPath(SavePath);
+            if (profile != null) return profile;
+            profile = TryLoadPath(BackupPath);
+            if (profile != null) return profile;
+            return new AccountProfile();
+        }
+
+        private static AccountProfile TryLoadPath(string path)
+        {
             try
             {
-                string path = SavePath;
-                if (!File.Exists(path)) return new AccountProfile();
-                string json = File.ReadAllText(path);
-                if (string.IsNullOrWhiteSpace(json)) return new AccountProfile();
-                AccountProfile profile = SaveMigration.FromJson(json);
-                return profile ?? new AccountProfile();
+                string json = ReadValidJson(path);
+                if (json == null) return null;
+                return SaveMigration.FromJson(json) ?? new AccountProfile();
             }
             catch (Exception)
             {
-                return new AccountProfile();
+                return null;
             }
         }
 
@@ -73,9 +80,9 @@ namespace Orbit.Galaxy
                 if (string.IsNullOrEmpty(json)) return;
                 string path = SavePath;
                 EnsureDirectory(path);
-                // Предыдущая версия профиля автоматически сохраняется в .bak перед перезаписью.
+                // Previous good version is kept in .bak before the main file is replaced.
                 Backup();
-                File.WriteAllText(path, json, new UTF8Encoding(false));
+                WriteAtomic(path, json);
             }
             catch (Exception)
             {
@@ -83,14 +90,15 @@ namespace Orbit.Galaxy
             }
         }
 
-        /// <summary>Копирует текущий файл в orbita_galaxy_save_v5.json.bak.</summary>
+        /// <summary>Копирует текущий корректный файл в orbita_galaxy_save_v5.json.bak.</summary>
         public static void Backup()
         {
             try
             {
-                string path = SavePath;
-                if (!File.Exists(path)) return;
-                File.Copy(path, path + BackupExtension, true);
+                string json = ReadValidJson(SavePath);
+                if (json == null) return;
+                EnsureDirectory(SavePath);
+                WriteAtomic(BackupPath, json);
             }
             catch (Exception)
             {
@@ -103,14 +111,11 @@ namespace Orbit.Galaxy
         {
             try
             {
-                string backup = BackupPath;
-                if (!File.Exists(backup)) return false;
-                string json = File.ReadAllText(backup);
-                if (string.IsNullOrWhiteSpace(json)) return false;
-                if (GalaxyJson.Object(GalaxyJson.Parse(json)) == null) return false;
+                string json = ReadValidJson(BackupPath);
+                if (json == null) return false;
                 string path = SavePath;
                 EnsureDirectory(path);
-                File.WriteAllText(path, json, new UTF8Encoding(false));
+                WriteAtomic(path, json);
                 return true;
             }
             catch (Exception)
@@ -176,6 +181,39 @@ namespace Orbit.Galaxy
         {
             string directory = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory)) Directory.CreateDirectory(directory);
+        }
+
+        /// <summary>Reads a file only when it contains a valid JSON object; null means unusable.</summary>
+        private static string ReadValidJson(string path)
+        {
+            if (string.IsNullOrEmpty(path) || !File.Exists(path)) return null;
+            string json = File.ReadAllText(path);
+            if (string.IsNullOrWhiteSpace(json)) return null;
+            if (GalaxyJson.Object(GalaxyJson.Parse(json)) == null) return null;
+            return json;
+        }
+
+        /// <summary>
+        /// Writes through a temporary file so an interrupted write never leaves a half-written
+        /// main save. The temporary file is removed on failure.
+        /// </summary>
+        private static void WriteAtomic(string path, string json)
+        {
+            string temp = path + ".tmp";
+            try
+            {
+                File.WriteAllText(temp, json, new UTF8Encoding(false));
+                if (File.Exists(path)) File.Delete(path);
+                File.Move(temp, path);
+            }
+            finally
+            {
+                if (File.Exists(temp))
+                {
+                    try { File.Delete(temp); }
+                    catch (Exception) { }
+                }
+            }
         }
     }
 }

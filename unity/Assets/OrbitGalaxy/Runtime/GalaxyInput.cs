@@ -36,6 +36,7 @@ namespace Orbit.Galaxy.Unity
         private bool _abilityPressed;
         private bool _dashPressed;
         private bool _firePressed;
+        private bool _pausePressed;
         private bool _visible;
         private Vector2Int _screenSize = new Vector2Int(-1, -1);
         private Vector2 _lastMouse;
@@ -46,6 +47,7 @@ namespace Orbit.Galaxy.Unity
         public bool AbilityPressed { get { return _abilityPressed; } }
         public bool DashPressed { get { return _dashPressed; } }
         public bool FirePressed { get { return _firePressed; } }
+        public bool PausePressed { get { return _pausePressed; } }
 
         public void Configure(GameSettings settings)
         {
@@ -80,14 +82,28 @@ namespace Orbit.Galaxy.Unity
             _abilityPressed = false;
             _dashPressed = false;
             _firePressed = false;
+            _pausePressed = false;
             if (_ability != null) _ability.Consume();
             if (_dash != null) _dash.Consume();
             if (_fire != null) _fire.Consume();
         }
 
+        /// <summary>Clears latched touch/keyboard state between matches and on pause.</summary>
+        public void Reset()
+        {
+            _move = Vec2.Zero;
+            _aim = Vec2.Up;
+            _boostHeld = false;
+            Consume();
+            if (_stick != null) _stick.Reset();
+            if (_aimPad != null) _aimPad.Reset();
+            if (_boost != null) _boost.Reset();
+        }
+
         /// <summary>Сенсорные элементы показываются только во время активного матча.</summary>
         public void SetVisible(bool value)
         {
+            if (_visible && !value) Reset();
             _visible = value && _touchEnabled;
             if (_canvas != null) _canvas.gameObject.SetActive(_visible);
         }
@@ -104,6 +120,9 @@ namespace Orbit.Galaxy.Unity
                 _screenSize = new Vector2Int(Screen.width, Screen.height);
                 ApplySafeArea();
             }
+
+            // Escape works regardless of which UI element currently owns pointer input.
+            if (KeyDown(UnityEngine.KeyCode.Escape)) _pausePressed = true;
 
             Vec2 keyboardMove = ReadKeyboardMove();
             _move = keyboardMove.SqrMagnitude > 0.0001f
@@ -372,6 +391,12 @@ namespace Orbit.Galaxy.Unity
                 image.raycastTarget = false;
             }
 
+            public void Reset()
+            {
+                Value = Vec2.Zero;
+                if (_knob != null) _knob.anchoredPosition = Vector2.zero;
+            }
+
             public void OnPointerDown(PointerEventData eventData)
             {
                 Track(eventData);
@@ -405,6 +430,7 @@ namespace Orbit.Galaxy.Unity
         public sealed class HoldButton : MonoBehaviour, IPointerDownHandler, IPointerUpHandler, IPointerExitHandler
         {
             public bool IsHeld { get; private set; }
+            public void Reset() { IsHeld = false; }
             public void OnPointerDown(PointerEventData eventData) { IsHeld = true; }
             public void OnPointerUp(PointerEventData eventData) { IsHeld = false; }
             public void OnPointerExit(PointerEventData eventData) { IsHeld = false; }

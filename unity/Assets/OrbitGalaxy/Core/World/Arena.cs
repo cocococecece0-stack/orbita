@@ -572,6 +572,13 @@ namespace Orbit.Galaxy
             }
         }
 
+        /// <summary>Drops the border-warning cooldown of a ship that left the match.</summary>
+        public void ForgetShip(int shipId)
+        {
+            if (shipId <= 0) return;
+            _borderWarnings.Remove(shipId);
+        }
+
         public List<WorldObject> Query(Vec2 center, float radius)
         {
             List<WorldObject> result = new List<WorldObject>(64);

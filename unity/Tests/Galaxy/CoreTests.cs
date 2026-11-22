@@ -1190,7 +1190,20 @@ namespace Orbit.Galaxy.Core.Tests
             Assert.False(match.Finished);
             Close(480f, match.Time, 0.1f);
             Assert.True(match.Ships.Count >= GameConfig.MaxParticipants);
-            Assert.Equal(match.Ships.Count, match.Leaderboard.Count);
+            // Dead bosses remain in Ships until their rewards are paid, but must not hold TOP rows.
+            int ranked = 0;
+            for (int i = 0; i < match.Ships.Count; i++)
+            {
+                Ship candidate = match.Ships[i];
+                if (candidate != null && !(candidate.IsBoss && candidate.State != ShipState.Alive)) ranked++;
+            }
+            Assert.Equal(ranked, match.Leaderboard.Count);
+            for (int i = 0; i < match.Leaderboard.Count; i++)
+            {
+                Ship rankedShip = match.FindShipById(match.Leaderboard[i].ShipId);
+                Assert.NotNull(rankedShip);
+                Assert.False(rankedShip.IsBoss && rankedShip.State != ShipState.Alive);
+            }
 
             for (int i = 0; i < match.Ships.Count; i++)
             {
@@ -1204,6 +1217,102 @@ namespace Orbit.Galaxy.Core.Tests
 
             Assert.True(match.Combat.Projectiles.Count < 1024);
             Assert.True(sawEventSystem);
+        }
+
+        // 15. Stability regressions.
+
+        [Fact]
+        public void SaveManager_CorruptMainFile_FallsBackToBackup()
+        {
+            string directory = Path.Combine(Path.GetTempPath(),
+                "orbita-galaxy-corrupt-tests-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            try
+            {
+                SaveManager.SetPath(directory);
+                AccountProfile profile = new AccountProfile();
+                profile.Credits = 321;
+                profile.SelectedShip = "ship_backup";
+                SaveManager.Save(profile);
+                SaveManager.Backup();
+
+                profile.Credits = 1;
+                SaveManager.Save(profile); // .bak keeps the 321-credit version
+                File.WriteAllText(SaveManager.SavePath, "{ this is not json");
+
+                AccountProfile loaded = SaveManager.Load();
+                Assert.Equal(321, loaded.Credits);
+                Assert.Equal("ship_backup", loaded.SelectedShip);
+            }
+            finally
+            {
+                SaveManager.SetPath(null);
+                if (Directory.Exists(directory)) Directory.Delete(directory, true);
+            }
+        }
+
+        [Fact]
+        public void BorderDamage_KillsShipThroughCentralDeathPath()
+        {
+            MatchSimulation match = new MatchSimulation(GameModeKind.Classic, 91,
+                Difficulty.Normal, new AccountProfile(), 20);
+            Ship player = match.Player;
+            player.Position = new Vec2(match.Arena.SafeRadius + 120f, 0f);
+            player.Velocity = Vec2.Zero;
+            player.Hp = 0.01f;
+            player.Shield = 0f;
+            player.Invulnerability = 0f;
+            int deaths = player.Deaths;
+
+            match.Update(GameConfig.SimulationStep);
+
+            Assert.Equal(ShipState.Respawning, player.State);
+            Assert.Equal(deaths + 1, player.Deaths);
+            Close(0f, player.Hp, Epsilon);
+        }
+
+        [Fact]
+        public void Death_ResetsVictimStreakButKeepsBestStreak()
+        {
+            Ship victim = NewShip(2);
+            victim.Streak = 7;
+            victim.BestStreak = 7;
+            victim.MultiKill = 3;
+            victim.LastKillTime = 100f;
+            SimLog log = new SimLog();
+
+            CombatSystem.ApplyDamage(victim, victim.MaxHp + 10f, null, log, 5f, false);
+
+            Assert.Equal(ShipState.Respawning, victim.State);
+            Assert.Equal(0, victim.Streak);
+            Assert.Equal(0, victim.MultiKill);
+            Close(-1000f, victim.LastKillTime, Epsilon);
+            Assert.Equal(7, victim.BestStreak);
+        }
+
+        [Fact]
+        public void BotEvolution_NeverUsesPlayerResearch()
+        {
+            AccountProfile profile = new AccountProfile();
+            for (int i = 0; i < ContentDatabase.Research.Length; i++)
+            {
+                ResearchDef def = ContentDatabase.Research[i];
+                profile.Research[def.Id] = def.MaxLevel;
+            }
+            MatchSimulation match = new MatchSimulation(GameModeKind.Classic, 5150,
+                Difficulty.Normal, profile, 20);
+            Ship bot = match.Bots[0].Ship;
+            bot.Level = 3f;
+
+            for (int i = 0; i < 60 && bot.EvolutionTier < 1; i++)
+                match.Update(GameConfig.SimulationStep);
+
+            Assert.True(bot.EvolutionTier >= 1);
+            Close(0f, bot.ResearchAgility, Epsilon);
+            Close(0f, bot.ResearchArmor, Epsilon);
+            Close(0f, bot.ResearchMagnet, Epsilon);
+            Close(0f, bot.ResearchEnergy, Epsilon);
+            Close(0f, bot.ResearchLuck, Epsilon);
         }
     }
 }

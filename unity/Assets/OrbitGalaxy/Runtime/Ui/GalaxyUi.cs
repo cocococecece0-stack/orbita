@@ -29,6 +29,7 @@ namespace Orbit.Galaxy.Unity
         private RectTransform _toastLayer;
         private RectTransform _feedRoot;
         private RectTransform _evoPanel;
+        private RectTransform _pauseOverlay;
         private Image _toastPanel;
         private Text _toastLabel;
         private float _toastUntil;
@@ -139,7 +140,7 @@ namespace Orbit.Galaxy.Unity
                 GBox.At(600f, 10f, 270f, 76f), 23, delegate { Application.Quit(); });
 
             GalaxyUiTheme.Panel(root, "Нижняя панель", new Color32(8, 13, 31, 210), new GBox(0f, 0f, 1f, 0f, 0f, 0f, 0f, 58f));
-            GalaxyUiTheme.Label(root, "WASD / стрелки — движение   ·   ЛКМ — огонь   ·   ПРОБЕЛ — рывок   ·   E — эволюция   ·   ESC — пауза",
+            GalaxyUiTheme.Label(root, "WASD — движение · SPACE/SHIFT — ускорение · ЛКМ/E — способность · ПКМ/Q — рывок · F — огонь · ESC — пауза",
                 18, GalaxyUiTheme.Muted, TextAnchor.MiddleCenter, new GBox(0f, 0f, 1f, 0f, 40f, 10f, -40f, 50f));
             if (profile != null && profile.Records != null)
                 GalaxyUiTheme.Label(root, "Лучший счёт: " + FormatNumber(BestRecord(profile)), 17, GalaxyUiTheme.AccentC,
@@ -296,6 +297,30 @@ namespace Orbit.Galaxy.Unity
                 ShowToast(line.Text);
         }
 
+        /// <summary>Shows a resume/menu overlay without rebuilding the HUD or clearing its feed.</summary>
+        public void ShowPause()
+        {
+            if (!_canvasReady || _screen != "hud" || _pauseOverlay != null) return;
+            RectTransform overlay = GalaxyUiTheme.Panel(_screenLayer, "Пауза",
+                GalaxyUiTheme.WithAlpha(GalaxyUiTheme.Ink, 0.88f), GBox.Full).rectTransform;
+            _pauseOverlay = overlay;
+            GalaxyUiTheme.Label(overlay, "ПАУЗА", 64, GalaxyUiTheme.Paper, TextAnchor.MiddleCenter,
+                GBox.At(0f, 210f, 620f, 90f), FontStyle.Bold);
+            GalaxyUiTheme.MakeButton(overlay, "Продолжить", "ПРОДОЛЖИТЬ", GalaxyUiTheme.AccentA, GalaxyUiTheme.Ink,
+                GBox.At(0f, 40f, 440f, 76f), 26,
+                delegate { if (_app != null) _app.TogglePause(false); });
+            GalaxyUiTheme.MakeButton(overlay, "В меню", "В МЕНЮ", GalaxyUiTheme.PanelSoft, GalaxyUiTheme.Paper,
+                GBox.At(0f, -70f, 440f, 76f), 26,
+                delegate { if (_app != null) _app.ReturnToMenu(); });
+        }
+
+        public void HidePause()
+        {
+            if (_pauseOverlay == null) return;
+            Destroy(_pauseOverlay.gameObject);
+            _pauseOverlay = null;
+        }
+
         public void ShowToast(string text)
         {
             if (string.IsNullOrEmpty(text) || _toastPanel == null || _toastLabel == null) return;
@@ -379,6 +404,7 @@ namespace Orbit.Galaxy.Unity
             _screen = id;
             _hudBuilt = false;
             ClearChildren(_screenLayer);
+            _pauseOverlay = null;
             _feedRoot = null;
             _feed.Clear();
             if (_hudLayer != null) _hudLayer.gameObject.SetActive(hudVisible);
@@ -439,6 +465,9 @@ namespace Orbit.Galaxy.Unity
                 TextAnchor.MiddleCenter, GBox.Inset(8f, 28f, 8f, 4f), FontStyle.Bold);
             _hudRecord = GalaxyUiTheme.Label(timerPanel.transform, "РЕКОРД", 14, GalaxyUiTheme.AccentC,
                 TextAnchor.MiddleCenter, GBox.Inset(8f, 4f, 8f, 34f));
+            GalaxyUiTheme.MakeButton(hud, "Пауза", "II", new Color32(18, 25, 51, 220), GalaxyUiTheme.Paper,
+                new GBox(0.5f, 1f, 0.5f, 1f, 146f, -84f, 206f, -28f), 20,
+                delegate { if (_app != null) _app.TogglePause(true); });
 
             _bossPanel = GalaxyUiTheme.Panel(hud, "Босс", new Color32(40, 12, 32, 226),
                 new GBox(0.5f, 1f, 0.5f, 1f, -270f, -150f, 270f, -94f), GalaxyUiTheme.Round).rectTransform;

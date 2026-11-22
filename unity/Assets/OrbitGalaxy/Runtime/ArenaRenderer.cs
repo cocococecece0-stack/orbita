@@ -39,6 +39,13 @@ namespace Orbit.Galaxy.Unity
             _app = app;
             if (_root != null) UnityEngine.Object.Destroy(_root);
 
+            // Pooled renderers are children of _root. Dropping the list here is required before a
+            // new root is created, otherwise a second match keeps drawing through objects that
+            // Unity is about to destroy (MissingReferenceException / invisible arena).
+            _pool.Clear();
+            _cursor = 0;
+            _camera = null;
+
             _root = new GameObject("ArenaView");
             _root.transform.SetParent(transform, false);
             _background = MakeLayer("Фон", TextureFactory.Square(), -100);

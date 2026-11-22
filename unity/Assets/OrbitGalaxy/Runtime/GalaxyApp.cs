@@ -32,6 +32,7 @@ namespace Orbit.Galaxy.Unity
         private bool _fireEdge;
         private bool _showFps;
         private int _stepsThisFrame;
+        private float _hudRefreshTimer;
 
         public static GalaxyApp Instance { get { return _instance; } }
 
@@ -88,6 +89,12 @@ namespace Orbit.Galaxy.Unity
             _dashEdge = _input != null && _input.DashPressed;
             _fireEdge = _input != null && _input.FirePressed;
 
+            if (_input != null && _input.PausePressed)
+            {
+                _input.Consume();
+                if (_match != null && !_match.Finished) TogglePause(!_paused);
+            }
+
             if (active)
             {
                 _accumulator += dt;
@@ -121,7 +128,15 @@ namespace Orbit.Galaxy.Unity
 
             if (_cameraRig != null) _cameraRig.UpdateCamera(_match, dt);
             if (_renderer != null) _renderer.Render(_match);
-            if (_ui != null && _match != null) _ui.RefreshHud(_match);
+
+            // HUD text is rebuilt from strings; 10 Hz is enough for gameplay and avoids
+            // allocating new text every rendered frame on mobile devices.
+            _hudRefreshTimer -= dt;
+            if (_ui != null && _match != null && _hudRefreshTimer <= 0f)
+            {
+                _ui.RefreshHud(_match);
+                _hudRefreshTimer = 0.1f;
+            }
             UpdateMusic();
         }
 
@@ -224,11 +239,13 @@ namespace Orbit.Galaxy.Unity
             _lastMode = mode;
             _paused = false;
             _accumulator = 0f;
+            _hudRefreshTimer = 0f;
             _resultApplied = false;
             _evolutionShown = false;
             _abilityEdge = false;
             _dashEdge = false;
             _fireEdge = false;
+            if (_input != null) _input.Reset();
 
             if (_match != null && _match.Log != null) _match.Log.Clear();
 
@@ -274,6 +291,7 @@ namespace Orbit.Galaxy.Unity
             _paused = false;
             _accumulator = 0f;
             _evolutionShown = false;
+            if (_input != null) _input.Reset();
             if (_renderer != null) _renderer.Render(null);
             if (_ui != null) _ui.ShowMenu();
         }
@@ -284,7 +302,15 @@ namespace Orbit.Galaxy.Unity
             if (next == _paused) return;
             _paused = next;
             _accumulator = 0f;
-            if (_ui != null) _ui.ShowToast(_paused ? "ПАУЗА" : "ПРОДОЛЖЕНИЕ");
+            // Releasing latched controls on both transitions prevents a stuck boost or ability
+            // when the touch layer is hidden and shown again.
+            if (_input != null) _input.Reset();
+            if (_ui != null)
+            {
+                if (_paused) _ui.ShowPause();
+                else _ui.HidePause();
+                _ui.ShowToast(_paused ? "ПАУЗА" : "ПРОДОЛЖЕНИЕ");
+            }
         }
 
         public void ChooseEvolution(EvolutionDef def)
@@ -411,7 +437,10 @@ namespace Orbit.Galaxy.Unity
 
         private void OnApplicationPause(bool paused)
         {
-            if (paused && _profile != null && _saves != null) _saves.Save(_profile);
+            if (!paused) return;
+            if (_profile != null && _saves != null) _saves.Save(_profile);
+            // Backgrounding must not leave a live match ticking or resume with a stale input state.
+            if (_match != null && !_match.Finished) TogglePause(true);
         }
 
         private void OnApplicationQuit()

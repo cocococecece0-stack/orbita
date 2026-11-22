@@ -464,7 +464,9 @@ namespace Orbit.Galaxy
             EvolutionDef choice = ChooseEvolution(offers);
             if (choice != null && EvolutionSystem.IsAvailable(Ship, choice))
             {
-                EvolutionSystem.Choose(Ship, choice, log, match.Time, match.Profile);
+                // Bots must never inherit the player's research bonuses. Their ships were created
+                // without an AccountProfile, so a null profile keeps their own neutral bonuses.
+                EvolutionSystem.Choose(Ship, choice, log, match.Time, null);
                 Remember("Эволюция: " + choice.Name);
                 _lastEvolutionLevel = nextLevel;
             }
