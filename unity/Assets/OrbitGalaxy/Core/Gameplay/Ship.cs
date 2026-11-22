@@ -36,6 +36,7 @@ namespace Orbit.Galaxy
 
         public float Energy;
         public float Speed;
+        public float TurnRate;
         public float Damage;
         public float FireInterval;
         public float PickupRadius;
@@ -230,6 +231,8 @@ namespace Orbit.Galaxy
 
             Speed = GameConfig.BaseSpeed * Math.Max(GameConfig.MinimumSpeedFactor, sizeSpeed)
                 * EvolutionSpeedMul * (1f + ResearchAgility) * overdrive * phasing;
+            TurnRate = GameConfig.BaseTurnSpeed * Math.Max(0.55f, sizeSpeed)
+                * (1f + ResearchAgility * 0.5f) * overdrive;
             Damage = GameConfig.BaseDamage * sizeDamage * EvolutionDamageMul * (1f + ResearchArmor * 0.25f);
 
             float levelHp = 1f + Math.Max(0f, Level - 1f) * 0.07f;

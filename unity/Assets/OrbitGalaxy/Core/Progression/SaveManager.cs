@@ -73,6 +73,8 @@ namespace Orbit.Galaxy
                 if (string.IsNullOrEmpty(json)) return;
                 string path = SavePath;
                 EnsureDirectory(path);
+                // Предыдущая версия профиля автоматически сохраняется в .bak перед перезаписью.
+                Backup();
                 File.WriteAllText(path, json, new UTF8Encoding(false));
             }
             catch (Exception)

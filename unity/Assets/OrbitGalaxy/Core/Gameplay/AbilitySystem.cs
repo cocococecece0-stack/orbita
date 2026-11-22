@@ -161,6 +161,7 @@ namespace Orbit.Galaxy
                 Vec2 dir = distance > 0.0001f ? (ship.Position - obj.Position) / distance : Vec2.Zero;
                 float step = Math.Min(distance, speed * dt);
                 obj.Position += dir * step;
+                if (arena.Index != null) arena.Index.Update(obj);
             }
         }
 

@@ -221,9 +221,9 @@ namespace Orbit.Galaxy.Unity
             GalaxyUiTheme.Label(achievements.transform, earnedText, 17, GalaxyUiTheme.Paper, TextAnchor.UpperLeft,
                 GBox.Inset(18f, 10f, 18f, 48f));
 
-            Image board = GalaxyUiTheme.Panel(root, "Таблица", new Color32(10, 16, 36, 246), GBox.At(-420f, -258f, 720f, 232f), GalaxyUiTheme.Round);
-            GalaxyUiTheme.Label(board.transform, "ИТОГОВАЯ ТАБЛИЦА (TOP " + Mathf.Min(8, result.Leaderboard == null ? 0 : result.Leaderboard.Count) + ")",
-                19, GalaxyUiTheme.AccentC, TextAnchor.MiddleLeft, GBox.Inset(18f, 198f, 18f, 8f), FontStyle.Bold);
+            Image board = GalaxyUiTheme.Panel(root, "Таблица", new Color32(10, 16, 36, 246), GBox.At(-420f, -236f, 720f, 276f), GalaxyUiTheme.Round);
+            GalaxyUiTheme.Label(board.transform, "ИТОГОВАЯ ТАБЛИЦА (TOP " + Mathf.Min(10, result.Leaderboard == null ? 0 : result.Leaderboard.Count) + ")",
+                19, GalaxyUiTheme.AccentC, TextAnchor.MiddleLeft, GBox.Inset(18f, 242f, 18f, 8f), FontStyle.Bold);
             string boardText = BuildResultBoard(result);
             GalaxyUiTheme.Label(board.transform, boardText, 16, GalaxyUiTheme.Paper, TextAnchor.UpperLeft,
                 GBox.Inset(18f, 10f, 18f, 42f));
@@ -245,7 +245,7 @@ namespace Orbit.Galaxy.Unity
             if (result.Leaderboard == null || result.Leaderboard.Count == 0) return "Таблица недоступна.";
             StringBuilder sb = new StringBuilder();
             int shown = 0;
-            for (int i = 0; i < result.Leaderboard.Count && shown < 8; i++)
+            for (int i = 0; i < result.Leaderboard.Count && shown < 10; i++)
             {
                 LeaderboardEntry e = result.Leaderboard[i];
                 if (e == null) continue;
@@ -253,7 +253,7 @@ namespace Orbit.Galaxy.Unity
                 string row = rank.ToString("00") + "  " + Clip(e.Name, 13) + "  " + Mathf.RoundToInt(e.Score) +
                              "  м" + Mathf.RoundToInt(e.Mass) + "  ур" + e.Level + "  к" + e.Kills;
                 sb.Append(row);
-                if (shown < 7) sb.Append('\n');
+                if (shown < 9) sb.Append('\n');
                 shown++;
             }
             return sb.ToString();
@@ -832,7 +832,7 @@ namespace Orbit.Galaxy.Unity
                 delegate(bool v) { ChangeSetting(delegate(GameSettings g) { g.Colorblind = v; }, true); });
             y = DrawToggleSetting(content, "КРУПНЫЙ ТЕКСТ", "Увеличивает подписи на 16%", s.LargeText, y,
                 delegate(bool v) { ChangeSetting(delegate(GameSettings g) { g.LargeText = v; }, true); });
-            y = DrawToggleSetting(content, "АВТОСТРЕЛЬБА", "Огонь по ближайшей цели без удержания", s.AutoFire, y,
+            y = DrawToggleSetting(content, "АВТОСТРЕЛЬБА", "Огонь по направлению прицела без удержания", s.AutoFire, y,
                 delegate(bool v) { ChangeSetting(delegate(GameSettings g) { g.AutoFire = v; }); });
             y = DrawToggleSetting(content, "ПОКАЗЫВАТЬ FPS", "Счётчик кадров в углу экрана", s.ShowFps, y,
                 delegate(bool v) { ChangeSetting(delegate(GameSettings g) { g.ShowFps = v; }); });

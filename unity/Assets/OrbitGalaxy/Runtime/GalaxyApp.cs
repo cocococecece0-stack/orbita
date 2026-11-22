@@ -29,6 +29,8 @@ namespace Orbit.Galaxy.Unity
         private bool _evolutionShown;
         private bool _abilityEdge;
         private bool _dashEdge;
+        private bool _fireEdge;
+        private bool _showFps;
         private int _stepsThisFrame;
 
         public static GalaxyApp Instance { get { return _instance; } }
@@ -84,6 +86,7 @@ namespace Orbit.Galaxy.Unity
             _stepsThisFrame = 0;
             _abilityEdge = _input != null && _input.AbilityPressed;
             _dashEdge = _input != null && _input.DashPressed;
+            _fireEdge = _input != null && _input.FirePressed;
 
             if (active)
             {
@@ -97,6 +100,7 @@ namespace Orbit.Galaxy.Unity
                     _stepsThisFrame++;
                     _abilityEdge = false;
                     _dashEdge = false;
+                    _fireEdge = false;
                     if (_match.Finished)
                     {
                         _accumulator = 0f;
@@ -133,6 +137,7 @@ namespace Orbit.Galaxy.Unity
             _match.PlayerBoost(input.BoostHeld);
             if (_abilityEdge) _match.PlayerActivateAbility();
             if (_dashEdge) _match.PlayerDash();
+            if (_fireEdge) _match.PlayerFire();
         }
 
         private void DrainEvents()
@@ -223,6 +228,7 @@ namespace Orbit.Galaxy.Unity
             _evolutionShown = false;
             _abilityEdge = false;
             _dashEdge = false;
+            _fireEdge = false;
 
             if (_match != null && _match.Log != null) _match.Log.Clear();
 
@@ -305,6 +311,7 @@ namespace Orbit.Galaxy.Unity
         {
             if (_profile != null && _profile.Settings == null) _profile.Settings = new GameSettings();
             GameSettings settings = _profile == null ? null : _profile.Settings;
+            _showFps = settings != null && settings.ShowFps;
             if (_input != null) _input.Configure(settings);
             if (_audio != null)
             {
@@ -314,6 +321,7 @@ namespace Orbit.Galaxy.Unity
             if (settings != null)
             {
                 string quality = settings.Quality == null ? GameSettings.QualityAuto : settings.Quality.ToUpperInvariant();
+                if (_renderer != null) _renderer.SetQuality(quality);
                 if (quality == GameSettings.QualityLow) Application.targetFrameRate = 30;
                 else if (quality == GameSettings.QualityHigh) Application.targetFrameRate = 120;
                 else if (quality == GameSettings.QualityMedium) Application.targetFrameRate = 60;
@@ -391,6 +399,14 @@ namespace Orbit.Galaxy.Unity
                 case SimEventKind.LeaderKilled: return "ЛИДЕР УНИЧТОЖЕН";
                 default: return ev.Kind.ToString();
             }
+        }
+
+        private void OnGUI()
+        {
+            if (!_showFps) return;
+            float fps = Time.unscaledDeltaTime > 0.0001f ? 1f / Time.unscaledDeltaTime : 0f;
+            GUI.Label(new Rect(Screen.width - 124f, 8f, 116f, 26f),
+                Mathf.RoundToInt(fps) + " FPS");
         }
 
         private void OnApplicationPause(bool paused)

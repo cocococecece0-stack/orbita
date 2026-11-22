@@ -517,6 +517,9 @@ namespace Orbit.Galaxy.Core.Tests
             AbilitySystem.Update(0.1f, new List<Ship> { ship }, arena, null, log, 1.1f);
             Assert.True(node.Position.X < 100f);
             Assert.True(AbilitySystem.IsActive(ship, AbilityKind.Magnet));
+            List<WorldObject> found = new List<WorldObject>();
+            arena.Index.Query(node.Position, 10f, found);
+            Assert.Contains(node, found);
         }
 
         [Fact]
@@ -630,6 +633,26 @@ namespace Orbit.Galaxy.Core.Tests
             Assert.Equal(WeaponKind.Ring, swarm.Weapon);
             Assert.Equal(HullShape.Hex, swarm.Hull);
             Assert.Equal(3, swarm.EvolutionTier);
+        }
+
+        [Fact]
+        public void MatchSimulation_EvolutionChoice_FreezesArenaUntilResolved()
+        {
+            MatchSimulation match = new MatchSimulation(GameModeKind.Classic, 4242, Difficulty.Normal, null);
+            match.PendingEvolutionChoices.Add(ContentDatabase.Evolutions[0]);
+            float timeBefore = match.Time;
+            Vec2 positionBefore = match.Player.Position;
+
+            for (int i = 0; i < 12; i++) match.Update(GameConfig.SimulationStep);
+            Close(timeBefore, match.Time, 0f);
+            Assert.True(CloseVec(positionBefore, match.Player.Position, 0f));
+            Assert.True(match.IsEvolutionPaused);
+
+            match.PlayerChooseEvolution(null);
+            Assert.Empty(match.PendingEvolutionChoices);
+            Assert.False(match.IsEvolutionPaused);
+            match.Update(GameConfig.SimulationStep);
+            Assert.True(match.Time > timeBefore);
         }
 
         // 10. Bots.
@@ -1011,6 +1034,39 @@ namespace Orbit.Galaxy.Core.Tests
                 AccountProfile restored = SaveManager.Load();
                 Assert.Equal(777, restored.Credits);
                 Assert.Equal("ship_vesta", restored.SelectedShip);
+            }
+            finally
+            {
+                SaveManager.SetPath(null);
+                if (Directory.Exists(directory)) Directory.Delete(directory, true);
+            }
+        }
+
+        [Fact]
+        public void SaveManager_AutomaticBackup_ProtectsPreviousProfile()
+        {
+            string directory = Path.Combine(Path.GetTempPath(),
+                "orbita-galaxy-backup-tests-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            try
+            {
+                SaveManager.SetPath(directory);
+                AccountProfile profile = new AccountProfile();
+                profile.Credits = 55;
+                profile.SelectedShip = "ship_orig";
+                SaveManager.Save(profile);
+                Assert.False(File.Exists(SaveManager.BackupPath));
+
+                profile.Credits = 99;
+                profile.SelectedShip = "ship_new";
+                SaveManager.Save(profile);
+
+                Assert.True(File.Exists(SaveManager.BackupPath));
+                Assert.Equal(99, SaveManager.Load().Credits);
+                Assert.True(SaveManager.Restore());
+                AccountProfile restored = SaveManager.Load();
+                Assert.Equal(55, restored.Credits);
+                Assert.Equal("ship_orig", restored.SelectedShip);
             }
             finally
             {

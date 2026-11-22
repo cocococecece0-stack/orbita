@@ -29,11 +29,13 @@ namespace Orbit.Galaxy.Unity
         private HoldButton _boost;
         private TapButton _ability;
         private TapButton _dash;
+        private TapButton _fire;
         private Vec2 _move;
         private Vec2 _aim;
         private bool _boostHeld;
         private bool _abilityPressed;
         private bool _dashPressed;
+        private bool _firePressed;
         private bool _visible;
         private Vector2Int _screenSize = new Vector2Int(-1, -1);
         private Vector2 _lastMouse;
@@ -43,6 +45,7 @@ namespace Orbit.Galaxy.Unity
         public bool BoostHeld { get { return _boostHeld; } }
         public bool AbilityPressed { get { return _abilityPressed; } }
         public bool DashPressed { get { return _dashPressed; } }
+        public bool FirePressed { get { return _firePressed; } }
 
         public void Configure(GameSettings settings)
         {
@@ -76,8 +79,10 @@ namespace Orbit.Galaxy.Unity
         {
             _abilityPressed = false;
             _dashPressed = false;
+            _firePressed = false;
             if (_ability != null) _ability.Consume();
             if (_dash != null) _dash.Consume();
+            if (_fire != null) _fire.Consume();
         }
 
         /// <summary>Сенсорные элементы показываются только во время активного матча.</summary>
@@ -134,9 +139,11 @@ namespace Orbit.Galaxy.Unity
                     _abilityPressed = true;
                 if (MouseDown(1) || KeyDown(UnityEngine.KeyCode.Q) || KeyDown(UnityEngine.KeyCode.RightControl))
                     _dashPressed = true;
+                if (KeyDown(UnityEngine.KeyCode.F)) _firePressed = true;
             }
             if (_ability != null && _ability.WasPressed) _abilityPressed = true;
             if (_dash != null && _dash.WasPressed) _dashPressed = true;
+            if (_fire != null && _fire.WasPressed) _firePressed = true;
 
             if (_layoutToken == GameSettings.ControlGamepad) ApplyGamepad();
         }
@@ -150,6 +157,7 @@ namespace Orbit.Galaxy.Unity
 
             if (KeyDown(UnityEngine.KeyCode.JoystickButton0)) _abilityPressed = true;
             if (KeyDown(UnityEngine.KeyCode.JoystickButton1)) _dashPressed = true;
+            if (KeyDown(UnityEngine.KeyCode.JoystickButton2)) _firePressed = true;
             _boostHeld = _boostHeld
                 || Key(UnityEngine.KeyCode.JoystickButton5)
                 || Key(UnityEngine.KeyCode.JoystickButton6);
@@ -215,6 +223,8 @@ namespace Orbit.Galaxy.Unity
             _boost = MakeHold("Ускорение", "БУСТ", TextureFactory.Lime);
             _dash = MakeTap("Рывок", "РЫВОК", TextureFactory.Cyan);
             _ability = MakeTap("Способность", "СПОСОБНОСТЬ", TextureFactory.Violet);
+            _fire = MakeTap("Огонь", "ОГОНЬ", TextureFactory.Coral);
+            Place(_fire.GetComponent<RectTransform>(), new Vector2(0.5f, 0f), new Vector2(0f, 48f), Vector2.one * ButtonSize);
 
             if (_layout == "ALT")
             {
@@ -244,7 +254,7 @@ namespace Orbit.Galaxy.Unity
             _canvas.sortingOrder = 80;
             CanvasScaler scaler = go.GetComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            scaler.referenceResolution = new Vector2(1600f, 900f);
             scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
             scaler.matchWidthOrHeight = 0.5f;
             scaler.dynamicPixelsPerUnit = 1f;

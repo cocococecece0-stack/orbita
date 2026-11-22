@@ -44,7 +44,7 @@ namespace Orbit.Galaxy
             LargeText = false;
             Quality = QualityAuto;
             ControlLayout = ControlTouch;
-            AutoFire = false;
+            AutoFire = true;
             ShowFps = false;
         }
 

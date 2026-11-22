@@ -449,7 +449,7 @@ namespace Orbit.Galaxy.Unity
             _bossPanel.gameObject.SetActive(false);
 
             Image bars = GalaxyUiTheme.Panel(hud, "Показатели", new Color32(8, 13, 31, 205),
-                new GBox(0f, 0f, 0f, 0f, 20f, 20f, 398f, 164f), GalaxyUiTheme.Round);
+                new GBox(0f, 1f, 0f, 1f, 20f, -354f, 398f, -210f), GalaxyUiTheme.Round);
             AddBar(bars.transform, "HP", 0, GalaxyUiTheme.AccentB, out _barHp);
             AddBar(bars.transform, "ЩИТ", 46, GalaxyUiTheme.AccentC, out _barShield);
             AddBar(bars.transform, "ЭНЕРГИЯ", 92, GalaxyUiTheme.AccentA, out _barEnergy);
@@ -462,13 +462,13 @@ namespace Orbit.Galaxy.Unity
                 int slot = i;
                 Button btn = GalaxyUiTheme.MakeButton(hud, "Способность " + i, ContentDatabase.FindAbility(kind).Name,
                     new Color32(18, 25, 51, 220), GalaxyUiTheme.Paper,
-                    new GBox(0f, 0f, 0f, 0f, x, 174f, x + 70f, 226f), 15,
+                    new GBox(0f, 1f, 0f, 1f, x, -412f, x + 70f, -360f), 15,
                     delegate { if (_app != null) _app.SetAbility(captured); });
                 _abilityLabels[slot] = btn.GetComponentInChildren<Text>();
             }
 
             RectTransform feed = GalaxyUiTheme.Place(hud, "Лента событий",
-                new GBox(1f, 0.5f, 1f, 0.5f, -380f, -104f, -20f, 154f));
+                new GBox(0.5f, 0f, 0.5f, 0f, -250f, 540f, 250f, 700f));
             _feedRoot = feed;
             for (int i = 0; i < _feed.Count; i++) CreateFeedLabel(_feed[i]);
             GalaxyUiTheme.Label(hud, "", 1, GalaxyUiTheme.Muted, TextAnchor.MiddleLeft, GBox.At(0f, 0f, 1f, 1f)).gameObject.SetActive(false);

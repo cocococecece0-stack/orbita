@@ -15,7 +15,7 @@ namespace Orbit.Galaxy
         public const float MaxFrameDelta = 0.25f;
         public const float BorderDamagePerSecond = 14f;
         public const int TargetParticipants = 28;
-        public const int MinParticipants = 20;
+        public const int MinParticipants = 21;
         public const int MaxParticipants = 35;
 
         // Player ship baseline.

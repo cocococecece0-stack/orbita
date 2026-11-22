@@ -22,6 +22,17 @@ namespace Orbit.Galaxy.Unity
         private readonly List<SpriteRenderer> _pool = new List<SpriteRenderer>(512);
         private readonly List<Particle> _particles = new List<Particle>(GameConfig.MaxVisibleParticles);
         private int _cursor;
+        private int _particleLimit = GameConfig.MaxVisibleParticles;
+
+        /// <summary>Качество влияет на реальный бюджет частиц, а не только на частоту кадров.</summary>
+        public void SetQuality(string quality)
+        {
+            if (quality == GameSettings.QualityLow) _particleLimit = Mathf.Max(24, GameConfig.MaxVisibleParticles / 4);
+            else if (quality == GameSettings.QualityMedium) _particleLimit = Mathf.Max(48, GameConfig.MaxVisibleParticles / 2);
+            else _particleLimit = GameConfig.MaxVisibleParticles;
+            if (_particles.Count > _particleLimit)
+                _particles.RemoveRange(_particleLimit, _particles.Count - _particleLimit);
+        }
 
         public void Initialize(GalaxyApp app)
         {
@@ -433,7 +444,7 @@ namespace Orbit.Galaxy.Unity
 
         private void SpawnBurst(Vec2 position, Color color, int count, float speed, float size, float life, bool ring)
         {
-            int available = GameConfig.MaxVisibleParticles - _particles.Count;
+            int available = _particleLimit - _particles.Count;
             if (available <= 0) return;
             int amount = Mathf.Min(count, available);
             for (int i = 0; i < amount; i++)

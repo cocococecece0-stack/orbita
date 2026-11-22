@@ -64,6 +64,7 @@ namespace Orbit.Galaxy
         private bool _playerBoost;
         private bool _dashQueued;
         private bool _abilityQueued;
+        private bool _fireQueued;
         private bool _evolutionOfferActive;
         private bool _initialBossSpawned;
         private WorldEventKind? _lastActiveEvent;
@@ -135,6 +136,9 @@ namespace Orbit.Galaxy
         public void Update(float dt)
         {
             if (Finished || dt <= 0f) return;
+            // While the player chooses an evolution the whole arena is frozen: no bot moves,
+            // no damage is applied and the match timer does not advance.
+            if (PendingEvolutionChoices != null && PendingEvolutionChoices.Count > 0) return;
             dt = MathGalaxy.Clamp(dt, 0f, GameConfig.MaxFrameDelta);
             Time += dt;
 
@@ -210,6 +214,12 @@ namespace Orbit.Galaxy
         public void PlayerDash()
         {
             _dashQueued = true;
+        }
+
+        /// <summary>Ручной выстрел. При AutoFire вызывать не обязательно.</summary>
+        public void PlayerFire()
+        {
+            _fireQueued = true;
         }
 
         public void PlayerChooseEvolution(EvolutionDef def)
@@ -550,6 +560,16 @@ namespace Orbit.Galaxy
 
         // ───────────────────────── Per-step systems ─────────────────────────
 
+        private static float TurnTowards(float current, float target, float maxStep)
+        {
+            float delta = target - current;
+            while (delta > Math.PI) delta -= 2f * (float)Math.PI;
+            while (delta < -Math.PI) delta += 2f * (float)Math.PI;
+            if (delta > maxStep) delta = maxStep;
+            if (delta < -maxStep) delta = -maxStep;
+            return current + delta;
+        }
+
         private void ApplyPlayerInput(float dt)
         {
             if (Player == null) return;
@@ -558,6 +578,7 @@ namespace Orbit.Galaxy
                 Player.MoveInput = Vec2.Zero;
                 _dashQueued = false;
                 _abilityQueued = false;
+                _fireQueued = false;
                 _playerBoost = false;
                 return;
             }
@@ -566,7 +587,8 @@ namespace Orbit.Galaxy
             if (_playerAim.SqrMagnitude > 0.0001f)
             {
                 Player.AimInput = _playerAim;
-                Player.Facing = _playerAim;
+                float maxTurn = Math.Max(0.01f, Player.TurnRate) * dt;
+                Player.Facing = Vec2.FromAngle(TurnTowards(Player.Facing.Angle(), _playerAim.Angle(), maxTurn));
             }
 
             bool boost = _playerBoost && Player.Energy > 1f && Player.MoveInput.SqrMagnitude > 0.01f;
@@ -585,8 +607,12 @@ namespace Orbit.Galaxy
             {
                 AbilitySystem.Activate(Player, Player.ActiveAbility, Log, Time);
             }
+
+            bool autoFire = Profile != null && Profile.Settings != null && Profile.Settings.AutoFire;
+            if (autoFire || _fireQueued) Combat.Fire(Player, Player.AimInput, Log, Time);
             _dashQueued = false;
             _abilityQueued = false;
+            _fireQueued = false;
         }
 
         private void HandleRespawn(Ship ship, float dt)

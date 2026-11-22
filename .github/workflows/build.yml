@@ -4,13 +4,7 @@ on:
   push:
     branches: ["**"]
     tags: ["v*"]
-    paths-ignore:
-      - "unity/**"
-      - "docs/**"
   pull_request:
-    paths-ignore:
-      - "unity/**"
-      - "docs/**"
   workflow_dispatch:
 
 jobs:

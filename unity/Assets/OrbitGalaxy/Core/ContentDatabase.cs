@@ -320,7 +320,7 @@ namespace Orbit.Galaxy
             new ModeDef(GameModeKind.Survival, "ВЫЖИВАНИЕ", "Арена сжимается, опасность растёт.", 24, 7f, 1.28f, 1.25f, true, false, false, 0, Difficulty.Hard),
             new ModeDef(GameModeKind.BossHunt, "ОХОТА НА БОССОВ", "Элитные цели и самые ценные награды.", 22, 9f, 1.18f, 1.60f, false, true, false, 1, Difficulty.Hard),
             new ModeDef(GameModeKind.Chaos, "ХАОС", "Случайные модификаторы и частые события.", 32, 6f, 1.35f, 1.45f, false, true, true, 2, Difficulty.Normal),
-            new ModeDef(GameModeKind.Hardcore, "ХАРДКОР", "Одна жизнь. Особые награды.", 20, 6f, 1.55f, 2.10f, true, false, false, 0, Difficulty.Expert),
+            new ModeDef(GameModeKind.Hardcore, "ХАРДКОР", "Одна жизнь. Особые награды.", 21, 6f, 1.55f, 2.10f, true, false, false, 0, Difficulty.Expert),
             new ModeDef(GameModeKind.Infinite, "БЕСКОНЕЧНОСТЬ", "Матч длится, пока вы живы.", 30, 30f, 1.10f, 1.35f, true, true, true, 1, Difficulty.Hard)
         };
 
