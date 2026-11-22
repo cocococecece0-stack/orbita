@@ -5,29 +5,55 @@ on:
     tags:
       - "g*"
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Необязательный g* тег для публикации бинарников (пусто = только артефакты)"
+        required: false
+        default: ""
+
+concurrency:
+  group: galaxy-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  UNITY_VERSION: "2022.3.74f1"
+  ANDROID_APK: "OrbitaGalaxy-Android.apk"
+  IOS_IPA: "OrbitaGalaxy-iOS-Unsigned.ipa"
+  BUNDLE_ID: "com.orbit.galaxy"
+  BUNDLE_VERSION: "4.1.0"
+  ANDROID_VERSION_CODE: "4100"
+  IOS_MIN_VERSION: "13.0"
 
 jobs:
   credentials:
     name: Check Unity credentials
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       available: ${{ steps.check.outputs.available }}
     steps:
       - name: Detect Unity credentials
         id: check
         env:
-          HAS_UNITY_CREDENTIALS: ${{ secrets.UNITY_LICENSE != '' || (secrets.UNITY_SERIAL != '' && secrets.UNITY_EMAIL != '' && secrets.UNITY_PASSWORD != '') }}
+          HAS_UNITY_LICENSE: ${{ secrets.UNITY_LICENSE != '' }}
+          HAS_UNITY_SERIAL: ${{ secrets.UNITY_SERIAL != '' && secrets.UNITY_EMAIL != '' && secrets.UNITY_PASSWORD != '' }}
         run: |
-          if [ "$HAS_UNITY_CREDENTIALS" = "true" ]; then
+          if [ "$HAS_UNITY_LICENSE" = "true" ] || [ "$HAS_UNITY_SERIAL" = "true" ]; then
             echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "Unity credentials detected."
           else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Unity builds are disabled: set UNITY_LICENSE, or UNITY_SERIAL with UNITY_EMAIL and UNITY_PASSWORD. Publishing source only."
+            echo "::error::Unity License missing. Unity Personal has no serial and cannot be activated without Unity Hub in any officially supported flow. Activate Personal once in Unity Hub, copy the resulting .ulf, and add its contents as Repository Secret UNITY_LICENSE (plus UNITY_EMAIL and UNITY_PASSWORD for GameCI)."
+            echo "This workflow will not simulate a license or publish a fake successful build."
+            exit 1
           fi
 
   tests:
     name: Core tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -44,10 +70,11 @@ jobs:
         run: dotnet test unity/Tests/Orbit.Core.Tests.csproj --configuration Release --nologo
 
   android:
-    name: Android (ORBITA GALAXY)
+    name: Android APK
     needs: credentials
     if: needs.credentials.outputs.available == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -66,7 +93,7 @@ jobs:
         uses: game-ci/unity-builder@v4
         with:
           projectPath: unity
-          unityVersion: 2022.3.74f1
+          unityVersion: ${{ env.UNITY_VERSION }}
           targetPlatform: Android
           buildMethod: Orbit.Galaxy.Editor.GalaxyBuildScript.BuildAndroid
         env:
@@ -75,18 +102,83 @@ jobs:
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
           UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
 
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="unity/build/GalaxyAndroid/${ANDROID_APK}"
+          if [ ! -s "$APK" ]; then
+            echo "::error::APK was not produced at $APK"
+            exit 1
+          fi
+
+          unzip -tq "$APK" >/dev/null
+          for entry in AndroidManifest.xml classes.dex; do
+            if ! unzip -l "$APK" | grep -Fq "$entry"; then
+              echo "::error::APK is missing $entry"
+              exit 1
+            fi
+          done
+          if ! unzip -l "$APK" | grep -Fq 'lib/arm64-v8a/'; then
+            echo "::error::APK has no arm64-v8a native libraries; ARM64 target was not applied"
+            exit 1
+          fi
+
+          AAPT=""
+          for root in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}" /usr/local/lib/android/sdk /opt/android-sdk; do
+            [ -n "$root" ] || continue
+            candidate="$(find "$root/build-tools" -type f \( -name aapt -o -name aapt2 \) 2>/dev/null | sort -V | tail -n 1 || true)"
+            if [ -n "$candidate" ]; then
+              AAPT="$candidate"
+              break
+            fi
+          done
+          if [ -z "$AAPT" ]; then
+            echo "::error::Android SDK aapt/aapt2 was not found; cannot verify APK identity"
+            exit 1
+          fi
+
+          BADGING="$("$AAPT" dump badging "$APK" 2>/dev/null || true)"
+          if [ -z "$BADGING" ]; then
+            echo "::error::$AAPT could not read $APK"
+            exit 1
+          fi
+
+          check_badging() {
+            local description="$1"
+            local pattern="$2"
+            if ! printf '%s\n' "$BADGING" | grep -Eq "$pattern"; then
+              echo "::error::APK $description does not match required value ($pattern)"
+              exit 1
+            fi
+          }
+          check_badging "package id" "name='$BUNDLE_ID'"
+          check_badging "version name" "versionName='$BUNDLE_VERSION'"
+          check_badging "version code" "versionCode='$ANDROID_VERSION_CODE'"
+          check_badging "minimum SDK" "sdkVersion:'23'"
+
+          TREE="$("$AAPT" dump xmltree "$APK" AndroidManifest.xml 2>/dev/null || true)"
+          ORIENTATION="$(printf '%s\n' "$TREE" | grep -A1 'screenOrientation' | tail -n 1 || true)"
+
+          echo "APK verified with $AAPT: $APK"
+          echo "Bundle: $BUNDLE_ID $BUNDLE_VERSION ($ANDROID_VERSION_CODE), minSdk 23, arm64-v8a"
+          echo "Manifest orientation: ${ORIENTATION:-not reported by aapt}"
+          ls -lh "$APK"
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: orbita-galaxy-android
-          path: unity/build/GalaxyAndroid/OrbitaGalaxy.apk
+          path: unity/build/GalaxyAndroid/${{ env.ANDROID_APK }}
+          retention-days: 14
           if-no-files-found: error
 
   ios:
-    name: iOS (ORBITA GALAXY)
+    name: iOS Unsigned IPA
     needs: credentials
     if: needs.credentials.outputs.available == 'true'
     runs-on: macos-latest
+    timeout-minutes: 120
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -105,7 +197,7 @@ jobs:
         uses: game-ci/unity-builder@v4
         with:
           projectPath: unity
-          unityVersion: 2022.3.74f1
+          unityVersion: ${{ env.UNITY_VERSION }}
           targetPlatform: iOS
           buildMethod: Orbit.Galaxy.Editor.GalaxyBuildScript.BuildIOS
         env:
@@ -114,87 +206,239 @@ jobs:
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
           UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
 
-      - name: Upload Xcode project
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "16.4"
+
+      - name: Build and package unsigned IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for tool in xcodebuild plutil lipo file otool unzip zip codesign; do
+            command -v "$tool" >/dev/null || { echo "::error::Missing tool: $tool"; exit 1; }
+          done
+          xcodebuild -version
+
+          XCODE_DIR="unity/build/GalaxyiOS"
+          find "$XCODE_DIR" -type f \( -name '*.sh' -o -name '*.py' \) -exec chmod u+x {} + 2>/dev/null || true
+
+          if [ -f "$XCODE_DIR/Unity-iPhone.xcworkspace/contents.xcworkspacedata" ]; then
+            XC_ARGS=(-workspace "$XCODE_DIR/Unity-iPhone.xcworkspace")
+          elif [ -d "$XCODE_DIR/Unity-iPhone.xcodeproj" ]; then
+            XC_ARGS=(-project "$XCODE_DIR/Unity-iPhone.xcodeproj")
+          else
+            PROJECT="$(find "$XCODE_DIR" -maxdepth 2 -type d -name '*.xcodeproj' 2>/dev/null | head -n 1)"
+            if [ -z "$PROJECT" ]; then
+              echo "::error::Unity did not produce an Xcode project under $XCODE_DIR"
+              exit 1
+            fi
+            XC_ARGS=(-project "$PROJECT")
+          fi
+
+          xcodebuild "${XC_ARGS[@]}" -list
+
+          WORK="$RUNNER_TEMP/galaxy-unsigned-ios"
+          ARCHIVE="$WORK/Unity-iPhone-unsigned.xcarchive"
+          rm -rf "$WORK"
+          mkdir -p "$WORK"
+
+          # build settings are intentionally after the archive action.
+          xcodebuild "${XC_ARGS[@]}" \
+            -scheme Unity-iPhone \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$ARCHIVE" \
+            -derivedDataPath "$WORK/DerivedData" \
+            clean archive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS="" \
+            PROVISIONING_PROFILE="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            DEVELOPMENT_TEAM="" \
+            ONLY_ACTIVE_ARCH=NO \
+            ARCHS=arm64 \
+            IPHONEOS_DEPLOYMENT_TARGET="$IOS_MIN_VERSION"
+
+          APP_SRC="$(find "$ARCHIVE/Products/Applications" -type d -name '*.app' -print -quit 2>/dev/null)"
+          if [ -z "$APP_SRC" ]; then
+            echo "::error::No .app found in the unsigned archive"
+            find "$ARCHIVE" -maxdepth 4 -print || true
+            exit 1
+          fi
+
+          APP_NAME="$(basename "$APP_SRC")"
+          EXECUTABLE="$(plutil -extract CFBundleExecutable raw -o - "$APP_SRC/Info.plist")"
+          plutil -lint "$APP_SRC/Info.plist"
+          ACTUAL_ID="$(plutil -extract CFBundleIdentifier raw -o - "$APP_SRC/Info.plist")"
+          MIN_IOS="$(plutil -extract MinimumOSVersion raw -o - "$APP_SRC/Info.plist")"
+
+          if [ "$ACTUAL_ID" != "$BUNDLE_ID" ]; then
+            echo "::error::Unexpected bundle id: $ACTUAL_ID (expected $BUNDLE_ID)"
+            exit 1
+          fi
+          if [ ! -f "$APP_SRC/$EXECUTABLE" ]; then
+            echo "::error::Executable $EXECUTABLE is missing from $APP_SRC"
+            exit 1
+          fi
+
+          ARCHS="$(lipo -archs "$APP_SRC/$EXECUTABLE")"
+          if [ "$ARCHS" != "arm64" ]; then
+            echo "::error::Executable architecture must be arm64, got: $ARCHS"
+            exit 1
+          fi
+          if [ "$MIN_IOS" != "$IOS_MIN_VERSION" ]; then
+            echo "::error::MinimumOSVersion must be $IOS_MIN_VERSION, got: $MIN_IOS"
+            exit 1
+          fi
+
+          file "$APP_SRC/$EXECUTABLE"
+          otool -l "$APP_SRC/$EXECUTABLE" | grep -A3 -E 'LC_BUILD_VERSION|LC_VERSION_MIN_IPHONEOS' || true
+
+          CS_LOG="$WORK/codesign.log"
+          if codesign --verify --deep --strict --verbose=2 "$APP_SRC" >"$CS_LOG" 2>&1; then
+            echo "::error::The .app is signed; this job must produce an unsigned IPA"
+            cat "$CS_LOG"
+            exit 1
+          fi
+          if ! grep -Eqi 'not signed|code object is not signed' "$CS_LOG"; then
+            echo "::error::Could not prove the .app is unsigned"
+            cat "$CS_LOG"
+            exit 1
+          fi
+          if [ -e "$APP_SRC/_CodeSignature/CodeResources" ]; then
+            echo "::error::Ad-hoc signature detected (_CodeSignature/CodeResources)"
+            exit 1
+          fi
+          if find "$APP_SRC" -name 'embedded.mobileprovision' -print -quit | grep -q .; then
+            echo "::error::Provisioning profile found inside the .app"
+            exit 1
+          fi
+
+          STAGE="$WORK/stage"
+          rm -rf "$STAGE"
+          mkdir -p "$STAGE/Payload"
+          export COPYFILE_DISABLE=1
+          cp -Rp "$APP_SRC" "$STAGE/Payload/$APP_NAME"
+
+          IPA="$GITHUB_WORKSPACE/unity/build/GalaxyiOS/${IOS_IPA}"
+          rm -f "$IPA"
+          (cd "$STAGE" && zip -q -r -y -X "$IPA" Payload)
+
+          unzip -tq "$IPA" >/dev/null
+          ROOTS="$(unzip -Z1 "$IPA" | awk -F/ '{print $1}' | sort -u)"
+          if [ "$ROOTS" != "Payload" ]; then
+            echo "::error::Unexpected IPA roots: $ROOTS"
+            exit 1
+          fi
+          VERIFY="$WORK/verify"
+          mkdir -p "$VERIFY"
+          unzip -q "$IPA" -d "$VERIFY"
+          plutil -lint "$VERIFY/Payload/$APP_NAME/Info.plist"
+          if unzip -Z1 "$IPA" | grep -q 'embedded.mobileprovision$'; then
+            echo "::error::IPA contains embedded.mobileprovision"
+            exit 1
+          fi
+
+          {
+            echo "### iOS unsigned IPA"
+            echo "- App: $APP_NAME"
+            echo "- Bundle id: $ACTUAL_ID"
+            echo "- Minimum iOS: $MIN_IOS"
+            echo "- Architectures: $ARCHS"
+            echo "- Signature: unsigned"
+            echo "- IPA: $IPA"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "Unsigned IPA verified: $IPA"
+          ls -lh "$IPA"
+          shasum -a 256 "$IPA"
+
+      - name: Upload unsigned IPA
         uses: actions/upload-artifact@v4
         with:
-          name: orbita-galaxy-ios-xcode
-          path: unity/build/GalaxyiOS
+          name: orbita-galaxy-ios-unsigned
+          path: unity/build/GalaxyiOS/${{ env.IOS_IPA }}
+          retention-days: 14
           if-no-files-found: error
 
   release:
-    name: Publish ORBITA Galaxy release
-    if: startsWith(github.ref, 'refs/tags/g') && always()
+    name: Publish ORBITA Galaxy binaries
+    if: always() && (startsWith(github.ref, 'refs/tags/g') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != ''))
     needs: [credentials, tests, android, ios]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Verify all build jobs succeeded
+        run: |
+          set -euo pipefail
+          test "${{ needs.credentials.result }}" = "success"
+          test "${{ needs.tests.result }}" = "success"
+          test "${{ needs.android.result }}" = "success"
+          test "${{ needs.ios.result }}" = "success"
+
+      - name: Resolve release tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          TAG="$INPUT_TAG"
+          if [ -z "$TAG" ]; then TAG="$GITHUB_REF_NAME"; fi
+          case "$TAG" in
+            g[0-9]*) echo "tag=$TAG" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::Release tag must start with g (got '$TAG')"; exit 1 ;;
+          esac
+
       - name: Download Android APK
-        if: needs.credentials.outputs.available == 'true' && needs.android.result == 'success' && needs.ios.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: orbita-galaxy-android
-          path: dist/galaxy/android
+          path: dist/galaxy
 
-      - name: Download iOS Xcode project
-        if: needs.credentials.outputs.available == 'true' && needs.android.result == 'success' && needs.ios.result == 'success'
+      - name: Download iOS unsigned IPA
         uses: actions/download-artifact@v4
         with:
-          name: orbita-galaxy-ios-xcode
-          path: dist/galaxy/ios
+          name: orbita-galaxy-ios-unsigned
+          path: dist/galaxy
 
-      - name: Package binary assets
-        if: needs.credentials.outputs.available == 'true' && needs.android.result == 'success' && needs.ios.result == 'success'
+      - name: Verify release assets
+        shell: bash
         run: |
-          mv dist/galaxy/android/OrbitaGalaxy.apk "dist/orbita-galaxy-${GITHUB_REF_NAME}-debug.apk"
-          cd dist/galaxy
-          zip -qry "../orbita-galaxy-${GITHUB_REF_NAME}-ios-xcode.zip" ios
-          cd ..
-          ls -lh orbita-galaxy-*
+          set -euo pipefail
+          APK="dist/galaxy/${ANDROID_APK}"
+          IPA="dist/galaxy/${IOS_IPA}"
+          test -s "$APK"
+          test -s "$IPA"
+          unzip -tq "$APK"
+          unzip -tq "$IPA"
+          ls -lh "$APK" "$IPA"
 
-      - name: Publish release with binaries
-        if: needs.credentials.outputs.available == 'true' && needs.tests.result == 'success' && needs.android.result == 'success' && needs.ios.result == 'success'
+      - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          name: "ORBITA Galaxy ${{ github.ref_name }}"
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: "ORBITA Galaxy ${{ steps.tag.outputs.tag }}"
           body: |
-            ORBITA GALAXY — одиночная .io-арена на Unity.
-            Бинарники собраны CI по тегу `${{ github.ref_name }}`.
-            Старые релизы `v*` и `u*` не затронуты.
+            ORBITA GALAXY — одиночная offline .io-арена на Unity 2022.3.74f1.
+
+            - `OrbitaGalaxy-Android.apk` — ARM64 APK для установки и тестирования (debug-подпись Unity).
+            - `OrbitaGalaxy-iOS-Unsigned.ipa` — неподписанный IPA в структуре `Payload/*.app`; подпиши его своим сертификатом перед установкой.
+
+            Bundle id: `com.orbit.galaxy`, версия `4.1.0` (build `4100`).
+            Старые ветки, workflow и релизы `v*` / `u*` не затрагиваются.
           draft: false
+          prerelease: false
           generate_release_notes: true
+          overwrite_files: true
           files: |
-            dist/orbita-galaxy-*-debug.apk
-            dist/orbita-galaxy-*-ios-xcode.zip
-
-      - name: Package source fallback
-        if: needs.credentials.outputs.available != 'true' || needs.tests.result != 'success' || needs.android.result != 'success' || needs.ios.result != 'success'
-        run: |
-          git archive --format=zip --prefix="orbita-galaxy-${GITHUB_REF_NAME}-source/" \
-            -o "orbita-galaxy-${GITHUB_REF_NAME}-source.zip" HEAD
-          ls -lh orbita-galaxy-*-source.zip
-
-      - name: Publish source-only release
-        if: needs.credentials.outputs.available != 'true' || needs.tests.result != 'success' || needs.android.result != 'success' || needs.ios.result != 'success'
-        uses: softprops/action-gh-release@v2
-        with:
-          name: "ORBITA Galaxy ${{ github.ref_name }} (исходники)"
-          body: |
-            ORBITA GALAXY — одиночная .io-арена на Unity.
-
-            Публикуется исходный код: бинарные APK/IPA для этого тега недоступны.
-            Результат тестов ядра: `${{ needs.tests.result }}`, Android: `${{ needs.android.result }}`, iOS: `${{ needs.ios.result }}`.
-
-            Для сборки бинарников нужны секреты Unity
-            (`UNITY_LICENSE` или `UNITY_SERIAL` + `UNITY_EMAIL` + `UNITY_PASSWORD`).
-            После их добавления повторный запуск workflow по тому же тегу
-            опубликует APK и Xcode-проект.
-
-            Нативные `v*`, Unity `u*` и теги `v4.0`/`v4.1` не затрагиваются.
-          draft: false
-          generate_release_notes: true
-          files: |
-            orbita-galaxy-*-source.zip
+            dist/galaxy/OrbitaGalaxy-Android.apk
+            dist/galaxy/OrbitaGalaxy-iOS-Unsigned.ipa

@@ -23,8 +23,9 @@ namespace Orbit.Galaxy.Editor
         private const string ProductName = "ORBITA GALAXY";
         private const string CompanyName = "Orbit";
         private const string BundleVersion = "4.1.0";
-        private const int AndroidVersionCode = 9;
-        private const string ApplicationIdentifier = "com.example.orbit.galaxy";
+        private const int AndroidVersionCode = 4100;
+        private const string ApplicationIdentifier = "com.orbit.galaxy";
+        private const string IosMinimumVersion = "13.0";
 
         [MenuItem("ORBITA GALAXY/Activate Galaxy profile")]
         public static void ActivateGalaxy()
@@ -51,13 +52,14 @@ namespace Orbit.Galaxy.Editor
         [MenuItem("ORBITA GALAXY/Build/Android")]
         public static void BuildAndroid()
         {
-            Build(BuildTarget.Android, Path.Combine(ProjectRoot(), "build", "GalaxyAndroid", "OrbitaGalaxy.apk"));
+            Build(BuildTarget.Android, Path.Combine(ProjectRoot(), "build", "GalaxyAndroid", "OrbitaGalaxy-Android.apk"));
         }
 
         [MenuItem("ORBITA GALAXY/Build/iOS Xcode project")]
         public static void BuildIOS()
         {
-            Build(BuildTarget.iOS, Path.Combine(ProjectRoot(), "build", "GalaxyiOS", "OrbitaGalaxy.xcodeproj"));
+            // Для iOS Unity ожидает папку назначения: внутри появится Unity-iPhone.xcodeproj.
+            Build(BuildTarget.iOS, Path.Combine(ProjectRoot(), "build", "GalaxyiOS"));
         }
 
         /// <summary>Creates the dedicated scene and makes it the only enabled build scene.</summary>
@@ -111,6 +113,10 @@ namespace Orbit.Galaxy.Editor
             PlayerSettings.companyName = CompanyName;
             PlayerSettings.bundleVersion = BundleVersion;
             PlayerSettings.defaultInterfaceOrientation = UIOrientation.LandscapeLeft;
+            PlayerSettings.allowedAutorotateToLandscapeLeft = true;
+            PlayerSettings.allowedAutorotateToLandscapeRight = true;
+            PlayerSettings.allowedAutorotateToPortrait = false;
+            PlayerSettings.allowedAutorotateToPortraitUpsideDown = false;
             PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Android, ApplicationIdentifier);
             PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.iOS, ApplicationIdentifier);
             PlayerSettings.Android.bundleVersionCode = AndroidVersionCode;
@@ -120,6 +126,53 @@ namespace Orbit.Galaxy.Editor
             PlayerSettings.SetApiCompatibilityLevel(NamedBuildTarget.Android, ApiCompatibilityLevel.NET_Standard_2_0);
             PlayerSettings.SetApiCompatibilityLevel(NamedBuildTarget.iOS, ApiCompatibilityLevel.NET_Standard_2_0);
             PlayerSettings.runInBackground = false;
+            SetAndroidTargetSettings();
+            SetIosMinimumVersion();
+        }
+
+        /// <summary>
+        /// ARM64 and API 23 are required for the published APK. Reflection keeps this editor
+        /// script independent of the Android editor assembly reference while still failing the
+        /// build loudly if the expected PlayerSettings properties are unavailable.
+        /// </summary>
+        private static void SetAndroidTargetSettings()
+        {
+            try
+            {
+                PropertyInfo architecture = typeof(PlayerSettings.Android).GetProperty(
+                    "targetArchitectures", BindingFlags.Public | BindingFlags.Static);
+                if (architecture == null || !architecture.CanWrite)
+                    throw new InvalidOperationException("PlayerSettings.Android.targetArchitectures is unavailable.");
+                architecture.SetValue(null, Enum.Parse(architecture.PropertyType, "ARM64"), null);
+
+                PropertyInfo minimumSdk = typeof(PlayerSettings.Android).GetProperty(
+                    "minSdkVersion", BindingFlags.Public | BindingFlags.Static);
+                if (minimumSdk == null || !minimumSdk.CanWrite)
+                    throw new InvalidOperationException("PlayerSettings.Android.minSdkVersion is unavailable.");
+                minimumSdk.SetValue(null, Enum.Parse(minimumSdk.PropertyType, "AndroidApiLevel23"), null);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogError("Could not apply required Android target settings: " + exception.Message);
+                throw;
+            }
+        }
+
+        private static void SetIosMinimumVersion()
+        {
+            try
+            {
+                PropertyInfo minimum = typeof(PlayerSettings.iOS).GetProperty(
+                    "targetOSVersionString", BindingFlags.Public | BindingFlags.Static);
+                if (minimum == null || !minimum.CanWrite)
+                    throw new InvalidOperationException("PlayerSettings.iOS.targetOSVersionString is unavailable.");
+                minimum.SetValue(null, IosMinimumVersion, null);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogError("Could not apply required iOS minimum version: " + exception.Message);
+                throw;
+            }
         }
 
         /// <summary>

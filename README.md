@@ -8,6 +8,8 @@
 - **Старая Unity-аркада:** [`unity/Assets/Orbit/`](unity/Assets/Orbit/) заморожена, ветка `unity-main`, теги `u*` и релиз `u4.0.0` остаются без изменений.
 - **Нативная v3.8.0:** последний опубликованный baseline, исходники в `app/` и `ios/Orbit/`; теги `v*`, включая `v4.0`/`v4.1`, не трогаются.
 
+- **Galaxy CI:** `g*` и ручной запуск `galaxy-build.yml` собирают отдельные `OrbitaGalaxy-Android.apk` и `OrbitaGalaxy-iOS-Unsigned.ipa`, проверяют их и публикуют в релизе. Без легального `UNITY_LICENSE` job падает с явной ошибкой.
+
 Подробности по Unity-проекту, тестам и секретам сборки — в [`unity/README.md`](unity/README.md).
 
 ## Доступные режимы

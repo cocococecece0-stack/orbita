@@ -79,7 +79,27 @@ Project**) are written to:
 **Orbit → Build → Open Build Folder** reveals that directory. The `build/` output is
 ignored by Git.
 
-## CI and required GitHub secrets
+## Galaxy CI and artifacts
+
+`.github/workflows/galaxy-build.yml` runs on tags matching `g*` and on `workflow_dispatch`.
+It requires a legal Unity Personal `.ulf` in the `UNITY_LICENSE` repository secret
+(plus `UNITY_EMAIL` and `UNITY_PASSWORD` for GameCI). Unity Personal has no serial number
+and, in officially supported Unity flows, must first be activated from Unity Hub on a local
+machine; an `.alf` request is not a supported Personal activation path. Without a license
+the workflow fails with an explicit error instead of publishing a fake binary release.
+
+The Android job verifies package id `com.orbit.galaxy`, version `4.1.0` (code `4100`),
+minSdk 23 and `lib/arm64-v8a`, then uploads `orbita-galaxy-android` with the stable file
+name `OrbitaGalaxy-Android.apk`. The iOS job exports an unsigned Xcode `.app`, packages it
+as `Payload/*.app` in `OrbitaGalaxy-iOS-Unsigned.ipa`, checks the bundle id, arm64 slice,
+iOS 13 minimum and absence of signing/provisioning assets, then uploads
+`orbita-galaxy-ios-unsigned`. Both artifacts are retained for 14 days. A successful `g*`
+run publishes both files to the GitHub release with `softprops/action-gh-release@v2`.
+
+The historical `g4.1.0` release remains source-only; it was published before these
+artifact checks existed.
+
+## Legacy Arcade Rush CI and required GitHub secrets
 
 `.github/workflows/unity-build.yml` runs on tags matching `u*` (for example `u4.0.0`)
 and on manual `workflow_dispatch`. It builds Android on `ubuntu-latest` and iOS on
