@@ -223,7 +223,8 @@ namespace Orbit.Galaxy.Unity
                 SetText(_hudRank, "МЕСТО " + rank + " / " + match.Ships.Count, rank == 1 ? GalaxyUiTheme.AccentA : GalaxyUiTheme.Paper);
                 SetText(_hudMass, "МАССА " + player.Mass.ToString("F1"), GalaxyUiTheme.AccentA);
                 SetText(_hudLevel, "УРОВЕНЬ " + Mathf.FloorToInt(player.Level), GalaxyUiTheme.Paper);
-                SetText(_hudKills, "УБИЙСТВА " + player.Kills + "   СЕРИЯ " + player.Streak, GalaxyUiTheme.Paper);
+                string length = player.Body == null ? string.Empty : "   ДЛИНА " + player.Body.Count;
+                SetText(_hudKills, "УБИЙСТВА " + player.Kills + "   СЕРИЯ " + player.Streak + length, GalaxyUiTheme.Paper);
                 SetText(_hudResources, "ЭНЕРГИЯ " + player.EnergyCollected.ToString("F0") +
                     "   КРИСТАЛЛЫ " + player.Crystals + "   ТМ " + player.DarkMatter + "   АРТЕФАКТЫ " + player.Artifacts,
                     GalaxyUiTheme.Muted);

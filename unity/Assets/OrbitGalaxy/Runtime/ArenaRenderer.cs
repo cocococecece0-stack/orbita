@@ -11,6 +11,7 @@ namespace Orbit.Galaxy.Unity
     {
         private const int PoolLimit = 1100;
         private const int ProjectileLimit = 320;
+        private const int MaxSnakeSegmentsDrawn = 360;
 
         private GalaxyApp _app;
         private Camera _camera;
@@ -22,6 +23,7 @@ namespace Orbit.Galaxy.Unity
         private readonly List<SpriteRenderer> _pool = new List<SpriteRenderer>(512);
         private readonly List<Particle> _particles = new List<Particle>(GameConfig.MaxVisibleParticles);
         private int _cursor;
+        private int _segmentsDrawn;
         private int _particleLimit = GameConfig.MaxVisibleParticles;
 
         /// <summary>Качество влияет на реальный бюджет частиц, а не только на частоту кадров.</summary>
@@ -131,6 +133,7 @@ namespace Orbit.Galaxy.Unity
             Ship player = match.Player;
             if (player != null && Visible(player.Position, player.Radius, center, halfWidth, halfHeight, margin))
             {
+                DrawSnakeBody(player, center, halfWidth, halfHeight, margin);
                 DrawShip(player);
                 drawn++;
             }
@@ -142,6 +145,7 @@ namespace Orbit.Galaxy.Unity
                     Ship ship = ships[i];
                     if (ship == null || ship == player || !ship.IsBoss) continue;
                     if (!Visible(ship.Position, ship.Radius, center, halfWidth, halfHeight, margin)) continue;
+                    DrawSnakeBody(ship, center, halfWidth, halfHeight, margin);
                     DrawShip(ship);
                     drawn++;
                 }
@@ -150,6 +154,7 @@ namespace Orbit.Galaxy.Unity
                     Ship ship = ships[i];
                     if (ship == null || ship == player || ship.IsBoss) continue;
                     if (!Visible(ship.Position, ship.Radius, center, halfWidth, halfHeight, margin)) continue;
+                    DrawSnakeBody(ship, center, halfWidth, halfHeight, margin);
                     DrawShip(ship);
                     drawn++;
                 }
@@ -287,6 +292,10 @@ namespace Orbit.Galaxy.Unity
                 case ObjectKind.Energy:
                     sprite = TextureFactory.Circle();
                     color = TextureFactory.Cyan;
+                    // Richer motes read as more valuable at a glance; the slow pulse keeps a
+                    // dense field alive without adding per-particle simulation state.
+                    size *= Mathf.Min(1.5f, 1f + Mathf.Max(0, o.Value) * 0.06f) *
+                            (0.92f + 0.08f * Mathf.Sin(Time.unscaledTime * 3f + o.Id));
                     break;
                 case ObjectKind.Crystal:
                     sprite = TextureFactory.Diamond();
@@ -345,6 +354,41 @@ namespace Orbit.Galaxy.Unity
                 case ResourceKind.DarkMatter: return TextureFactory.Pink;
                 case ResourceKind.Artifact: return TextureFactory.Sun;
                 default: return TextureFactory.Cyan;
+            }
+        }
+
+        /// <summary>
+        /// Draws the trailing body before the hull so the head always sits on top. Long snakes use
+        /// a stride and the whole pass has a hard budget: the sprite pool is shared with objects,
+        /// projectiles and particles, so bodies must never starve the rest of the arena.
+        /// </summary>
+        private void DrawSnakeBody(Ship ship, Vec2 center, float halfWidth, float halfHeight, float margin)
+        {
+            SnakeBody body = ship.Body;
+            if (body == null || ship.State == ShipState.Dead || body.Count < 2) return;
+
+            int count = body.Count;
+            int stride = count > 20 ? 2 : 1;
+            float alpha = ship.State == ShipState.Respawning ? 0.26f : 0.92f;
+            if (ship.Invulnerability > 0f)
+                alpha *= 0.62f + 0.38f * Mathf.Abs(Mathf.Sin(Time.unscaledTime * 14f));
+
+            Color primary = TextureFactory.Parse(ship.PrimaryHex, TextureFactory.Cyan);
+            Color accent = TextureFactory.Parse(ship.AccentHex, TextureFactory.Lime);
+            Sprite sprite = TextureFactory.Glow();
+
+            for (int i = count - 1; i >= 0; i -= stride)
+            {
+                if (_segmentsDrawn >= MaxSnakeSegmentsDrawn) return;
+                float radius = body.GetRadius(i, ship.Radius);
+                Vec2 point = body.GetPoint(i);
+                if (!Visible(point, radius, center, halfWidth, halfHeight, margin)) continue;
+
+                float along = i / (float)Math.Max(1, count - 1);
+                Color color = Color.Lerp(accent, primary, along);
+                color.a = alpha * (0.58f + 0.34f * along);
+                Spawn(point, Mathf.Max(6f, radius * 2f), color, sprite, 0f, 9);
+                _segmentsDrawn++;
             }
         }
 
@@ -475,6 +519,7 @@ namespace Orbit.Galaxy.Unity
         private void BeginFrame()
         {
             _cursor = 0;
+            _segmentsDrawn = 0;
         }
 
         private SpriteRenderer Spawn(Vec2 position, float size, Color color, Sprite sprite, float rotation, int order)
