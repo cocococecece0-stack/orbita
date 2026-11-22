@@ -15,7 +15,7 @@
 - Без легального `UNITY_LICENSE` workflow завершается ошибкой с инструкцией: Unity Personal требует однократной активации через Unity Hub, `.alf`-путь для Personal не поддерживается
 - CI собирает бинарники на Unity 2022.3.62f1: 2022.3.74f1 — Extended LTS и недоступна для Personal; iOS-задача фиксирует macOS 15/arm64 и Unity Hub 3.22.5 для GameCI v4
 - Совместимость с замороженным `Assets/Orbit` обеспечена тонкими подклассами uGUI в `Assets/OrbitGalaxy/Runtime`: исходники Orbit не меняются
-- Исторический релиз `g4.1.0` остаётся исходным: бинарники без лицензии Unity не создаются
+- После успешного прогона `galaxy-build.yml` релиз `g4.1.0` содержит проверенные `OrbitaGalaxy-Android.apk` и `OrbitaGalaxy-iOS-Unsigned.ipa` вместе с исходным архивом; IPA остаётся неподписанным
 
 ## Unity Arcade Rush — заморожено (`u4.0.0`)
 

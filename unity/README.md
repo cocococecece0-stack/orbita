@@ -93,7 +93,8 @@ The version pinned in `ProjectSettings/ProjectVersion.txt` is `2022.3.74f1`, whi
 Extended LTS and requires Unity Industry/Enterprise, so the workflow temporarily rewrites
 that file in the CI checkout only. The committed project file is not changed. The iOS job
 runs on `macos-15` (arm64) and installs Unity Hub 3.22.5 because GameCI v4 still calls the
-legacy Hub headless installer that Hub 4.x removed.
+legacy Hub headless installer that Hub 4.x removed. The iOS job uses a clean `Library`: a
+restored Package Manager cache can crash Unity 2022.3 on macOS arm64.
 
 `Assets/OrbitGalaxy/Runtime/LegacyOrbitUiCompatibility.cs` provides thin uGUI subclasses in
 the `Orbit.Unity` namespace so the frozen legacy scripts compile without editing
@@ -107,8 +108,9 @@ iOS 13 minimum and absence of signing/provisioning assets, then uploads
 `orbita-galaxy-ios-unsigned`. Both artifacts are retained for 14 days. A successful `g*`
 run publishes both files to the GitHub release with `softprops/action-gh-release@v2`.
 
-The historical `g4.1.0` release remains source-only; it was published before these
-artifact checks existed.
+After a successful `galaxy-build.yml` run, the `g4.1.0` release was updated with both
+verified binaries alongside the original source archive. The iOS IPA is unsigned and must
+be signed with your own certificate before installation.
 
 ## Legacy Arcade Rush CI and required GitHub secrets
 
