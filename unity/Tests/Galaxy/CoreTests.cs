@@ -1611,6 +1611,35 @@ namespace Orbit.Galaxy.Core.Tests
         }
 
         [Fact]
+        public void Combat_DeathCancelsRunningAbilitiesSoRespawnStartsClean()
+        {
+            Ship victim = NewShip(405);
+            SimLog log = new SimLog();
+            // Shield, Overdrive and Magnet all outlive RespawnDelay; death must cancel them.
+            Assert.True(AbilitySystem.Activate(victim, AbilityKind.Shield, log, 1f));
+            Assert.True(AbilitySystem.Activate(victim, AbilityKind.Overdrive, log, 1f));
+            Assert.True(AbilitySystem.Activate(victim, AbilityKind.Magnet, log, 1f));
+            Assert.True(victim.MaxShield > 0f);
+            float speedBoosted = victim.Speed;
+
+            CombatSystem.HandleKill(victim, null, log, 2f);
+
+            Assert.False(AbilitySystem.IsActive(victim, AbilityKind.Shield));
+            Assert.False(AbilitySystem.IsActive(victim, AbilityKind.Overdrive));
+            Assert.False(AbilitySystem.IsActive(victim, AbilityKind.Magnet));
+            Assert.False(victim.ShieldBonusActive);
+            Close(0f, victim.MaxShield, Epsilon);
+            Assert.True(victim.Speed < speedBoosted);
+
+            // Respawn must not refill a shield from a lingering ability bonus.
+            victim.RespawnTimer = 0.01f;
+            GrowthSystem.Update(victim, 0.1f, log, 3f);
+            Assert.Equal(ShipState.Alive, victim.State);
+            Close(0f, victim.Shield, Epsilon);
+            Close(0f, victim.MaxShield, Epsilon);
+        }
+
+        [Fact]
         public void Combat_DeathWithoutKillerDoesNotInheritStaleAttacker()
         {
             Ship victim = NewShip(403);

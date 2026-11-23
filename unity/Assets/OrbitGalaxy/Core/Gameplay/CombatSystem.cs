@@ -400,6 +400,17 @@ namespace Orbit.Galaxy
             victim.Invulnerability = 0f;
             victim.FireTimer = 0f;
             victim.BossWeakWindow = 0f;
+            // Death cancels running abilities. RespawnDelay (3.2s) is shorter than several effect
+            // durations, so without this a ship could respawn still overdriven/magnetised/phased,
+            // and GrowthSystem.Update would refill Shield = MaxShield from a lingering shield bonus.
+            // Cooldowns are kept so abilities still need to recover after returning.
+            if (victim.EffectTimers != null)
+                for (int k = 0; k < victim.EffectTimers.Length; k++) victim.EffectTimers[k] = 0f;
+            victim.AbilityShieldBonus = 0f;
+            victim.ShieldBonusActive = false;
+            victim.NovaPending = false;
+            victim.BlackHolePosition = Vec2.Zero;
+            victim.RecalculateStats(null);
             victim.Deaths++;
             victim.DeathAttackerId = credited == null ? -1 : credited.Id;
             // A death always breaks the victim's streak, even when nobody is credited with the kill.
