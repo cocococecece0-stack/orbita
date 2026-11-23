@@ -85,7 +85,11 @@ namespace Orbit.Galaxy.Unity
             float dt = Mathf.Min(Time.unscaledDeltaTime, GameConfig.MaxFrameDelta);
             if (dt < 0f) dt = 0f;
 
-            bool active = _match != null && !_match.Finished && !_paused;
+            // The evolution choice is a modal: the arena is frozen and the touch layer must hide,
+            // otherwise a thumb on the joystick/boost/ability behind the non-blocking backdrop would
+            // queue input that fires the instant the choice is made (same treatment as pause).
+            bool evolutionPending = _match != null && _match.IsEvolutionPaused;
+            bool active = _match != null && !_match.Finished && !_paused && !evolutionPending;
             if (_input != null) _input.SetVisible(active);
             _stepsThisFrame = 0;
             _abilityEdge = _input != null && _input.AbilityPressed;
