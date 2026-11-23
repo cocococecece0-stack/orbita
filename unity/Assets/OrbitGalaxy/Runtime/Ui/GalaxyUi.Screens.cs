@@ -326,9 +326,9 @@ namespace Orbit.Galaxy.Unity
                 GBox.Inset(18f, 14f, 18f, 48f));
 
             GalaxyUiTheme.MakeButton(root, "Реванш", "НОВЫЙ МАТЧ", GalaxyUiTheme.AccentA, GalaxyUiTheme.Ink,
-                GBox.At(-260f, -412f, 460f, 76f), 26, delegate { if (_app != null) _app.RestartMatch(); });
+                GBox.BottomAt(-260f, 28f, 460f, 76f), 26, delegate { if (_app != null) _app.RestartMatch(); });
             GalaxyUiTheme.MakeButton(root, "Меню", "В МЕНЮ", GalaxyUiTheme.PanelSoft, GalaxyUiTheme.Paper,
-                GBox.At(280f, -412f, 460f, 76f), 26, delegate { if (_app != null) _app.ReturnToMenu(); });
+                GBox.BottomAt(280f, 28f, 460f, 76f), 26, delegate { if (_app != null) _app.ReturnToMenu(); });
         }
 
         private static string BuildResultBoard(MatchResult result)
@@ -454,7 +454,7 @@ namespace Orbit.Galaxy.Unity
             GalaxyUiTheme.Label(root, "Открыто косметики: " + (p == null || p.Owned == null ? 0 : p.Owned.Count) +
                 "   ·   Секретов: " + (p == null || p.Secrets == null ? 0 : p.Secrets.Count) +
                 "   ·   Достижений: " + (p == null || p.Achievements == null ? 0 : p.Achievements.Count),
-                19, GalaxyUiTheme.Muted, TextAnchor.MiddleCenter, GBox.At(0f, -404f, 1300f, 34f));
+                19, GalaxyUiTheme.Muted, TextAnchor.MiddleCenter, GBox.BottomAt(0f, 24f, 1300f, 34f));
         }
 
         private static void StatCard(RectTransform root, float x, float y, string caption, string value, Color accent)
@@ -817,7 +817,7 @@ namespace Orbit.Galaxy.Unity
             y += 48f;
             GalaxyUiTheme.SetScrollHeight(content, y + 12f);
             GalaxyUiTheme.MakeButton(root, "В магазин", "ОТКРЫТЬ МАГАЗИН", GalaxyUiTheme.PanelSoft, GalaxyUiTheme.Paper,
-                GBox.At(540f, -408f, 400f, 62f), 19, ShowShop);
+                GBox.BottomAt(540f, 24f, 400f, 62f), 19, ShowShop);
         }
 
         // ───────────────────────────── Snake progression ─────────────────────────────
@@ -892,7 +892,7 @@ namespace Orbit.Galaxy.Unity
             y += 48f;
             GalaxyUiTheme.SetScrollHeight(content, y + 12f);
             GalaxyUiTheme.MakeButton(root, "Цели змейки", "ЦЕЛИ ЗМЕЙКИ", GalaxyUiTheme.PanelSoft, GalaxyUiTheme.Paper,
-                GBox.At(540f, -408f, 400f, 62f), 19, delegate { _profileTab = 3; ShowProfile(); });
+                GBox.BottomAt(540f, 24f, 400f, 62f), 19, delegate { _profileTab = 3; ShowProfile(); });
         }
 
         private float DrawSnakeSection(RectTransform content, string caption, string category, AccountProfile p, float y)

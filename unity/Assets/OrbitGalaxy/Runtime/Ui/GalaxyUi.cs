@@ -19,6 +19,7 @@ namespace Orbit.Galaxy.Unity
             public string Text;
             public Color Color;
             public float Until;
+            public float Born;
             public Text Label;
         }
 
@@ -38,6 +39,12 @@ namespace Orbit.Galaxy.Unity
         private float _toastUntil;
         private int _lastScreenWidth;
         private int _lastScreenHeight;
+        private Rect _lastSafeArea;
+        private GFade _screenFade;
+        private GFade _toastFade;
+        private GFade _deathFade;
+        private int _lastPlayerLevel = -1;
+        private float _levelFlashUntil;
 
         private string _screen = string.Empty;
         private bool _hudBuilt;
@@ -199,9 +206,9 @@ namespace Orbit.Galaxy.Unity
             }
 
             GalaxyUiTheme.MakeButton(root, "Назад", "НАЗАД", GalaxyUiTheme.PanelSoft, GalaxyUiTheme.Paper,
-                GBox.At(-400f, -398f, 400f, 76f), 25, ShowMenu);
+                GBox.BottomAt(-400f, 28f, 400f, 76f), 25, ShowMenu);
             GalaxyUiTheme.MakeButton(root, "Старт", "СТАРТ · " + ContentDatabase.FindMode(_selectedMode).Name,
-                GalaxyUiTheme.AccentA, GalaxyUiTheme.Ink, GBox.At(400f, -398f, 400f, 76f), 27,
+                GalaxyUiTheme.AccentA, GalaxyUiTheme.Ink, GBox.BottomAt(400f, 28f, 400f, 76f), 27,
                 delegate { StartSelectedMode(_selectedMode); });
         }
 
@@ -226,7 +233,13 @@ namespace Orbit.Galaxy.Unity
                 int rank = player.Rank > 0 ? player.Rank : (match.PlayerRank > 0 ? match.PlayerRank : 0);
                 SetText(_hudRank, "МЕСТО " + rank + " / " + match.Ships.Count, rank == 1 ? GalaxyUiTheme.AccentA : GalaxyUiTheme.Paper);
                 SetText(_hudMass, "МАССА " + player.Mass.ToString("F1"), GalaxyUiTheme.AccentA);
-                SetText(_hudLevel, "УРОВЕНЬ " + Mathf.FloorToInt(player.Level), GalaxyUiTheme.Paper);
+                int level = Mathf.FloorToInt(player.Level);
+                if (_lastPlayerLevel >= 0 && level > _lastPlayerLevel && !GalaxyUiTheme.ReducedMotion)
+                    _levelFlashUntil = Time.unscaledTime + 0.7f;
+                _lastPlayerLevel = level;
+                float flash = Mathf.Clamp01((_levelFlashUntil - Time.unscaledTime) / 0.7f);
+                Color levelColor = flash > 0f ? Color.Lerp(GalaxyUiTheme.Paper, GalaxyUiTheme.Sun, flash) : GalaxyUiTheme.Paper;
+                SetText(_hudLevel, "УРОВЕНЬ " + level, levelColor);
                 string length = player.Body == null ? string.Empty : "   ДЛИНА " + player.Body.Count;
                 SetText(_hudKills, "УБИЙСТВА " + player.Kills + "   СЕРИЯ " + player.Streak + length, GalaxyUiTheme.Paper);
                 SetText(_hudResources, "ЭНЕРГИЯ " + player.EnergyCollected.ToString("F0") +
@@ -288,7 +301,9 @@ namespace Orbit.Galaxy.Unity
                 SetWarning(countdown);
                 if (_deathOverlay != null)
                 {
+                    bool appeared = !_deathOverlay.gameObject.activeSelf;
                     _deathOverlay.gameObject.SetActive(true);
+                    if (appeared && _deathFade != null) _deathFade.PlayIn(0.2f, false);
                     string cause = string.IsNullOrEmpty(_deathReason) ? "Причина не установлена" : _deathReason;
                     SetText(_deathDetail, cause + "\n" + countdown, GalaxyUiTheme.Paper);
                 }
@@ -315,7 +330,8 @@ namespace Orbit.Galaxy.Unity
             FeedLine line = new FeedLine();
             line.Text = FormatEvent(ev);
             line.Color = FeedColor(ev.Kind);
-            line.Until = Time.unscaledTime + 5.2f;
+            line.Born = Time.unscaledTime;
+            line.Until = line.Born + 5.2f;
             _feed.Add(line);
             if (_feedRoot != null) CreateFeedLabel(line);
 
@@ -333,9 +349,13 @@ namespace Orbit.Galaxy.Unity
         public void ShowPause()
         {
             if (!_canvasReady || _screen != "hud" || _pauseOverlay != null) return;
+            // Raycasts must be enabled: the HUD stays alive under the overlay and its small
+            // pause/ability buttons would otherwise still accept taps through the dimmed screen.
             RectTransform overlay = GalaxyUiTheme.Panel(_screenLayer, "Пауза",
-                GalaxyUiTheme.WithAlpha(GalaxyUiTheme.Ink, 0.88f), GBox.Full).rectTransform;
+                GalaxyUiTheme.WithAlpha(GalaxyUiTheme.Ink, 0.88f), GBox.Full, null, true).rectTransform;
             _pauseOverlay = overlay;
+            GFade fade = overlay.gameObject.AddComponent<GFade>();
+            fade.PlayIn(0.14f);
             GalaxyUiTheme.Label(overlay, "ПАУЗА", 64, GalaxyUiTheme.Paper, TextAnchor.MiddleCenter,
                 GBox.At(0f, 210f, 620f, 90f), FontStyle.Bold);
             GalaxyUiTheme.MakeButton(overlay, "Продолжить", "ПРОДОЛЖИТЬ", GalaxyUiTheme.AccentA, GalaxyUiTheme.Ink,
@@ -359,6 +379,7 @@ namespace Orbit.Galaxy.Unity
             _toastLabel.text = text;
             _toastPanel.color = GalaxyUiTheme.WithAlpha(GalaxyUiTheme.Ink, 0.92f);
             _toastPanel.gameObject.SetActive(true);
+            if (_toastFade != null) _toastFade.PlayIn(0.14f, false);
             _toastUntil = Time.unscaledTime + 2.8f;
         }
 
@@ -369,6 +390,14 @@ namespace Orbit.Galaxy.Unity
             if (!_canvasReady) return;
             ApplySafeArea();
             UpdateFeed();
+            if (_hudBuilt)
+            {
+                float dt = Mathf.Min(Time.unscaledDeltaTime, 0.1f);
+                if (_barHp != null) _barHp.Tick(dt);
+                if (_barShield != null) _barShield.Tick(dt);
+                if (_barEnergy != null) _barEnergy.Tick(dt);
+                if (_barBoss != null) _barBoss.Tick(dt);
+            }
             if (_toastPanel != null && _toastPanel.gameObject.activeSelf && Time.unscaledTime > _toastUntil)
                 _toastPanel.gameObject.SetActive(false);
         }
@@ -382,6 +411,7 @@ namespace Orbit.Galaxy.Unity
 
         private bool _canvasReady;
         private RectTransform _canvasRoot;
+        private CanvasScaler _scaler;
 
         private void BuildCanvas()
         {
@@ -393,22 +423,24 @@ namespace Orbit.Galaxy.Unity
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             canvas.sortingOrder = 120;
 
-            CanvasScaler scaler = go.GetComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1600f, 900f);
-            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-            scaler.matchWidthOrHeight = 0.5f;
+            _scaler = go.GetComponent<CanvasScaler>();
+            _scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            _scaler.referenceResolution = new Vector2(1600f, 900f);
+            _scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+            GalaxyUiTheme.ApplyCanvasScaler(_scaler);
 
             _safeRoot = GalaxyUiTheme.Place(go.transform, "SafeArea", GBox.Full);
             _screenLayer = GalaxyUiTheme.Place(_safeRoot, "Screens", GBox.Full);
             _hudLayer = GalaxyUiTheme.Place(_safeRoot, "Hud", GBox.Full);
             _toastLayer = GalaxyUiTheme.Place(_safeRoot, "Toasts", GBox.Full);
             _hudLayer.gameObject.SetActive(false);
+            _screenFade = _screenLayer.gameObject.AddComponent<GFade>();
 
             _toastPanel = GalaxyUiTheme.Panel(_toastLayer, "Всплывающее уведомление", GalaxyUiTheme.WithAlpha(GalaxyUiTheme.Ink, 0.92f),
                 new GBox(0.5f, 1f, 0.5f, 1f, -420f, -150f, 420f, -98f), GalaxyUiTheme.Round);
             _toastLabel = GalaxyUiTheme.Label(_toastPanel.transform, string.Empty, 24, GalaxyUiTheme.Paper,
                 TextAnchor.MiddleCenter, GBox.Inset(18f, 4f, 18f, 4f), FontStyle.Bold);
+            _toastFade = _toastPanel.gameObject.AddComponent<GFade>();
             _toastPanel.gameObject.SetActive(false);
 
             _canvasReady = true;
@@ -418,10 +450,12 @@ namespace Orbit.Galaxy.Unity
         private void ApplySafeArea()
         {
             if (!_canvasReady || _safeRoot == null) return;
-            if (Screen.width == _lastScreenWidth && Screen.height == _lastScreenHeight) return;
+            Rect safe = Screen.safeArea;
+            if (Screen.width == _lastScreenWidth && Screen.height == _lastScreenHeight && safe.Equals(_lastSafeArea)) return;
             _lastScreenWidth = Screen.width;
             _lastScreenHeight = Screen.height;
-            Rect safe = Screen.safeArea;
+            _lastSafeArea = safe;
+            GalaxyUiTheme.ApplyCanvasScaler(_scaler);
             float w = Screen.width > 0 ? (float)Screen.width : 1f;
             float h = Screen.height > 0 ? (float)Screen.height : 1f;
             _safeRoot.anchorMin = new Vector2(Mathf.Clamp01(safe.xMin / w), Mathf.Clamp01(safe.yMin / h));
@@ -433,6 +467,7 @@ namespace Orbit.Galaxy.Unity
         private RectTransform BeginScreen(string id, bool hudVisible)
         {
             if (!_canvasReady) return null;
+            bool sameScreen = _screen == id;
             _screen = id;
             _hudBuilt = false;
             ClearChildren(_screenLayer);
@@ -443,8 +478,11 @@ namespace Orbit.Galaxy.Unity
             _lastWorldWarningText = string.Empty;
             _feedRoot = null;
             _feed.Clear();
+            _lastPlayerLevel = -1;
+            _levelFlashUntil = 0f;
             if (_hudLayer != null) _hudLayer.gameObject.SetActive(hudVisible);
             if (hudVisible) BuildHud();
+            if (_screenFade != null && !sameScreen) _screenFade.PlayIn(0.18f);
             return _screenLayer;
         }
 
@@ -552,6 +590,7 @@ namespace Orbit.Galaxy.Unity
                 GBox.At(0f, 52f, 760f, 210f), GalaxyUiTheme.Round);
             death.raycastTarget = false;
             _deathOverlay = death.rectTransform;
+            _deathFade = death.gameObject.AddComponent<GFade>();
             GalaxyUiTheme.Label(death.transform, "ВЫ УНИЧТОЖЕНЫ", 46, GalaxyUiTheme.Coral,
                 TextAnchor.MiddleCenter, GBox.Inset(20f, 150f, 20f, 62f), FontStyle.Bold);
             _deathDetail = GalaxyUiTheme.Label(death.transform, string.Empty, 22, GalaxyUiTheme.Paper,
@@ -579,7 +618,9 @@ namespace Orbit.Galaxy.Unity
             int index = _feed.IndexOf(line);
             if (index < 0) index = 0;
             float top = index * 25f;
-            Text label = GalaxyUiTheme.Label(_feedRoot, line.Text, 16, line.Color, TextAnchor.MiddleRight,
+            Color initial = line.Color;
+            if (!GalaxyUiTheme.ReducedMotion) initial.a = 0f;
+            Text label = GalaxyUiTheme.Label(_feedRoot, line.Text, 16, initial, TextAnchor.MiddleRight,
                 new GBox(0f, 1f, 1f, 1f, 0f, -(top + 24f), 0f, -top), FontStyle.Bold);
             line.Label = label;
         }
@@ -602,7 +643,9 @@ namespace Orbit.Galaxy.Unity
                 if (line.Label != null)
                 {
                     Color c = line.Color;
-                    c.a = Mathf.Clamp01(remain / 1.2f);
+                    float fadeOut = GalaxyUiTheme.ReducedMotion ? 1f : Mathf.Clamp01(remain / 1.2f);
+                    float fadeIn = GalaxyUiTheme.ReducedMotion ? 1f : Mathf.Clamp01((Time.unscaledTime - line.Born) / 0.16f);
+                    c.a = Mathf.Min(fadeIn, fadeOut);
                     line.Label.color = c;
                 }
             }

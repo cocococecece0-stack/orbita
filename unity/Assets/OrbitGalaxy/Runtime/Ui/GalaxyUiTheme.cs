@@ -46,6 +46,12 @@ namespace Orbit.Galaxy.Unity
             return new GBox(0f, 0f, 1f, 0f, left, y, -right, y + h);
         }
 
+        /// <summary>Centered horizontally, anchored to the bottom of the safe area.</summary>
+        public static GBox BottomAt(float cx, float bottom, float w, float h)
+        {
+            return new GBox(0.5f, 0f, 0.5f, 0f, cx - w * 0.5f, bottom, cx + w * 0.5f, bottom + h);
+        }
+
         public void Apply(RectTransform rt)
         {
             if (rt == null) return;
@@ -61,21 +67,138 @@ namespace Orbit.Galaxy.Unity
         public RectTransform Root;
         public Image Background;
         public Image Fill;
+        private float _target;
+        private float _current;
 
         public void Set(float value01)
         {
-            if (Fill == null) return;
-            float v = Mathf.Clamp01(value01);
-            RectTransform rt = Fill.rectTransform;
-            rt.anchorMin = new Vector2(0f, 0f);
-            rt.anchorMax = new Vector2(v, 1f);
-            rt.offsetMin = Vector2.zero;
-            rt.offsetMax = Vector2.zero;
+            _target = Mathf.Clamp01(value01);
+            if (ReducedMotion)
+            {
+                _current = _target;
+                Apply();
+            }
+        }
+
+        /// <summary>Smooths HP/shield/energy without allocating or adding per-frame components.</summary>
+        public void Tick(float dt)
+        {
+            if (Mathf.Abs(_current - _target) < 0.0005f) return;
+            _current = Mathf.MoveTowards(_current, _target, Mathf.Max(0.001f, dt) * 2.8f);
+            Apply();
         }
 
         public void SetColor(Color color)
         {
             if (Fill != null) Fill.color = color;
+        }
+
+        private void Apply()
+        {
+            if (Fill == null) return;
+            RectTransform rt = Fill.rectTransform;
+            rt.anchorMin = new Vector2(0f, 0f);
+            rt.anchorMax = new Vector2(_current, 1f);
+            rt.offsetMin = Vector2.zero;
+            rt.offsetMax = Vector2.zero;
+        }
+    }
+
+    /// <summary>Small unscaled-time CanvasGroup tween for screens, overlays and toasts.</summary>
+    internal sealed class GFade : MonoBehaviour
+    {
+        private CanvasGroup _group;
+        private float _until;
+        private float _duration;
+        private bool _running;
+
+        public void PlayIn(float duration, bool blocksRaycasts = true)
+        {
+            _group = GetComponent<CanvasGroup>();
+            if (_group == null) _group = gameObject.AddComponent<CanvasGroup>();
+            // Keep Selectables interactive: CanvasGroup.interactable=false would disable every
+            // button in a screen, which is not what a visual fade means here.
+            _group.interactable = true;
+            _group.blocksRaycasts = blocksRaycasts;
+            if (ReducedMotion || duration <= 0f)
+            {
+                _group.alpha = 1f;
+                _running = false;
+                enabled = false;
+                return;
+            }
+            _duration = duration;
+            _until = Time.unscaledTime + duration;
+            _group.alpha = 0f;
+            _running = true;
+            enabled = true;
+        }
+
+        private void Update()
+        {
+            if (!_running || _group == null) return;
+            float remain = _until - Time.unscaledTime;
+            if (remain <= 0f)
+            {
+                _group.alpha = 1f;
+                _running = false;
+                enabled = false;
+                return;
+            }
+            _group.alpha = 1f - remain / _duration;
+        }
+    }
+
+    /// <summary>Lightweight integer count-up used for match rewards. No allocations per frame.</summary>
+    internal sealed class GCountUp : MonoBehaviour
+    {
+        private Text _label;
+        private string _prefix;
+        private string _suffix;
+        private int _target;
+        private float _until;
+        private float _duration;
+        private bool _running;
+
+        public void Play(Text label, int target, string prefix, string suffix, float duration)
+        {
+            _label = label;
+            _target = target;
+            _prefix = prefix ?? string.Empty;
+            _suffix = suffix ?? string.Empty;
+            if (_label == null)
+            {
+                _running = false;
+                enabled = false;
+                return;
+            }
+            if (ReducedMotion || duration <= 0f)
+            {
+                _label.text = _prefix + target + _suffix;
+                _running = false;
+                enabled = false;
+                return;
+            }
+            _duration = duration;
+            _until = Time.unscaledTime + duration;
+            _label.text = _prefix + "0" + _suffix;
+            _running = true;
+            enabled = true;
+        }
+
+        private void Update()
+        {
+            if (!_running || _label == null) return;
+            float remain = _until - Time.unscaledTime;
+            if (remain <= 0f)
+            {
+                _label.text = _prefix + _target + _suffix;
+                _running = false;
+                enabled = false;
+                return;
+            }
+            int value = Mathf.RoundToInt(_target * (1f - remain / _duration));
+            _label.text = _prefix + value + _suffix;
         }
     }
 
@@ -185,6 +308,18 @@ namespace Orbit.Galaxy.Unity
         internal static Color WithAlpha(Color color, float alpha)
         {
             return new Color(color.r, color.g, color.b, Mathf.Clamp01(alpha));
+        }
+
+        /// <summary>
+        /// Keeps the 1600x900 design inside any landscape aspect: wide screens fit height and gain
+        /// horizontal room, narrow screens fit width and gain vertical room. Without this, phones
+        /// with 19.5:9 displays clip bottom buttons while tablets clip header controls.
+        /// </summary>
+        internal static void ApplyCanvasScaler(CanvasScaler scaler)
+        {
+            if (scaler == null) return;
+            float aspect = Screen.height > 0 ? (float)Screen.width / Screen.height : 16f / 9f;
+            scaler.matchWidthOrHeight = aspect >= 16f / 9f ? 1f : 0f;
         }
 
         internal static Sprite White

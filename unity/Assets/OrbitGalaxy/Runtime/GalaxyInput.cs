@@ -40,7 +40,10 @@ namespace Orbit.Galaxy.Unity
         private bool _pausePressed;
         private bool _visible;
         private Vector2Int _screenSize = new Vector2Int(-1, -1);
+        private Rect _lastSafeArea;
         private Vector2 _lastMouse;
+        private Vec2 _lastMove = Vec2.Up;
+        private CanvasScaler _scaler;
 
         public Vec2 Move { get { return _move; } }
         public Vec2 Aim { get { return _aim; } }
@@ -97,6 +100,7 @@ namespace Orbit.Galaxy.Unity
         {
             _move = Vec2.Zero;
             _aim = Vec2.Up;
+            _lastMove = Vec2.Up;
             _boostHeld = false;
             Consume();
             if (_stick != null) _stick.Reset();
@@ -119,7 +123,8 @@ namespace Orbit.Galaxy.Unity
                 Configure(_settings);
                 if (!_built) return;
             }
-            if (_screenSize.x != Screen.width || _screenSize.y != Screen.height)
+            if (_screenSize.x != Screen.width || _screenSize.y != Screen.height ||
+                !Screen.safeArea.Equals(_lastSafeArea))
             {
                 _screenSize = new Vector2Int(Screen.width, Screen.height);
                 ApplySafeArea();
@@ -132,6 +137,7 @@ namespace Orbit.Galaxy.Unity
             _move = keyboardMove.SqrMagnitude > 0.0001f
                 ? keyboardMove
                 : (_stick == null ? Vec2.Zero : _stick.Value);
+            if (_move.SqrMagnitude > 0.0016f) _lastMove = _move;
 
             Vec2 touchAim = _aimPad == null ? Vec2.Zero : _aimPad.Value;
             if (touchAim.SqrMagnitude > 0.0016f)
@@ -140,14 +146,22 @@ namespace Orbit.Galaxy.Unity
             }
             else
             {
+                bool aimedByMouse = false;
                 bool overUi = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
                 Vector3 mouse = UnityEngine.Input.mousePosition;
                 if (!overUi && (mouse.x != _lastMouse.x || mouse.y != _lastMouse.y))
                 {
                     _lastMouse = new Vector2(mouse.x, mouse.y);
                     Vector2 delta = new Vector2(mouse.x - Screen.width * 0.5f, mouse.y - Screen.height * 0.5f);
-                    if (delta.sqrMagnitude > 900f) _aim = new Vec2(delta.x, delta.y).Normalized;
+                    if (delta.sqrMagnitude > 900f)
+                    {
+                        _aim = new Vec2(delta.x, delta.y).Normalized;
+                        aimedByMouse = true;
+                    }
                 }
+                // With no aim pad and no mouse movement, follow the direction of travel instead of
+                // staying locked upwards — otherwise keyboard/touch-only players cannot fire ahead.
+                if (!aimedByMouse) _aim = _lastMove;
             }
 
             _boostHeld = (_boost != null && _boost.IsHeld)
@@ -183,7 +197,11 @@ namespace Orbit.Galaxy.Unity
         {
             float x = UnityEngine.Input.GetAxisRaw("Horizontal");
             float y = UnityEngine.Input.GetAxisRaw("Vertical");
-            if (x * x + y * y > 0.0225f) _move = new Vec2(x, y).Normalized;
+            if (x * x + y * y > 0.0225f)
+            {
+                _move = new Vec2(x, y).Normalized;
+                _lastMove = _move;
+            }
 
             if (KeyDown(UnityEngine.KeyCode.JoystickButton0)) _abilityPressed = true;
             if (KeyDown(UnityEngine.KeyCode.JoystickButton1)) _dashPressed = true;
@@ -290,12 +308,12 @@ namespace Orbit.Galaxy.Unity
             _canvas = go.GetComponent<Canvas>();
             _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             _canvas.sortingOrder = 80;
-            CanvasScaler scaler = go.GetComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1600f, 900f);
-            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-            scaler.matchWidthOrHeight = 0.5f;
-            scaler.dynamicPixelsPerUnit = 1f;
+            _scaler = go.GetComponent<CanvasScaler>();
+            _scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            _scaler.referenceResolution = new Vector2(1600f, 900f);
+            _scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+            GalaxyUiTheme.ApplyCanvasScaler(_scaler);
+            _scaler.dynamicPixelsPerUnit = 1f;
 
             RectTransform canvasRect = go.GetComponent<RectTransform>();
             canvasRect.anchorMin = Vector2.zero;
@@ -312,6 +330,8 @@ namespace Orbit.Galaxy.Unity
         {
             if (_safeRoot == null) return;
             Rect area = Screen.safeArea;
+            _lastSafeArea = area;
+            GalaxyUiTheme.ApplyCanvasScaler(_scaler);
             float width = Mathf.Max(1f, Screen.width);
             float height = Mathf.Max(1f, Screen.height);
             _safeRoot.anchorMin = new Vector2(Mathf.Clamp01(area.xMin / width), Mathf.Clamp01(area.yMin / height));
@@ -455,10 +475,26 @@ namespace Orbit.Galaxy.Unity
             public void OnPointerExit(PointerEventData eventData) { IsHeld = false; }
         }
 
-        public sealed class TapButton : MonoBehaviour, IPointerDownHandler
+        /// <summary>
+        /// Registers a tap only when the finger is released over the same button and after a short
+        /// debounce. This prevents a thumb sliding across the action cluster from firing abilities.
+        /// </summary>
+        public sealed class TapButton : MonoBehaviour, IPointerDownHandler, IPointerUpHandler, IPointerExitHandler
         {
             public bool WasPressed { get; private set; }
-            public void OnPointerDown(PointerEventData eventData) { WasPressed = true; }
+            private bool _armed;
+            private float _lastPress = -1f;
+
+            public void OnPointerDown(PointerEventData eventData) { _armed = true; }
+            public void OnPointerExit(PointerEventData eventData) { _armed = false; }
+            public void OnPointerUp(PointerEventData eventData)
+            {
+                if (!_armed) return;
+                _armed = false;
+                if (Time.unscaledTime - _lastPress < 0.12f) return;
+                _lastPress = Time.unscaledTime;
+                WasPressed = true;
+            }
             public void Consume() { WasPressed = false; }
         }
     }
