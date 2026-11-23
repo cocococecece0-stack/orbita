@@ -443,7 +443,7 @@ namespace Orbit.Galaxy.Unity
                 Vec2 point = body.GetPoint(i);
                 if (!Visible(point, radius, center, halfWidth, halfHeight, margin)) continue;
 
-                float along = i / (float)Math.Max(1, count - 1);
+                float along = i / (float)Mathf.Max(1, count - 1);
                 float wave = (ship.TailStyle == SnakeTailStyle.Pulse || energyTrail) && !GalaxyUiTheme.ReducedMotion
                     ? 0.76f + 0.24f * Mathf.Abs(Mathf.Sin(Time.unscaledTime * 9f + i * 0.32f))
                     : 1f;
