@@ -142,12 +142,11 @@ namespace Orbit.Galaxy.Editor
             try
             {
                 PlayerSettings.iOS.requiresFullScreen = true;
-                PlayerSettings.iOS.statusBarHidden = true;
-                // Hide the home indicator on gesture-navigation iPhones; reflection tolerates
-                // editor versions that expose the property under a different name.
-                PropertyInfo home = typeof(PlayerSettings.iOS).GetProperty(
-                    "hideHomeIndicator", BindingFlags.Public | BindingFlags.Static);
-                if (home != null && home.CanWrite) home.SetValue(null, true, null);
+                // Status bar / home indicator properties moved between Unity versions; set them
+                // reflectively so a renamed or removed member never breaks the whole build.
+                TrySetIosBool("statusBarHidden", true);
+                TrySetIosBool("hideStatusBar", true);
+                TrySetIosBool("hideHomeIndicator", true);
             }
             catch (Exception exception)
             {
@@ -181,6 +180,18 @@ namespace Orbit.Galaxy.Editor
             {
                 Debug.LogWarning("Could not apply Android target SDK: " + exception.Message);
             }
+        }
+
+        private static void TrySetIosBool(string propertyName, bool value)
+        {
+            try
+            {
+                PropertyInfo property = typeof(PlayerSettings.iOS).GetProperty(
+                    propertyName, BindingFlags.Public | BindingFlags.Static);
+                if (property != null && property.CanWrite && property.PropertyType == typeof(bool))
+                    property.SetValue(null, value, null);
+            }
+            catch (Exception) { /* optional platform property */ }
         }
 
         /// <summary>
