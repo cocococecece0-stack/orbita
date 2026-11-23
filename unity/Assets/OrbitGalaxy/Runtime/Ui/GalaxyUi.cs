@@ -27,6 +27,7 @@ namespace Orbit.Galaxy.Unity
         private RectTransform _safeRoot;
         private RectTransform _screenLayer;
         private RectTransform _hudLayer;
+        private RectTransform _overlayLayer;
         private RectTransform _toastLayer;
         private RectTransform _feedRoot;
         private RectTransform _evoPanel;
@@ -56,6 +57,7 @@ namespace Orbit.Galaxy.Unity
         private Text _hudRank;
         private Text _hudTop;
         private Text _hudMass;
+        private Text _hudScore;
         private Text _hudLevel;
         private Text _hudKills;
         private Text _hudResources;
@@ -105,9 +107,9 @@ namespace Orbit.Galaxy.Unity
 
             GalaxyUiTheme.Panel(root, "Верхняя панель", new Color32(8, 13, 31, 226), new GBox(0f, 1f, 1f, 1f, 0f, -92f, 0f, 0f));
             GalaxyUiTheme.Label(root, GameConfig.GameTitle, 44, GalaxyUiTheme.Paper, TextAnchor.MiddleLeft,
-                GBox.At(-560f, 404f, 620f, 64f), FontStyle.Bold);
+                GBox.At(-470f, 404f, 640f, 64f), FontStyle.Bold);
             GalaxyUiTheme.Label(root, "АРЕНА · ЭВОЛЮЦИЯ · ДОМИНИРОВАНИЕ", 20, GalaxyUiTheme.AccentC, TextAnchor.MiddleLeft,
-                GBox.At(-560f, 362f, 620f, 34f), FontStyle.Bold);
+                GBox.At(-470f, 362f, 640f, 34f), FontStyle.Bold);
 
             AccountProfile profile = _app == null ? null : _app.Profile;
             string account = profile == null
@@ -120,9 +122,9 @@ namespace Orbit.Galaxy.Unity
                 GBox.At(430f, 384f, 660f, 60f), FontStyle.Bold);
 
             GalaxyUiTheme.Label(root, "ОРБИТА", 106, GalaxyUiTheme.Paper, TextAnchor.MiddleLeft,
-                GBox.At(-470f, 244f, 780f, 120f), FontStyle.Bold);
+                GBox.At(-470f, 244f, 640f, 120f), FontStyle.Bold);
             GalaxyUiTheme.Label(root, "ГАЛАКТИКА", 106, GalaxyUiTheme.AccentA, TextAnchor.MiddleLeft,
-                GBox.At(-470f, 130f, 780f, 120f), FontStyle.Bold);
+                GBox.At(-470f, 130f, 640f, 120f), FontStyle.Bold);
             GalaxyUiTheme.Panel(root, "Акцент", GalaxyUiTheme.AccentB, GBox.At(-578f, 62f, 250f, 6f));
 
             string continueLabel = profile != null && profile.Matches > 0
@@ -155,7 +157,7 @@ namespace Orbit.Galaxy.Unity
                 18, GalaxyUiTheme.Muted, TextAnchor.MiddleCenter, new GBox(0f, 0f, 1f, 0f, 40f, 10f, -40f, 50f));
             if (profile != null && profile.Records != null)
                 GalaxyUiTheme.Label(root, "Лучший счёт: " + FormatNumber(BestRecord(profile)), 17, GalaxyUiTheme.AccentC,
-                    TextAnchor.MiddleRight, GBox.At(600f, -300f, 560f, 30f));
+                    TextAnchor.MiddleRight, GBox.At(500f, -300f, 520f, 30f));
         }
 
         public void ShowModeSelect()
@@ -164,9 +166,9 @@ namespace Orbit.Galaxy.Unity
             if (root == null) return;
             DrawBackdrop(root, GalaxyUiTheme.AccentC);
             GalaxyUiTheme.Label(root, "ВЫБЕРИ РЕЖИМ", 54, GalaxyUiTheme.Paper, TextAnchor.MiddleLeft,
-                GBox.At(-540f, 388f, 520f, 76f), FontStyle.Bold);
+                GBox.At(-480f, 388f, 520f, 76f), FontStyle.Bold);
             GalaxyUiTheme.Label(root, "Шесть арен — шесть способов стать первым", 22, GalaxyUiTheme.AccentC,
-                TextAnchor.MiddleLeft, GBox.At(-540f, 344f, 620f, 36f));
+                TextAnchor.MiddleLeft, GBox.At(-480f, 344f, 620f, 36f));
 
             float[] xs = { -400f, 400f };
             float[] ys = { 232f, 4f, -224f };
@@ -233,6 +235,7 @@ namespace Orbit.Galaxy.Unity
                 int rank = player.Rank > 0 ? player.Rank : (match.PlayerRank > 0 ? match.PlayerRank : 0);
                 SetText(_hudRank, "МЕСТО " + rank + " / " + match.Ships.Count, rank == 1 ? GalaxyUiTheme.AccentA : GalaxyUiTheme.Paper);
                 SetText(_hudMass, "МАССА " + player.Mass.ToString("F1"), GalaxyUiTheme.AccentA);
+                SetText(_hudScore, "СЧЁТ " + FormatNumber(Mathf.RoundToInt(player.Score)), GalaxyUiTheme.Paper);
                 int level = Mathf.FloorToInt(player.Level);
                 if (_lastPlayerLevel >= 0 && level > _lastPlayerLevel && !GalaxyUiTheme.ReducedMotion)
                     _levelFlashUntil = Time.unscaledTime + 0.7f;
@@ -245,9 +248,9 @@ namespace Orbit.Galaxy.Unity
                 SetText(_hudResources, "ЭНЕРГИЯ " + player.EnergyCollected.ToString("F0") +
                     "   КРИСТАЛЛЫ " + player.Crystals + "   ТМ " + player.DarkMatter + "   АРТЕФАКТЫ " + player.Artifacts,
                     GalaxyUiTheme.Muted);
-                _barHp.Set(player.MaxHp > 0f ? player.Hp / player.MaxHp : 0f);
-                _barShield.Set(player.MaxShield > 0f ? player.Shield / player.MaxShield : 0f);
-                _barEnergy.Set(GameConfig.MaxEnergy > 0f ? player.Energy / GameConfig.MaxEnergy : 0f);
+                _barHp.SetAnimated(player.MaxHp > 0f ? player.Hp / player.MaxHp : 0f);
+                _barShield.SetAnimated(player.MaxShield > 0f ? player.Shield / player.MaxShield : 0f);
+                _barEnergy.SetAnimated(GameConfig.MaxEnergy > 0f ? player.Energy / GameConfig.MaxEnergy : 0f);
                 for (int i = 0; i < _abilityLabels.Length && i < _abilitySlots.Length; i++)
                 {
                     SnakeAbilitySlot slot = _abilitySlots[i];
@@ -272,7 +275,7 @@ namespace Orbit.Galaxy.Unity
             {
                 string bossName = boss.BossDef != null ? boss.BossDef.Name : boss.Name;
                 SetText(_hudBoss, bossName + " · ФАЗА " + boss.BossPhase, GalaxyUiTheme.AccentB);
-                _barBoss.Set(boss.MaxHp > 0f ? boss.Hp / boss.MaxHp : 0f);
+                _barBoss.SetAnimated(boss.MaxHp > 0f ? boss.Hp / boss.MaxHp : 0f);
             }
 
             string worldWarning = string.Empty;
@@ -351,7 +354,7 @@ namespace Orbit.Galaxy.Unity
             if (!_canvasReady || _screen != "hud" || _pauseOverlay != null) return;
             // Raycasts must be enabled: the HUD stays alive under the overlay and its small
             // pause/ability buttons would otherwise still accept taps through the dimmed screen.
-            RectTransform overlay = GalaxyUiTheme.Panel(_screenLayer, "Пауза",
+            RectTransform overlay = GalaxyUiTheme.Panel(_overlayLayer, "Пауза",
                 GalaxyUiTheme.WithAlpha(GalaxyUiTheme.Ink, 0.88f), GBox.Full, null, true).rectTransform;
             _pauseOverlay = overlay;
             GFade fade = overlay.gameObject.AddComponent<GFade>();
@@ -432,6 +435,8 @@ namespace Orbit.Galaxy.Unity
             _safeRoot = GalaxyUiTheme.Place(go.transform, "SafeArea", GBox.Full);
             _screenLayer = GalaxyUiTheme.Place(_safeRoot, "Screens", GBox.Full);
             _hudLayer = GalaxyUiTheme.Place(_safeRoot, "Hud", GBox.Full);
+            // Overlays sit above the live HUD so pause/death dimming and input blocking work.
+            _overlayLayer = GalaxyUiTheme.Place(_safeRoot, "Overlays", GBox.Full);
             _toastLayer = GalaxyUiTheme.Place(_safeRoot, "Toasts", GBox.Full);
             _hudLayer.gameObject.SetActive(false);
             _screenFade = _screenLayer.gameObject.AddComponent<GFade>();
@@ -471,6 +476,7 @@ namespace Orbit.Galaxy.Unity
             _screen = id;
             _hudBuilt = false;
             ClearChildren(_screenLayer);
+            ClearChildren(_overlayLayer);
             _pauseOverlay = null;
             _deathOverlay = null;
             _deathDetail = null;
@@ -499,12 +505,24 @@ namespace Orbit.Galaxy.Unity
 
         private void DrawBackdrop(RectTransform root, Color accent)
         {
-            GalaxyUiTheme.Panel(root, "Фон", GalaxyUiTheme.Deep, GBox.Full);
-            GalaxyUiTheme.CircleImage(root, "Орбита 1", GalaxyUiTheme.WithAlpha(accent, 0.055f), GBox.At(560f, 250f, 940f, 940f));
-            GalaxyUiTheme.CircleImage(root, "Орбита 2", GalaxyUiTheme.WithAlpha(GalaxyUiTheme.Violet, 0.045f), GBox.At(-660f, -300f, 720f, 720f));
-            GalaxyUiTheme.CircleImage(root, "Ядро", GalaxyUiTheme.WithAlpha(accent, 0.035f), GBox.At(390f, -40f, 420f, 420f));
-            GalaxyUiTheme.Panel(root, "Верхняя линия", GalaxyUiTheme.WithAlpha(accent, 0.72f),
-                new GBox(0f, 1f, 1f, 1f, 0f, -5f, 0f, 0f));
+            GalaxyUiTheme.Panel(root, "Глубокий космос", GalaxyUiTheme.Deep, GBox.Full);
+
+            // One nebula and one star texture: a layered cosmic background without hundreds of
+            // individual objects or per-frame particle cost. Both are generated once and cached.
+            Image nebula = GalaxyUiTheme.Panel(root, "Туманность", new Color(0.78f, 0.84f, 1f, 0.9f),
+                GBox.Full, TextureFactory.Nebula());
+            nebula.raycastTarget = false;
+            Image stars = GalaxyUiTheme.Panel(root, "Звёздное поле", new Color(1f, 1f, 1f, 0.58f),
+                GBox.Full, TextureFactory.Starfield());
+            stars.raycastTarget = false;
+
+            GalaxyUiTheme.CircleImage(root, "Орбита 1", GalaxyUiTheme.WithAlpha(accent, 0.065f), GBox.At(560f, 250f, 940f, 940f));
+            GalaxyUiTheme.CircleImage(root, "Орбита 2", GalaxyUiTheme.WithAlpha(GalaxyUiTheme.Violet, 0.05f), GBox.At(-660f, -300f, 720f, 720f));
+            GalaxyUiTheme.CircleImage(root, "Ядро", GalaxyUiTheme.WithAlpha(accent, 0.04f), GBox.At(390f, -40f, 420f, 420f));
+            GalaxyUiTheme.Panel(root, "Нижняя тень", new Color(0f, 0f, 0f, 0.24f),
+                new GBox(0f, 0f, 1f, 0f, 0f, 0f, 0f, 132f));
+            GalaxyUiTheme.Panel(root, "Верхняя линия", GalaxyUiTheme.WithAlpha(accent, 0.62f),
+                new GBox(0f, 1f, 1f, 1f, 0f, -4f, 0f, 0f));
         }
 
         // ───────────────────────────── HUD ─────────────────────────────
@@ -523,15 +541,17 @@ namespace Orbit.Galaxy.Unity
                 GBox.Inset(18f, 12f, 14f, 44f));
 
             Image topRight = GalaxyUiTheme.Panel(hud, "Ресурсы", new Color32(8, 13, 31, 210),
-                new GBox(1f, 1f, 1f, 1f, -430f, -160f, -20f, -18f), GalaxyUiTheme.Round);
+                new GBox(1f, 1f, 1f, 1f, -430f, -212f, -20f, -18f), GalaxyUiTheme.Round);
             _hudMass = GalaxyUiTheme.Label(topRight.transform, "МАССА", 28, GalaxyUiTheme.AccentA, TextAnchor.MiddleLeft,
-                GBox.Inset(18f, 104f, 12f, 8f), FontStyle.Bold);
-            _hudLevel = GalaxyUiTheme.Label(topRight.transform, "УРОВЕНЬ", 19, GalaxyUiTheme.Paper, TextAnchor.MiddleLeft,
-                GBox.Inset(18f, 78f, 12f, 40f));
-            _hudKills = GalaxyUiTheme.Label(topRight.transform, "УБИЙСТВА", 17, GalaxyUiTheme.Paper, TextAnchor.MiddleLeft,
-                GBox.Inset(18f, 50f, 12f, 68f));
+                GBox.Inset(18f, 148f, 12f, 8f), FontStyle.Bold);
+            _hudScore = GalaxyUiTheme.Label(topRight.transform, "СЧЁТ 0", 22, GalaxyUiTheme.Paper, TextAnchor.MiddleLeft,
+                GBox.Inset(18f, 122f, 12f, 46f), FontStyle.Bold);
+            _hudLevel = GalaxyUiTheme.Label(topRight.transform, "УРОВЕНЬ", 18, GalaxyUiTheme.Paper, TextAnchor.MiddleLeft,
+                GBox.Inset(18f, 96f, 12f, 74f));
+            _hudKills = GalaxyUiTheme.Label(topRight.transform, "УБИЙСТВА", 16, GalaxyUiTheme.Paper, TextAnchor.MiddleLeft,
+                GBox.Inset(18f, 70f, 12f, 102f));
             _hudResources = GalaxyUiTheme.Label(topRight.transform, "", 14, GalaxyUiTheme.Muted, TextAnchor.UpperLeft,
-                GBox.Inset(18f, 6f, 12f, 98f));
+                GBox.Inset(18f, 6f, 12f, 126f));
 
             Image timerPanel = GalaxyUiTheme.Panel(hud, "Таймер", new Color32(8, 13, 31, 205),
                 new GBox(0.5f, 1f, 0.5f, 1f, -130f, -84f, 130f, -20f), GalaxyUiTheme.Round);
@@ -570,7 +590,7 @@ namespace Orbit.Galaxy.Unity
                     delegate { if (_app != null) _app.SetAbilitySlot(captured); });
                 _abilityLabels[slot] = btn.GetComponentInChildren<Text>();
             }
-            GalaxyUiTheme.Label(hud, "1–5 — выбор · E / ЛКМ — применить · Q / ПКМ — рывок", 13,
+            GalaxyUiTheme.Label(hud, "1–5 / СЛОТ — выбор · E / ЛКМ — применить · Q / ПКМ — рывок", 13,
                 GalaxyUiTheme.Muted, TextAnchor.MiddleLeft,
                 new GBox(0f, 1f, 0f, 1f, 20f, -448f, 400f, -416f));
 

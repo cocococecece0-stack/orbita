@@ -28,6 +28,7 @@ namespace Orbit.Galaxy.Unity
         private VirtualStick _aimPad;
         private HoldButton _boost;
         private TapButton _ability;
+        private TapButton _slot;
         private TapButton _dash;
         private TapButton _fire;
         private Vec2 _move;
@@ -49,6 +50,9 @@ namespace Orbit.Galaxy.Unity
         public Vec2 Aim { get { return _aim; } }
         public bool BoostHeld { get { return _boostHeld; } }
         public bool AbilityPressed { get { return _abilityPressed; } }
+        /// <summary>Sentinel slot edge: cycle to the next ability without a keyboard or top HUD tap.</summary>
+        public const int CycleAbilitySlot = -2;
+
         /// <summary>-1 when no number key was pressed; otherwise the snake ability slot 0-4.</summary>
         public int AbilitySlot { get { return _abilitySlot; } }
         public bool DashPressed { get { return _dashPressed; } }
@@ -91,6 +95,7 @@ namespace Orbit.Galaxy.Unity
             _firePressed = false;
             _pausePressed = false;
             if (_ability != null) _ability.Consume();
+            if (_slot != null) _slot.Consume();
             if (_dash != null) _dash.Consume();
             if (_fire != null) _fire.Consume();
         }
@@ -106,6 +111,10 @@ namespace Orbit.Galaxy.Unity
             if (_stick != null) _stick.Reset();
             if (_aimPad != null) _aimPad.Reset();
             if (_boost != null) _boost.Reset();
+            if (_ability != null) _ability.Reset();
+            if (_slot != null) _slot.Reset();
+            if (_dash != null) _dash.Reset();
+            if (_fire != null) _fire.Reset();
         }
 
         /// <summary>Сенсорные элементы показываются только во время активного матча.</summary>
@@ -186,6 +195,7 @@ namespace Orbit.Galaxy.Unity
                 if (MouseDown(1)) _dashPressed = true;
             }
             if (_ability != null && _ability.WasPressed) _abilityPressed = true;
+            if (_slot != null && _slot.WasPressed) _abilitySlot = CycleAbilitySlot;
             if (_dash != null && _dash.WasPressed) _dashPressed = true;
             if (_fire != null && _fire.WasPressed) _firePressed = true;
 
@@ -279,6 +289,7 @@ namespace Orbit.Galaxy.Unity
             _boost = MakeHold("Ускорение", "БУСТ", TextureFactory.Lime);
             _dash = MakeTap("Рывок", "РЫВОК", TextureFactory.Cyan);
             _ability = MakeTap("Способность", "СПОСОБНОСТЬ", TextureFactory.Violet);
+            _slot = MakeTap("Смена способности", "СЛОТ", TextureFactory.Violet);
             _fire = MakeTap("Огонь", "ОГОНЬ", TextureFactory.Coral);
             Place(_fire.GetComponent<RectTransform>(), new Vector2(0.5f, 0f), new Vector2(0f, 48f), Vector2.one * ButtonSize);
 
@@ -287,12 +298,14 @@ namespace Orbit.Galaxy.Unity
                 Place(_boost.GetComponent<RectTransform>(), buttonAnchor, new Vector2(side * 54f, 54f), Vector2.one * ButtonSize);
                 Place(_dash.GetComponent<RectTransform>(), buttonAnchor, new Vector2(side * 54f, 204f), Vector2.one * ButtonSize);
                 Place(_ability.GetComponent<RectTransform>(), buttonAnchor, new Vector2(side * 54f, 354f), Vector2.one * ButtonSize);
+                Place(_slot.GetComponent<RectTransform>(), buttonAnchor, new Vector2(side * 250f, 204f), new Vector2(96f, 96f));
             }
             else
             {
                 Place(_boost.GetComponent<RectTransform>(), buttonAnchor, new Vector2(side * 50f, 48f), Vector2.one * ButtonSize);
                 Place(_dash.GetComponent<RectTransform>(), buttonAnchor, new Vector2(side * 50f, 196f), Vector2.one * ButtonSize);
                 Place(_ability.GetComponent<RectTransform>(), buttonAnchor, new Vector2(side * 186f, 122f), Vector2.one * ButtonSize);
+                Place(_slot.GetComponent<RectTransform>(), buttonAnchor, new Vector2(side * 250f, 12f), new Vector2(96f, 96f));
             }
 
             _built = true;
@@ -496,6 +509,7 @@ namespace Orbit.Galaxy.Unity
                 WasPressed = true;
             }
             public void Consume() { WasPressed = false; }
+            public void Reset() { WasPressed = false; _armed = false; }
         }
     }
 }

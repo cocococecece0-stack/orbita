@@ -153,8 +153,15 @@ namespace Orbit.Galaxy.Unity
             Vec2 aim = input.Aim;
             if (aim.SqrMagnitude > 0.00001f) _match.PlayerAim(aim);
 
-            if (_abilitySlotEdge >= 0 && _abilitySlotEdge < SnakeAbilities.Count)
+            if (_abilitySlotEdge == GalaxyInput.CycleAbilitySlot && _match.Player != null)
+            {
+                SnakeAbilitySlot current = SnakeAbilities.SlotFor(_match.Player.ActiveAbility);
+                SetAbilitySlot((SnakeAbilitySlot)(((int)current + 1) % SnakeAbilities.Count));
+            }
+            else if (_abilitySlotEdge >= 0 && _abilitySlotEdge < SnakeAbilities.Count)
+            {
                 SetAbilitySlot((SnakeAbilitySlot)_abilitySlotEdge);
+            }
             _match.PlayerMove(input.Move);
             _match.PlayerBoost(input.BoostHeld);
             if (_abilityEdge) _match.PlayerActivateAbility();
@@ -315,9 +322,16 @@ namespace Orbit.Galaxy.Unity
             if (_input != null) _input.Reset();
             if (_ui != null)
             {
-                if (_paused) _ui.ShowPause();
-                else _ui.HidePause();
-                _ui.ShowToast(_paused ? "ПАУЗА" : "ПРОДОЛЖЕНИЕ");
+                if (_paused)
+                {
+                    // The overlay already carries the title; a second toast duplicated it.
+                    _ui.ShowPause();
+                }
+                else
+                {
+                    _ui.HidePause();
+                    _ui.ShowToast("ПРОДОЛЖЕНИЕ");
+                }
             }
         }
 

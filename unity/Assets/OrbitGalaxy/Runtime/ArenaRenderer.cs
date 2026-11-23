@@ -18,6 +18,7 @@ namespace Orbit.Galaxy.Unity
         private GameObject _root;
         private Transform _poolRoot;
         private SpriteRenderer _background;
+        private SpriteRenderer _nebula;
         private SpriteRenderer _grid;
         private SpriteRenderer _border;
         private readonly List<SpriteRenderer> _pool = new List<SpriteRenderer>(512);
@@ -50,9 +51,10 @@ namespace Orbit.Galaxy.Unity
 
             _root = new GameObject("ArenaView");
             _root.transform.SetParent(transform, false);
-            _background = MakeLayer("Фон", TextureFactory.Square(), -100);
-            _grid = MakeLayer("Сетка", TextureFactory.Grid(), -99);
-            _border = MakeLayer("Граница", TextureFactory.ThinRing(), -98);
+            _background = MakeLayer("Фон", TextureFactory.Square(), -102);
+            _nebula = MakeLayer("Туманность", TextureFactory.Nebula(), -101);
+            _grid = MakeLayer("Сетка", TextureFactory.Grid(), -100);
+            _border = MakeLayer("Граница", TextureFactory.ThinRing(), -99);
             GameObject objects = new GameObject("Объекты");
             objects.transform.SetParent(_root.transform, false);
             _poolRoot = objects.transform;
@@ -261,6 +263,7 @@ namespace Orbit.Galaxy.Unity
         private void ShowDecorations(bool visible)
         {
             if (_background != null) _background.gameObject.SetActive(visible);
+            if (_nebula != null) _nebula.gameObject.SetActive(visible);
             if (_grid != null) _grid.gameObject.SetActive(visible);
             if (_border != null) _border.gameObject.SetActive(visible);
         }
@@ -273,10 +276,16 @@ namespace Orbit.Galaxy.Unity
                 _background.transform.localScale = new Vector3(diameter, diameter, 1f);
                 _background.color = TextureFactory.Ink;
             }
+            if (_nebula != null)
+            {
+                float nebulaSize = diameter * 1.18f;
+                _nebula.transform.localScale = new Vector3(nebulaSize, nebulaSize, 1f);
+                _nebula.color = new Color(0.82f, 0.88f, 1f, 0.62f);
+            }
             if (_grid != null)
             {
                 _grid.transform.localScale = new Vector3(diameter, diameter, 1f);
-                float alpha = 0.09f + 0.025f * Mathf.Sin(Time.unscaledTime * 0.6f);
+                float alpha = 0.085f + (GalaxyUiTheme.ReducedMotion ? 0f : 0.02f * Mathf.Sin(Time.unscaledTime * 0.6f));
                 _grid.color = new Color(0.35f, 0.62f, 0.9f, alpha);
             }
             if (_border != null)
@@ -288,7 +297,7 @@ namespace Orbit.Galaxy.Unity
                     shrink = Mathf.Clamp01(match.Arena.SafeRadius / match.Arena.SafeRadiusStart);
                 bool warning = match.Events != null && match.Events.PendingKind.HasValue;
                 Color color = warning ? TextureFactory.Coral : Color.Lerp(TextureFactory.Coral, TextureFactory.Sun, shrink);
-                color.a = 0.32f + 0.22f * Mathf.PingPong(Time.unscaledTime * 0.8f, 1f);
+                color.a = 0.36f + (GalaxyUiTheme.ReducedMotion ? 0f : 0.2f * Mathf.PingPong(Time.unscaledTime * 0.8f, 1f));
                 _border.color = color;
             }
         }
@@ -316,7 +325,7 @@ namespace Orbit.Galaxy.Unity
                     // Richer motes read as more valuable at a glance; the slow pulse keeps a
                     // dense field alive without adding per-particle simulation state.
                     size *= Mathf.Min(1.5f, 1f + Mathf.Max(0, o.Value) * 0.06f) *
-                            (0.92f + 0.08f * Mathf.Sin(Time.unscaledTime * 3f + o.Id));
+                            Pulse(3f, o.Id, 0.08f);
                     break;
                 case ObjectKind.Crystal:
                     sprite = TextureFactory.Diamond();
@@ -345,14 +354,14 @@ namespace Orbit.Galaxy.Unity
                     // Rich motes read as more valuable; the slow pulse keeps a fresh pile alive
                     // without any extra per-particle simulation state. Fade only near expiry.
                     size *= 1.3f * Mathf.Min(1.7f, 1f + Mathf.Max(0, o.Value) * 0.02f) *
-                            (0.92f + 0.08f * Mathf.Sin(Time.unscaledTime * 4f + o.Id));
+                            Pulse(4f, o.Id, 0.08f);
                     color.a = Mathf.Clamp01(drop == null ? 1f : drop.Lifetime / 2.5f);
                     order = 4;
                     break;
                 case ObjectKind.Hazard:
                     sprite = TextureFactory.Ring();
                     color = TextureFactory.Coral;
-                    color.a = 0.28f + 0.18f * Mathf.Sin(Time.unscaledTime * 3f + o.Id);
+                    color.a = 0.28f + (GalaxyUiTheme.ReducedMotion ? 0f : 0.18f * Mathf.Sin(Time.unscaledTime * 3f + o.Id));
                     size *= 1.5f;
                     order = 1;
                     break;
@@ -360,7 +369,7 @@ namespace Orbit.Galaxy.Unity
                     sprite = TextureFactory.Ring();
                     Anomaly anomaly = o as Anomaly;
                     color = anomaly != null && anomaly.GrantsShield ? TextureFactory.Lime : TextureFactory.Violet;
-                    color.a = 0.32f + 0.18f * Mathf.Sin(Time.unscaledTime * 2f + o.Id);
+                    color.a = 0.32f + (GalaxyUiTheme.ReducedMotion ? 0f : 0.18f * Mathf.Sin(Time.unscaledTime * 2f + o.Id));
                     size *= 1.8f;
                     order = 1;
                     break;
@@ -370,6 +379,12 @@ namespace Orbit.Galaxy.Unity
                     break;
             }
             Spawn(o.Position, size, color, sprite, rotation, order);
+        }
+
+        /// <summary>Reduced motion keeps pickups readable but freezes the size pulse.</summary>
+        private static float Pulse(float speed, float phase, float amplitude)
+        {
+            return GalaxyUiTheme.ReducedMotion ? 1f : 1f + amplitude * Mathf.Sin(Time.unscaledTime * speed + phase);
         }
 
         private static Color DropColor(ResourceKind kind)
@@ -397,7 +412,7 @@ namespace Orbit.Galaxy.Unity
             int stride = count > 20 ? 2 : 1;
             float alpha = ship.State == ShipState.Respawning ? 0.26f : 0.92f;
             if (ship.Invulnerability > 0f)
-                alpha *= 0.62f + 0.38f * Mathf.Abs(Mathf.Sin(Time.unscaledTime * 14f));
+                alpha *= GalaxyUiTheme.ReducedMotion ? 0.8f : 0.62f + 0.38f * Mathf.Abs(Mathf.Sin(Time.unscaledTime * 14f));
 
             Color primary = TextureFactory.Parse(ship.PrimaryHex, TextureFactory.Cyan);
             Color accent = TextureFactory.Parse(ship.AccentHex, TextureFactory.Lime);
@@ -419,7 +434,7 @@ namespace Orbit.Galaxy.Unity
                 if (!Visible(point, radius, center, halfWidth, halfHeight, margin)) continue;
 
                 float along = i / (float)Math.Max(1, count - 1);
-                float wave = ship.TailStyle == SnakeTailStyle.Pulse || energyTrail
+                float wave = (ship.TailStyle == SnakeTailStyle.Pulse || energyTrail) && !GalaxyUiTheme.ReducedMotion
                     ? 0.76f + 0.24f * Mathf.Abs(Mathf.Sin(Time.unscaledTime * 9f + i * 0.32f))
                     : 1f;
                 Color color = Color.Lerp(accent, primary, along);
@@ -451,7 +466,7 @@ namespace Orbit.Galaxy.Unity
             float rotation = ship.Facing.Angle() * Mathf.Rad2Deg;
             float alpha = ship.State == ShipState.Respawning ? 0.28f : 1f;
             if (ship.Invulnerability > 0f)
-                alpha *= 0.62f + 0.38f * Mathf.Abs(Mathf.Sin(Time.unscaledTime * 14f));
+                alpha *= GalaxyUiTheme.ReducedMotion ? 0.8f : 0.62f + 0.38f * Mathf.Abs(Mathf.Sin(Time.unscaledTime * 14f));
             Color tint = new Color(1f, 1f, 1f, alpha);
 
             Sprite sprite = TextureFactory.Hull(ship.Hull, ship.PrimaryHex, ship.AccentHex);

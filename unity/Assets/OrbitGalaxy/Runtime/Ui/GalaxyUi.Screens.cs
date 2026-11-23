@@ -46,9 +46,9 @@ namespace Orbit.Galaxy.Unity
                 return;
             }
             GalaxyUiTheme.Label(root, "ВЫБОР ЭВОЛЮЦИИ", 54, GalaxyUiTheme.Paper, TextAnchor.MiddleLeft,
-                GBox.At(-560f, 394f, 700f, 72f), FontStyle.Bold);
+                GBox.At(-440f, 394f, 680f, 72f), FontStyle.Bold);
             GalaxyUiTheme.Label(root, "Выберите ветвь — изменения сохраняются до конца матча", 21, GalaxyUiTheme.AccentC,
-                TextAnchor.MiddleLeft, GBox.At(-560f, 350f, 780f, 34f));
+                TextAnchor.MiddleLeft, GBox.At(-440f, 350f, 680f, 34f));
 
             List<EvolutionDef> cards = PickEvolutionOptions(options);
             float[] xs = { -530f, 0f, 530f };
@@ -92,9 +92,9 @@ namespace Orbit.Galaxy.Unity
         private void DrawSnakeEvolution(RectTransform root, List<EvolutionDef> options)
         {
             GalaxyUiTheme.Label(root, "РОСТ ЗМЕЙКИ", 54, GalaxyUiTheme.Paper, TextAnchor.MiddleLeft,
-                GBox.At(-560f, 394f, 700f, 72f), FontStyle.Bold);
+                GBox.At(-440f, 394f, 680f, 72f), FontStyle.Bold);
             GalaxyUiTheme.Label(root, "Выберите одно направление — оно действует до конца матча", 21,
-                GalaxyUiTheme.AccentC, TextAnchor.MiddleLeft, GBox.At(-560f, 350f, 800f, 34f));
+                GalaxyUiTheme.AccentC, TextAnchor.MiddleLeft, GBox.At(-440f, 350f, 680f, 34f));
 
             List<EvolutionDef> cards = PickEvolutionOptions(options);
             float[] xs = { -530f, 0f, 530f };
@@ -244,11 +244,11 @@ namespace Orbit.Galaxy.Unity
 
             Color tone = result.Victory ? GalaxyUiTheme.AccentA : GalaxyUiTheme.AccentB;
             GalaxyUiTheme.Label(root, result.Victory ? "ПОБЕДА" : "МАТЧ ЗАВЕРШЁН", 62, tone, TextAnchor.MiddleLeft,
-                GBox.At(-560f, 398f, 700f, 80f), FontStyle.Bold);
+                GBox.At(-440f, 398f, 680f, 80f), FontStyle.Bold);
             ModeDef mode = ContentDatabase.FindMode(result.Mode);
             GalaxyUiTheme.Label(root, mode.Name + " · место " + result.Rank + " из " + result.Participants +
                 " · время выживания " + FormatTime(result.SurvivalTime), 21, GalaxyUiTheme.Muted,
-                TextAnchor.MiddleLeft, GBox.At(-560f, 354f, 900f, 34f));
+                TextAnchor.MiddleLeft, GBox.At(-440f, 354f, 680f, 34f));
 
             Image rankCard = GalaxyUiTheme.Panel(root, "Итоговое место", new Color32(18, 28, 56, 246),
                 GBox.At(520f, 372f, 380f, 88f), GalaxyUiTheme.Round);
@@ -283,9 +283,17 @@ namespace Orbit.Galaxy.Unity
             Image rewards = GalaxyUiTheme.Panel(root, "Награды", new Color32(20, 32, 46, 246), GBox.At(250f, 250f, 620f, 124f), GalaxyUiTheme.Round);
             GalaxyUiTheme.Label(rewards.transform, "НАГРАДЫ", 19, GalaxyUiTheme.AccentA, TextAnchor.MiddleLeft,
                 GBox.Inset(18f, 84f, 18f, 8f), FontStyle.Bold);
-            GalaxyUiTheme.Label(rewards.transform, "+" + creditReward + " кредитов    +" + crystalReward +
-                " кристаллов    +" + matterReward + " ТМ\n+" + result.Xp + " XP матча    +" + accountXp + " XP аккаунта",
-                18, GalaxyUiTheme.Paper, TextAnchor.MiddleLeft, GBox.Inset(18f, 10f, 18f, 46f));
+            Text creditLabel = GalaxyUiTheme.Label(rewards.transform, "+0 кредитов", 17, GalaxyUiTheme.Paper,
+                TextAnchor.MiddleCenter, GBox.At(-200f, 0f, 196f, 34f), FontStyle.Bold);
+            Text crystalLabel = GalaxyUiTheme.Label(rewards.transform, "+0 кристаллов", 17, GalaxyUiTheme.Cyan,
+                TextAnchor.MiddleCenter, GBox.At(0f, 0f, 196f, 34f), FontStyle.Bold);
+            Text matterLabel = GalaxyUiTheme.Label(rewards.transform, "+0 ТМ", 17, GalaxyUiTheme.Coral,
+                TextAnchor.MiddleCenter, GBox.At(200f, 0f, 196f, 34f), FontStyle.Bold);
+            creditLabel.gameObject.AddComponent<GCountUp>().Play(creditLabel, creditReward, "+", " кредитов", 0.55f);
+            crystalLabel.gameObject.AddComponent<GCountUp>().Play(crystalLabel, crystalReward, "+", " кристаллов", 0.55f);
+            matterLabel.gameObject.AddComponent<GCountUp>().Play(matterLabel, matterReward, "+", " ТМ", 0.55f);
+            GalaxyUiTheme.Label(rewards.transform, "+" + result.Xp + " XP матча   ·   +" + accountXp + " XP аккаунта",
+                16, GalaxyUiTheme.Muted, TextAnchor.MiddleCenter, GBox.At(0f, -32f, 580f, 26f));
 
             Image streak = GalaxyUiTheme.Panel(root, "Серии", new Color32(32, 22, 52, 246), GBox.At(250f, 112f, 620f, 124f), GalaxyUiTheme.Round);
             AccountProfile profile = _app == null ? null : _app.Profile;
@@ -1223,10 +1231,12 @@ namespace Orbit.Galaxy.Unity
         private void DrawHeader(RectTransform root, string title, string subtitle, Action onBack)
         {
             GalaxyUiTheme.Panel(root, "Шапка", new Color32(8, 13, 31, 232), new GBox(0f, 1f, 1f, 1f, 0f, -96f, 0f, 0f));
+            // Left-anchored header text stays readable on 16:9 phones; the old centered boxes
+            // started outside the safe width and clipped the first letters of long titles.
             GalaxyUiTheme.Label(root, title, 46, GalaxyUiTheme.Paper, TextAnchor.MiddleLeft,
-                GBox.At(-540f, 402f, 620f, 66f), FontStyle.Bold);
+                GBox.TopRow(8f, 56f, 32f, 300f), FontStyle.Bold);
             GalaxyUiTheme.Label(root, subtitle, 19, GalaxyUiTheme.Muted, TextAnchor.MiddleLeft,
-                GBox.At(-540f, 360f, 900f, 32f));
+                GBox.TopRow(66f, 24f, 32f, 300f));
             GalaxyUiTheme.MakeButton(root, "Назад", "НАЗАД", GalaxyUiTheme.PanelSoft, GalaxyUiTheme.Paper,
                 GBox.At(650f, 384f, 230f, 62f), 20, delegate { if (onBack != null) onBack(); });
         }

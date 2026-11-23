@@ -209,6 +209,82 @@ namespace Orbit.Galaxy.Unity
             });
         }
 
+        /// <summary>Soft layered nebula used behind menus and the arena. Cached once.</summary>
+        public static Sprite Nebula()
+        {
+            return Make("nebula", 256, 256f, delegate(Color32[] px, int n)
+            {
+                uint seed = 0x4B1D9F37u;
+                for (int y = 0; y < n; y++)
+                {
+                    for (int x = 0; x < n; x++)
+                    {
+                        float nx = (x + 0.5f) / n;
+                        float ny = (y + 0.5f) / n;
+                        float r = 0f, g = 0f, b = 0f, a = 0f;
+                        AddCloud(nx, ny, 0.24f, 0.72f, 0.62f, 0.42f, 0.06f, 0.20f, 0.48f, ref r, ref g, ref b, ref a);
+                        AddCloud(nx, ny, 0.82f, 0.30f, 0.54f, 0.46f, 0.30f, 0.11f, 0.46f, ref r, ref g, ref b, ref a);
+                        AddCloud(nx, ny, 0.62f, 0.86f, 0.44f, 0.36f, 0.05f, 0.34f, 0.38f, ref r, ref g, ref b, ref a);
+                        float noise = (Unit(ref seed) - 0.5f) * 0.035f;
+                        a = Mathf.Clamp01(a + noise);
+                        if (a <= 0.005f) continue;
+                        px[y * n + x] = new Color32(
+                            (byte)Mathf.RoundToInt(Mathf.Clamp01(r / Mathf.Max(0.001f, a)) * 255f),
+                            (byte)Mathf.RoundToInt(Mathf.Clamp01(g / Mathf.Max(0.001f, a)) * 255f),
+                            (byte)Mathf.RoundToInt(Mathf.Clamp01(b / Mathf.Max(0.001f, a)) * 255f),
+                            (byte)Mathf.RoundToInt(a * 255f));
+                    }
+                }
+            });
+        }
+
+        /// <summary>Fine deterministic star layer; one stretched sprite keeps the UI draw calls flat.</summary>
+        public static Sprite Starfield()
+        {
+            return Make("starfield", 512, 512f, delegate(Color32[] px, int n)
+            {
+                uint seed = 0x1A2B3C4Du;
+                for (int i = 0; i < 240; i++)
+                {
+                    int x = Mathf.Clamp((int)(Unit(ref seed) * n), 0, n - 1);
+                    int y = Mathf.Clamp((int)(Unit(ref seed) * n), 0, n - 1);
+                    float bright = 0.22f + 0.62f * Unit(ref seed);
+                    bool warm = Unit(ref seed) > 0.86f;
+                    Color star = warm
+                        ? new Color(1f, 0.84f, 0.66f, bright)
+                        : new Color(0.72f, 0.87f, 1f, bright);
+                    Blend(px, n, x, y, star);
+                    if (Unit(ref seed) > 0.93f)
+                    {
+                        Color halo = new Color(star.r, star.g, star.b, bright * 0.35f);
+                        Blend(px, n, x - 1, y, halo);
+                        Blend(px, n, x + 1, y, halo);
+                        Blend(px, n, x, y - 1, halo);
+                        Blend(px, n, x, y + 1, halo);
+                    }
+                }
+            });
+        }
+
+        private static void AddCloud(float x, float y, float cx, float cy, float rx, float ry,
+            float r, float g, float b, ref float ar, ref float ag, ref float ab, ref float aa)
+        {
+            float dx = (x - cx) / rx;
+            float dy = (y - cy) / ry;
+            float falloff = Mathf.Exp(-(dx * dx + dy * dy) * 2.4f) * 0.62f;
+            if (falloff <= 0.001f) return;
+            ar += r * falloff;
+            ag += g * falloff;
+            ab += b * falloff;
+            aa += falloff * 0.72f;
+        }
+
+        private static float Unit(ref uint seed)
+        {
+            seed = seed * 1664525u + 1013904223u;
+            return (seed >> 8) / 16777216f;
+        }
+
         public static Sprite Hull(HullShape shape)
         {
             return Hull(shape, "#6CF6D2", "#B6FF3D");

@@ -70,10 +70,19 @@ namespace Orbit.Galaxy.Unity
         private float _target;
         private float _current;
 
+        /// <summary>Immediate value for static bars (quests, research, goals).</summary>
         public void Set(float value01)
         {
             _target = Mathf.Clamp01(value01);
-            if (ReducedMotion)
+            _current = _target;
+            Apply();
+        }
+
+        /// <summary>Eased value for live combat bars; call Tick once per frame to animate.</summary>
+        public void SetAnimated(float value01)
+        {
+            _target = Mathf.Clamp01(value01);
+            if (GalaxyUiTheme.ReducedMotion)
             {
                 _current = _target;
                 Apply();
@@ -120,7 +129,7 @@ namespace Orbit.Galaxy.Unity
             // button in a screen, which is not what a visual fade means here.
             _group.interactable = true;
             _group.blocksRaycasts = blocksRaycasts;
-            if (ReducedMotion || duration <= 0f)
+            if (GalaxyUiTheme.ReducedMotion || duration <= 0f)
             {
                 _group.alpha = 1f;
                 _running = false;
@@ -172,7 +181,7 @@ namespace Orbit.Galaxy.Unity
                 enabled = false;
                 return;
             }
-            if (ReducedMotion || duration <= 0f)
+            if (GalaxyUiTheme.ReducedMotion || duration <= 0f)
             {
                 _label.text = _prefix + target + _suffix;
                 _running = false;
@@ -589,10 +598,15 @@ namespace Orbit.Galaxy.Unity
             cb.fadeDuration = ReducedMotion ? 0f : 0.06f;
             btn.colors = cb;
 
+            // Soft depth instead of a bright 3px outline around every button.
             Outline outline = rt.gameObject.AddComponent<Outline>();
-            outline.effectColor = fill;
-            outline.effectDistance = new Vector2(3f, -3f);
+            outline.effectColor = new Color(0f, 0f, 0f, 0.34f);
+            outline.effectDistance = new Vector2(1.5f, -1.5f);
             outline.useGraphicAlpha = true;
+
+            Image gloss = Panel(rt, "Блик", new Color(1f, 1f, 1f, 0.075f),
+                new GBox(0f, 1f, 1f, 1f, 10f, -6f, -10f, -3f), Round);
+            gloss.raycastTarget = false;
 
             Text text = Label(rt, label, fontSize, textColor, TextAnchor.MiddleCenter, GBox.Inset(8f, 3f, 8f, 3f), style);
             text.name = "Подпись";
