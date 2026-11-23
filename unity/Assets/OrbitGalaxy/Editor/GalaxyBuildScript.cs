@@ -143,7 +143,11 @@ namespace Orbit.Galaxy.Editor
             {
                 PlayerSettings.iOS.requiresFullScreen = true;
                 PlayerSettings.iOS.statusBarHidden = true;
-                PlayerSettings.iOS.hideHomeIndicator = true;
+                // Hide the home indicator on gesture-navigation iPhones; reflection tolerates
+                // editor versions that expose the property under a different name.
+                PropertyInfo home = typeof(PlayerSettings.iOS).GetProperty(
+                    "hideHomeIndicator", BindingFlags.Public | BindingFlags.Static);
+                if (home != null && home.CanWrite) home.SetValue(null, true, null);
             }
             catch (Exception exception)
             {
@@ -238,7 +242,7 @@ namespace Orbit.Galaxy.Editor
         /// </summary>
         private static void AssignIcons(NamedBuildTarget target, Texture2D master)
         {
-            int[] sizes = PlayerSettings.GetIconSizes(target);
+            int[] sizes = PlayerSettings.GetIconSizes(target, IconKind.Application);
             if (sizes == null || sizes.Length == 0) return;
             var icons = new Texture2D[sizes.Length];
             for (int i = 0; i < sizes.Length; i++)
