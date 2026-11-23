@@ -32,6 +32,7 @@ namespace Orbit.Galaxy.Unity
         private int _abilitySlotEdge = -1;
         private bool _dashEdge;
         private bool _fireEdge;
+        private bool _boostWasHeld;
         private bool _showFps;
         private int _stepsThisFrame;
         private float _hudRefreshTimer;
@@ -92,6 +93,10 @@ namespace Orbit.Galaxy.Unity
             _abilitySlotEdge = _input == null ? -1 : _input.AbilitySlot;
             _dashEdge = _input != null && _input.DashPressed;
             _fireEdge = _input != null && _input.FirePressed;
+
+            bool boostHeld = _input != null && _input.BoostHeld;
+            if (active && boostHeld && !_boostWasHeld && _audio != null) _audio.PlayBoost();
+            _boostWasHeld = active && boostHeld;
 
             if (_input != null && _input.PausePressed)
             {
@@ -219,7 +224,11 @@ namespace Orbit.Galaxy.Unity
                 _lastRewards = _profile.ApplyResultWithRewards(result, DateTime.UtcNow);
                 if (_saves != null) _saves.Save(_profile);
             }
-            if (_audio != null) _audio.SetMusicIntensity(0f, 0f);
+            if (_audio != null)
+            {
+                _audio.SetMusicIntensity(0f, 0f);
+                if (showResultUi) _audio.PlayReward();
+            }
             if (showResultUi && _ui != null) _ui.ShowResult(result);
         }
 
@@ -260,6 +269,7 @@ namespace Orbit.Galaxy.Unity
             _abilityEdge = false;
             _dashEdge = false;
             _fireEdge = false;
+            _boostWasHeld = false;
             if (_input != null) _input.Reset();
 
             if (_match != null && _match.Log != null) _match.Log.Clear();
@@ -268,6 +278,7 @@ namespace Orbit.Galaxy.Unity
             Difficulty difficulty = def != null ? def.SuggestedDifficulty : Difficulty.Normal;
             int seed = unchecked(Environment.TickCount ^ (int)DateTime.UtcNow.Ticks ^ (GetInstanceID() << 7));
             _match = new MatchSimulation(mode, seed, difficulty, _profile);
+            if (_audio != null) _audio.SetPlayerId(_match.Player != null ? _match.Player.Id : -1);
 
             if (_renderer != null) _renderer.Initialize(this);
             if (_cameraRig != null && _match.Player != null) _cameraRig.SnapTo(_match.Player.Position);
@@ -381,6 +392,15 @@ namespace Orbit.Galaxy.Unity
                 else if (quality == GameSettings.QualityMedium) Application.targetFrameRate = 60;
                 else Application.targetFrameRate = -1;
             }
+        }
+
+        /// <summary>Replaces the in-memory profile after a backup restore and re-applies its settings.</summary>
+        public void RestoreProfile(AccountProfile profile)
+        {
+            if (profile == null) return;
+            _profile = profile;
+            if (_profile.Settings == null) _profile.Settings = new GameSettings();
+            ApplySettings();
         }
 
         private AccountProfile LoadProfile()

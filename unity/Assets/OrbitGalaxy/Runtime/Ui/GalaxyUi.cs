@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
@@ -87,6 +86,10 @@ namespace Orbit.Galaxy.Unity
         {
             if (app == null) return;
             _app = app;
+            GalaxyUiTheme.UiClick = delegate
+            {
+                if (_app != null && _app.Audio != null) _app.Audio.PlayUi();
+            };
             if (_canvasReady)
             {
                 ShowMenu();
@@ -747,14 +750,7 @@ namespace Orbit.Galaxy.Unity
 
         private static bool HasPendingEvolution(MatchSimulation match)
         {
-            if (match == null) return false;
-            FieldInfo field = match.GetType().GetField("PendingEvolutionChoices", BindingFlags.Public | BindingFlags.Instance);
-            if (field == null) return false;
-            object value = field.GetValue(match);
-            ICollection collection = value as ICollection;
-            if (collection != null) return collection.Count > 0;
-            if (value is int) return (int)value > 0;
-            return value != null;
+            return match != null && match.IsEvolutionPaused;
         }
 
         // ───────────────────────────── Shared helpers ─────────────────────────────

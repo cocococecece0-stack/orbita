@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
@@ -1337,105 +1336,36 @@ namespace Orbit.Galaxy.Unity
 
         // ───────────────────────────── Save bridge (reflection, no core dependency) ─────────────────────────────
 
-        private object GetAppMember(string name)
-        {
-            if (_app == null) return null;
-            Type type = _app.GetType();
-            PropertyInfo property = type.GetProperty(name, BindingFlags.Public | BindingFlags.Instance);
-            if (property != null) return property.GetValue(_app, null);
-            FieldInfo field = type.GetField(name, BindingFlags.Public | BindingFlags.Instance);
-            return field == null ? null : field.GetValue(_app);
-        }
-
+        // Direct calls into the SaveManager facade: no reflection, so IL2CPP stripping on
+        // Android/iOS cannot remove the save path and there is no per-call MethodInfo lookup.
         private void Persist()
         {
-            if (_app == null || _app.Profile == null) return;
-            object saves = GetAppMember("Saves");
-            if (saves != null)
-            {
-                MethodInfo withProfile = saves.GetType().GetMethod("Save", new[] { typeof(AccountProfile) });
-                if (withProfile != null)
-                {
-                    withProfile.Invoke(saves, new object[] { _app.Profile });
-                    return;
-                }
-                MethodInfo noArgs = saves.GetType().GetMethod("Save", Type.EmptyTypes);
-                if (noArgs != null)
-                {
-                    noArgs.Invoke(saves, null);
-                    return;
-                }
-            }
-            InvokeStaticSave("Save", new object[] { _app.Profile });
+            if (_app == null || _app.Profile == null || _app.Saves == null) return;
+            _app.Saves.Save(_app.Profile);
         }
 
         private bool SaveBackup()
         {
-            object saves = GetAppMember("Saves");
-            if (saves != null)
-            {
-                MethodInfo method = saves.GetType().GetMethod("Backup", Type.EmptyTypes);
-                if (method != null)
-                {
-                    object result = method.Invoke(saves, null);
-                    return !(result is bool) || (bool)result;
-                }
-            }
-            object staticResult = InvokeStaticSave("Backup", null);
-            return !(staticResult is bool) || (bool)staticResult;
+            if (_app == null || _app.Saves == null) return false;
+            _app.Saves.Backup();
+            return System.IO.File.Exists(Orbit.Galaxy.SaveManager.BackupPath);
         }
 
         private bool SaveRestore()
         {
-            object saves = GetAppMember("Saves");
-            if (saves != null)
-            {
-                MethodInfo method = saves.GetType().GetMethod("Restore", Type.EmptyTypes);
-                if (method != null)
-                {
-                    object result = method.Invoke(saves, null);
-                    return !(result is bool) || (bool)result;
-                }
-            }
-            object staticResult = InvokeStaticSave("Restore", null);
-            return !(staticResult is bool) || (bool)staticResult;
+            if (_app == null || _app.Saves == null) return false;
+            return _app.Saves.Restore();
         }
 
         private void RestoreProfile()
         {
-            object saves = GetAppMember("Saves");
-            AccountProfile profile = null;
-            if (saves != null)
-            {
-                MethodInfo load = saves.GetType().GetMethod("Load", Type.EmptyTypes);
-                if (load != null) profile = load.Invoke(saves, null) as AccountProfile;
-            }
-            if (profile == null) profile = InvokeStaticSave("Load", null) as AccountProfile;
-            if (profile == null || _app == null) return;
-            if (profile.Settings == null) profile.Settings = new GameSettings();
-            FieldInfo profileField = typeof(GalaxyApp).GetField("_profile", BindingFlags.Instance | BindingFlags.NonPublic);
-            if (profileField != null) profileField.SetValue(_app, profile);
+            if (_app == null || _app.Saves == null) return;
+            AccountProfile profile = _app.Saves.Load();
+            if (profile == null) return;
+            _app.RestoreProfile(profile);
             GalaxyUiTheme.ReducedMotion = profile.Settings.ReducedMotion;
             GalaxyUiTheme.SetLargeText(profile.Settings.LargeText);
             GalaxyUiTheme.SetColorblind(profile.Settings.Colorblind);
-            _app.ApplySettings();
-        }
-
-        private static object InvokeStaticSave(string methodName, object[] args)
-        {
-            try
-            {
-                Assembly assembly = typeof(GalaxyApp).Assembly;
-                Type manager = assembly.GetType("Orbit.Galaxy.SaveManager");
-                if (manager == null) return null;
-                Type[] signature = args == null ? Type.EmptyTypes : new[] { typeof(AccountProfile) };
-                MethodInfo method = manager.GetMethod(methodName, BindingFlags.Public | BindingFlags.Static, null, signature, null);
-                return method == null ? null : method.Invoke(null, args);
-            }
-            catch (Exception)
-            {
-                return null;
-            }
         }
     }
 }

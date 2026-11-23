@@ -272,6 +272,9 @@ namespace Orbit.Galaxy.Unity
         internal static bool LargeText;
         internal static bool ReducedMotion;
 
+        /// <summary>Wired by GalaxyUi to the audio layer so every button/toggle gives a soft tick.</summary>
+        internal static Action UiClick;
+
         private static Sprite _white;
         private static Sprite _circle;
         private static Sprite _round;
@@ -610,6 +613,7 @@ namespace Orbit.Galaxy.Unity
 
             Text text = Label(rt, label, fontSize, textColor, TextAnchor.MiddleCenter, GBox.Inset(8f, 3f, 8f, 3f), style);
             text.name = "Подпись";
+            btn.onClick.AddListener(delegate { if (UiClick != null) UiClick(); });
             if (onClick != null) btn.onClick.AddListener(onClick);
             return btn;
         }
@@ -691,6 +695,7 @@ namespace Orbit.Galaxy.Unity
             toggle.onValueChanged.AddListener(delegate(bool on)
             {
                 view.Apply(on, accent);
+                if (UiClick != null) UiClick();
                 if (onChanged != null) onChanged(on);
             });
             return view;

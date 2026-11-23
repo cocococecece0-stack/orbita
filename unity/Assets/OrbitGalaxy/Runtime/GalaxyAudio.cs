@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -17,7 +18,8 @@ namespace Orbit.Galaxy.Unity
         private static readonly string[] ClipNames =
         {
             "collect", "level", "evolve", "kill", "absorb", "ability", "boss", "warning",
-            "victory", "defeat", "event", "ui", "ambient", "music_0", "music_1", "music_2", "music_3"
+            "victory", "defeat", "event", "ui", "impact", "boost", "ambient",
+            "music_0", "music_1", "music_2", "music_3"
         };
 
         private GameSettings _settings;
@@ -34,6 +36,15 @@ namespace Orbit.Galaxy.Unity
         private float _danger;
         private float _lastSfx;
         private float _lastHaptic;
+        private float _lastBoost;
+        private int _playerId = -1;
+        private Coroutine _rewardRoutine;
+
+        /// <summary> Lets haptics react only to the local player's moments, not every bot death. </summary>
+        public void SetPlayerId(int id)
+        {
+            _playerId = id;
+        }
 
         public void Configure(GameSettings settings)
         {
@@ -76,21 +87,69 @@ namespace Orbit.Galaxy.Unity
             if (ev == null) return;
             string name = SoundFor(ev);
             if (string.IsNullOrEmpty(name)) return;
-            float volume = ev.Kind == SimEventKind.Damage ? 0.42f : 0.92f;
+            float volume = ev.Kind == SimEventKind.Damage ? 0.5f : 0.92f;
             PlaySfx(name, volume);
+            HapticFor(ev);
+        }
 
-            bool haptics = _settings != null && _settings.Haptics && !_settings.Muted;
-            if (!haptics) return;
-            if (ev.Kind == SimEventKind.Kill || ev.Kind == SimEventKind.Evolution
-                || ev.Kind == SimEventKind.BossSpawn || ev.Kind == SimEventKind.Victory
-                || ev.Kind == SimEventKind.Defeat)
+        /// <summary>Short boost whoosh on the rising edge of acceleration; throttled so holding it is silent.</summary>
+        public void PlayBoost()
+        {
+            if (Time.unscaledTime - _lastBoost < 0.3f) return;
+            _lastBoost = Time.unscaledTime;
+            PlaySfx("boost", 0.55f);
+        }
+
+        /// <summary>Soft interface tick for buttons and toggles.</summary>
+        public void PlayUi()
+        {
+            PlaySfx("ui", 0.6f);
+        }
+
+        /// <summary>Reward chime played shortly after the result screen so it does not mask victory/defeat.</summary>
+        public void PlayReward()
+        {
+            if (_rewardRoutine != null) StopCoroutine(_rewardRoutine);
+            _rewardRoutine = StartCoroutine(RewardAfterDelay());
+        }
+
+        private IEnumerator RewardAfterDelay()
+        {
+            yield return new WaitForSecondsRealtime(0.55f);
+            PlaySfx("level", 0.5f);
+            _rewardRoutine = null;
+        }
+
+        /// <summary>
+        /// Careful mobile haptics: only the local player's death/kill/evolution and match-level moments,
+        /// independent of the audio mute toggle, rate-limited, and never fired in the editor.
+        /// </summary>
+        private void HapticFor(SimEvent ev)
+        {
+            if (_settings == null || !_settings.Haptics) return;
+            bool relevant;
+            switch (ev.Kind)
             {
-                if (Time.unscaledTime - _lastHaptic > 0.35f)
-                {
-                    _lastHaptic = Time.unscaledTime;
-                    Handheld.Vibrate();
-                }
+                case SimEventKind.Kill:
+                    relevant = _playerId >= 0 && (ev.Value == _playerId || ev.ActorId == _playerId);
+                    break;
+                case SimEventKind.Evolution:
+                    relevant = _playerId >= 0 && ev.ActorId == _playerId;
+                    break;
+                case SimEventKind.BossSpawn:
+                case SimEventKind.Victory:
+                case SimEventKind.Defeat:
+                    relevant = true;
+                    break;
+                default:
+                    relevant = false;
+                    break;
             }
+            if (!relevant || Time.unscaledTime - _lastHaptic <= 0.35f) return;
+            _lastHaptic = Time.unscaledTime;
+#if (UNITY_ANDROID || UNITY_IOS) && !UNITY_EDITOR
+            Handheld.Vibrate();
+#endif
         }
 
         public void SetMusicIntensity(float intensity, float danger)
@@ -101,6 +160,7 @@ namespace Orbit.Galaxy.Unity
 
         private void OnDestroy()
         {
+            if (_rewardRoutine != null) StopCoroutine(_rewardRoutine);
             for (int i = 0; i < _generated.Count; i++)
             {
                 if (_generated[i] != null) Destroy(_generated[i]);
@@ -182,6 +242,8 @@ namespace Orbit.Galaxy.Unity
                 case "defeat": clip = Sweep(330f, 78f, 1.0f); break;
                 case "event": clip = Tone(660f, 0.36f, 0.16f); break;
                 case "ui": clip = Tone(1180f, 0.06f, 0.02f); break;
+                case "impact": clip = Blend("impact", Noise("impact_noise", 0.16f, 0.05f), Sweep(180f, 60f, 0.18f), 0.02f); break;
+                case "boost": clip = Blend("boost", Sweep(240f, 720f, 0.3f), Noise("boost_noise", 0.28f, 0.12f), 0.03f); break;
                 case "ambient": clip = Drone("ambient", 55f, 6f, false); break;
                 case "music_0": clip = Pad("music_0", new[] { 110f, 164.81f, 220f }, 8f); break;
                 case "music_1": clip = Arp("music_1", new[] { 220f, 261.63f, 329.63f, 440f }, 8f, 4f); break;
@@ -203,7 +265,7 @@ namespace Orbit.Galaxy.Unity
                 case SimEventKind.Kill:
                 case SimEventKind.LeaderKilled: return "kill";
                 case SimEventKind.Absorb: return "absorb";
-                case SimEventKind.Damage: return "ui";
+                case SimEventKind.Damage: return "impact";
                 case SimEventKind.Ability: return "ability";
                 case SimEventKind.BossSpawn: return "boss";
                 case SimEventKind.EventWarning:
