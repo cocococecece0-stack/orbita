@@ -49,8 +49,8 @@ namespace Orbit.Galaxy
                 "Достигните 3 уровня роста змейки.", StatBestGrowth, 3, 600, 2, "snake_head_voidglass"),
             new SnakeGoalDef("snake_goal_ability_25", "МАСТЕР СПОСОБНОСТЕЙ",
                 "Используйте змеиные способности 25 раз.", StatAbilityUses, 25, 550, 2, "snake_tail_spectrum"),
-            new SnakeGoalDef("snake_goal_length_80", "ЛЕВИАФАН",
-                "Достигните длины 80 сегментов.", StatBestLength, 80, 1500, 5, "snake_head_neon")
+            new SnakeGoalDef("snake_goal_length_40", "ЛЕВИАФАН",
+                "Достигните длины 40 сегментов.", StatBestLength, 40, 1500, 5, "snake_head_neon")
         };
 
         public static SnakeGoalDef Find(string id)

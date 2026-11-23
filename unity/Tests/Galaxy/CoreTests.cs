@@ -2234,15 +2234,38 @@ namespace Orbit.Galaxy.Core.Tests
             SnakeAbilityDef phaseDef = SnakeAbilities.Get(SnakeAbilitySlot.PhaseDash);
             Assert.True(SnakeAbilities.Activate(phase, SnakeAbilitySlot.PhaseDash, new SimLog(), 2f));
             Close(phaseDef.Duration, phase.EffectTimers[(int)AbilityKind.Phase], Epsilon);
-            Close(phaseDef.Duration, phase.Invulnerability, Epsilon);
+            Assert.True(phase.Invulnerability >= phaseDef.Duration);
             Close(0.85f, phase.DamageReduction, Epsilon);
+
+            Ship protectedPhase = NewShip(9);
+            protectedPhase.Invulnerability = 3f;
+            Assert.True(SnakeAbilities.Activate(protectedPhase, SnakeAbilitySlot.PhaseDash, new SimLog(), 2.5f));
+            Assert.True(protectedPhase.Invulnerability >= 3f, "Phase dash must not shorten existing i-frames.");
+
+            Ship shield = NewShip(11);
+            SnakeAbilityDef shieldDef = SnakeAbilities.Get(SnakeAbilitySlot.Shield);
+            Assert.True(SnakeAbilities.Activate(shield, SnakeAbilitySlot.Shield, new SimLog(), 2.6f));
+            Close(shieldDef.Duration, shield.EffectTimers[(int)AbilityKind.Shield], Epsilon);
+            Assert.True(shield.MaxShield > 0f);
+            Close(shield.MaxShield, shield.Shield, Epsilon);
+
+            Ship magnet = NewShip(12);
+            SnakeAbilityDef magnetDef = SnakeAbilities.Get(SnakeAbilitySlot.Magnet);
+            Assert.True(SnakeAbilities.Activate(magnet, SnakeAbilitySlot.Magnet, new SimLog(), 2.7f));
+            Close(magnetDef.Duration, magnet.EffectTimers[(int)AbilityKind.Magnet], Epsilon);
+            Assert.True(SnakeAbilities.IsActive(magnet, SnakeAbilitySlot.Magnet));
 
             Ship trail = NewShip(7);
             SnakeAbilityDef trailDef = SnakeAbilities.Get(SnakeAbilitySlot.Trail);
-            Assert.True(SnakeAbilities.Activate(trail, SnakeAbilitySlot.Trail, new SimLog(), 3f));
+            SimLog trailLog = new SimLog();
+            Assert.True(SnakeAbilities.Activate(trail, SnakeAbilitySlot.Trail, trailLog, 3f));
             Close(trailDef.Duration, trail.EffectTimers[(int)AbilityKind.Overdrive], Epsilon);
             Assert.True(SnakeAbilities.IsTrailActive(trail));
             Assert.True(trail.Speed > GameConfig.BaseSpeed);
+            List<SimEvent> trailEvents = trailLog.Drain();
+            Assert.True(trailEvents.Count > 0);
+            Assert.Equal(trailDef.Name, trailEvents[trailEvents.Count - 1].Text);
+            Close(trailDef.Duration, trailEvents[trailEvents.Count - 1].FloatValue, Epsilon);
 
             Ship poor = NewShip(8);
             poor.Energy = 5f;
@@ -2280,9 +2303,19 @@ namespace Orbit.Galaxy.Core.Tests
         [Fact]
         public void SnakeProgression_UnlocksCosmeticsOnceAndSurvivesSaveRoundTrip()
         {
+            // The long-length goal must be reachable with the real 48-segment body cap.
+            Ship grownSnake = NewShip(10);
+            grownSnake.Mass = GameConfig.BaseMass * 200f;
+            SnakeBody grownBody = new SnakeBody();
+            grownBody.Owner = grownSnake;
+            grownBody.Reset(grownSnake.Position, grownSnake.Facing, grownSnake.Radius, grownSnake.Mass);
+            int achievableLength = grownBody.Count;
+            Assert.True(achievableLength >= SnakeProgression.Goals[SnakeProgression.Goals.Length - 1].Target);
+            Assert.True(achievableLength <= SnakeConfig.MaxSegments);
+
             AccountProfile profile = new AccountProfile();
             MatchResult result = new MatchResult();
-            result.Length = 80;
+            result.Length = achievableLength;
             result.SurvivalTime = 200f;
             result.SnakeEvolutionTier = 3;
             result.SnakeAbilityUses = 25;
@@ -2294,11 +2327,11 @@ namespace Orbit.Galaxy.Core.Tests
 
             ProgressionRewards rewards = ProgressionSystem.ApplyMatchResult(profile, result, new DateTime(2026, 1, 1));
             Assert.True(rewards.SnakeGoalCount > 0);
-            Assert.Equal(80, profile.Stat(SnakeProgression.StatBestLength));
+            Assert.Equal(achievableLength, profile.Stat(SnakeProgression.StatBestLength));
             Assert.Equal(3, profile.Stat(SnakeProgression.StatBestGrowth));
             Assert.Equal(200, profile.Stat(SnakeProgression.StatBestSurvival));
             Assert.Equal(25, profile.Stat(SnakeProgression.StatAbilityUses));
-            Assert.Equal(80, profile.Records[SnakeProgression.StatBestLength]);
+            Assert.Equal(achievableLength, profile.Records[SnakeProgression.StatBestLength]);
             Assert.Equal(200, profile.Records[SnakeProgression.StatBestSurvival]);
 
             string[] unlocks =
@@ -2330,6 +2363,11 @@ namespace Orbit.Galaxy.Core.Tests
             Assert.Equal(head.Hull, cosmeticMatch.Player.Hull);
             Assert.Equal(head.PrimaryHex, cosmeticMatch.Player.PrimaryHex);
             Assert.Equal(tail.Style, cosmeticMatch.Player.TailStyle);
+            // Completed snake goals and equipped cosmetics must not create permanent power.
+            Close(GameConfig.BaseMass, cosmeticMatch.Player.Mass, Epsilon);
+            Close(GameConfig.BaseDamage, cosmeticMatch.Player.Damage, Epsilon);
+            Close(GameConfig.BaseSpeed, cosmeticMatch.Player.Speed, Epsilon);
+            Close(GameConfig.BasePickupRadius, cosmeticMatch.Player.PickupRadius, Epsilon);
         }
 
         [Fact]

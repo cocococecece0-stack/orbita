@@ -68,7 +68,7 @@ namespace Orbit.Galaxy
             new SnakeUpgradeDef("snake_size_2", "РАЗМАХ", "Максимальная длина +2 сегмента.", SnakeGrowthPath.Size, 2, 2f, EvolutionBranch.Titan, HullShape.Bulwark),
             new SnakeUpgradeDef("snake_size_3", "ЛЕВИАФАН", "Максимальная длина +3 сегмента.", SnakeGrowthPath.Size, 3, 3f, EvolutionBranch.Titan, HullShape.Hex),
 
-            // Protection: a small regenerating shield, never damage immunity.
+            // Protection: a small shield bonus, never damage immunity.
             new SnakeUpgradeDef("snake_guard_1", "ЗАЩИТА", "Бонус щита +6.", SnakeGrowthPath.Protection, 1, 6f, EvolutionBranch.Titan, HullShape.Bulwark),
             new SnakeUpgradeDef("snake_guard_2", "ПАНЦИРЬ", "Бонус щита +6.", SnakeGrowthPath.Protection, 2, 6f, EvolutionBranch.Titan, HullShape.Hex),
             new SnakeUpgradeDef("snake_guard_3", "БАСТИОН", "Бонус щита +8.", SnakeGrowthPath.Protection, 3, 8f, EvolutionBranch.Titan, HullShape.Hex),

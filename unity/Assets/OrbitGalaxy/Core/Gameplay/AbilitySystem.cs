@@ -51,14 +51,16 @@ namespace Orbit.Galaxy
         public static bool Activate(Ship ship, AbilityKind kind, SimLog log, float time)
         {
             AbilityDef def = ContentDatabase.FindAbility(kind);
-            return Activate(ship, kind, log, time, def == null ? kind.ToString() : def.Name);
+            return Activate(ship, kind, log, time, def == null ? kind.ToString() : def.Name,
+                def == null ? 0f : def.Duration);
         }
 
         /// <summary>
-        /// Same effect with a caller-supplied log label. Snake abilities reuse these proven effects
-        /// but need their own readable names in the feed and HUD without changing protected content.
+        /// Same effect with caller-supplied presentation data. Snake abilities reuse these proven
+        /// effects but need their own readable names and effect durations in the feed.
         /// </summary>
-        internal static bool Activate(Ship ship, AbilityKind kind, SimLog log, float time, string displayName)
+        internal static bool Activate(Ship ship, AbilityKind kind, SimLog log, float time,
+            string displayName, float logDuration)
         {
             if (!CanActivate(ship, kind)) return false;
             AbilityDef def = ContentDatabase.FindAbility(kind);
@@ -69,7 +71,7 @@ namespace Orbit.Galaxy
             ship.EffectTimers[index] = Math.Max(0f, def.Duration);
             if (log != null)
             {
-                log.Add(SimEventKind.Ability, ship.Id, index, displayName, ship.Position, time, def.Duration);
+                log.Add(SimEventKind.Ability, ship.Id, index, displayName, ship.Position, time, logDuration);
             }
             ship.Remember("Способность: " + displayName);
 

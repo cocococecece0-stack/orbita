@@ -63,7 +63,7 @@ namespace Orbit.Galaxy
                 "Достигните 3 уровня роста змейки.", "snake_goal_growth_3",
                 HullShape.Core, "#FF4D7E", "#261044", SnakeTailStyle.Ribbon, true),
             new SnakeCosmeticDef("snake_head_neon", "НЕОНОВЫЙ КОД", "head",
-                "Достигните длины 80 сегментов.", "snake_goal_length_80",
+                "Достигните длины 40 сегментов.", "snake_goal_length_40",
                 HullShape.Hex, "#3DE6FF", "#FFFFFF", SnakeTailStyle.Spectrum, true),
 
             new SnakeCosmeticDef("snake_tail_comet", "КОМЕТА", "tail",
@@ -79,7 +79,7 @@ namespace Orbit.Galaxy
                 "Выполните 25 змеиных способностей.", "snake_goal_ability_25",
                 HullShape.Dart, "#9D7BFF", "#3DE6FF", SnakeTailStyle.Spectrum, true),
             new SnakeCosmeticDef("snake_tail_eclipse", "ЗАТМЕНИЕ", "tail",
-                "Достигните длины 80 сегментов.", "snake_goal_length_80",
+                "Достигните длины 40 сегментов.", "snake_goal_length_40",
                 HullShape.Dart, "#FF4D7E", "#261044", SnakeTailStyle.Pulse, true)
         };
 

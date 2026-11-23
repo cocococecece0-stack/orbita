@@ -51,15 +51,15 @@ namespace Orbit.Galaxy
         public static readonly SnakeAbilityDef[] All =
         {
             new SnakeAbilityDef(SnakeAbilitySlot.Impulse, AbilityKind.Dash, "ИМПУЛЬС", "ИМПУЛЬС",
-                "Короткий рывок вперёд с кратким иммунитетом.", "1 / Q", 12f, 6.5f, 0.24f),
+                "Короткий рывок вперёд с кратким иммунитетом.", "1", 12f, 6.5f, 0.24f),
             new SnakeAbilityDef(SnakeAbilitySlot.Shield, AbilityKind.Shield, "ЩИТ", "ЩИТ",
-                "Временный барьер, поглощающий урон.", "2 / E", 18f, 13f, 4.2f),
+                "Временный барьер, поглощающий урон.", "2", 18f, 13f, 4.2f),
             new SnakeAbilityDef(SnakeAbilitySlot.Magnet, AbilityKind.Magnet, "МАГНИТ", "МАГНИТ",
-                "Притягивает ресурсы рядом со змейкой.", "3 / E", 10f, 18f, 6f),
+                "Притягивает ресурсы рядом со змейкой.", "3", 10f, 18f, 6f),
             new SnakeAbilityDef(SnakeAbilitySlot.Trail, AbilityKind.Overdrive, "ЭНЕРГЕТИЧЕСКИЙ СЛЕД", "СЛЕД",
-                "Короткий разгон и яркий светящийся хвост.", "4 / E", 22f, 20f, 4.5f),
+                "Разгон, частая стрельба и яркий светящийся хвост.", "4", 22f, 20f, 4.5f),
             new SnakeAbilityDef(SnakeAbilitySlot.PhaseDash, AbilityKind.Phase, "ФАЗОВЫЙ РЫВОК", "ФАЗА",
-                "Короткий проход сквозь опасности и тела.", "5 / E", 16f, 22f, 1.4f)
+                "Проход сквозь опасности, +скорость и 85% защиты от урона.", "5", 16f, 22f, 1.4f)
         };
 
         public static SnakeAbilityDef Get(SnakeAbilitySlot slot)
@@ -93,19 +93,16 @@ namespace Orbit.Galaxy
         {
             SnakeAbilityDef def = Get(slot);
             if (!CanActivate(ship, slot)) return false;
-            if (!AbilitySystem.Activate(ship, def.Kind, log, time, def.Name)) return false;
+            if (!AbilitySystem.Activate(ship, def.Kind, log, time, def.Name, def.Duration)) return false;
 
             int index = (int)def.Kind;
-            float extraCost = def.Cost - AbilitySystem.BaseEnergyCost(def.Kind);
-            if (extraCost > 0f)
-                ship.Energy = MathGalaxy.Clamp(ship.Energy - extraCost, 0f, GameConfig.MaxEnergy);
             ship.Cooldowns[index] = def.Cooldown;
             ship.EffectTimers[index] = def.Duration;
 
             if (slot == SnakeAbilitySlot.PhaseDash)
             {
-                // The shared Phase definition is longer than the snake dash: keep the effect short.
-                ship.Invulnerability = def.Duration;
+                // The short effect timer bounds the phase; never cut an existing longer grace period.
+                ship.Invulnerability = Math.Max(ship.Invulnerability, def.Duration);
                 ship.RecalculateStats(null);
             }
             else if (slot == SnakeAbilitySlot.Trail)
