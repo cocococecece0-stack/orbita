@@ -25,6 +25,7 @@ namespace Orbit.Galaxy.Unity
         private readonly List<Particle> _particles = new List<Particle>(GameConfig.MaxVisibleParticles);
         private int _cursor;
         private int _segmentsDrawn;
+        private bool _idle;
         private int _particleLimit = GameConfig.MaxVisibleParticles;
 
         /// <summary>Качество влияет на реальный бюджет частиц, а не только на частоту кадров.</summary>
@@ -61,6 +62,7 @@ namespace Orbit.Galaxy.Unity
 
             _particles.Clear();
             _cursor = 0;
+            _idle = false;
             _camera = app != null && app.CameraRig != null ? app.CameraRig.Camera : Camera.main;
         }
 
@@ -69,17 +71,25 @@ namespace Orbit.Galaxy.Unity
             if (_root == null) Initialize(_app);
             if (_camera == null) _camera = Camera.main;
 
+            // In the menu there is nothing to draw: hide the pool once, then skip the per-frame
+            // walk over up to PoolLimit renderers so idle screens stay cheap on weak devices.
+            if (match == null)
+            {
+                if (!_idle)
+                {
+                    ShowDecorations(false);
+                    _particles.Clear();
+                    BeginFrame();
+                    EndFrame();
+                    _idle = true;
+                }
+                return;
+            }
+            _idle = false;
+
             float dt = Mathf.Min(Time.unscaledDeltaTime, 0.06f);
             if (dt < 0f) dt = 0f;
             BeginFrame();
-
-            if (match == null)
-            {
-                ShowDecorations(false);
-                _particles.Clear();
-                EndFrame();
-                return;
-            }
 
             ShowDecorations(true);
             float radius = match.Arena == null ? GameConfig.ArenaRadius : match.Arena.Radius;
