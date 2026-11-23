@@ -2234,7 +2234,7 @@ namespace Orbit.Galaxy.Core.Tests
             SnakeAbilityDef phaseDef = SnakeAbilities.Get(SnakeAbilitySlot.PhaseDash);
             Assert.True(SnakeAbilities.Activate(phase, SnakeAbilitySlot.PhaseDash, new SimLog(), 2f));
             Close(phaseDef.Duration, phase.EffectTimers[(int)AbilityKind.Phase], Epsilon);
-            Assert.True(phase.Invulnerability >= phaseDef.Duration);
+            Close(phaseDef.Duration, phase.Invulnerability, Epsilon);
             Close(0.85f, phase.DamageReduction, Epsilon);
 
             Ship protectedPhase = NewShip(9);

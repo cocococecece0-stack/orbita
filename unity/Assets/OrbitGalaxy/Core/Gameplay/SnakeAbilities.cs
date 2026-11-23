@@ -93,6 +93,8 @@ namespace Orbit.Galaxy
         {
             SnakeAbilityDef def = Get(slot);
             if (!CanActivate(ship, slot)) return false;
+            // Remember pre-existing grace before the shared effect applies its own (longer) Phase timer.
+            float graceBefore = ship.Invulnerability;
             if (!AbilitySystem.Activate(ship, def.Kind, log, time, def.Name, def.Duration)) return false;
 
             int index = (int)def.Kind;
@@ -101,8 +103,8 @@ namespace Orbit.Galaxy
 
             if (slot == SnakeAbilitySlot.PhaseDash)
             {
-                // The short effect timer bounds the phase; never cut an existing longer grace period.
-                ship.Invulnerability = Math.Max(ship.Invulnerability, def.Duration);
+                // Bound the shared 3.2s phase to this short dash, but keep any longer pre-existing grace.
+                ship.Invulnerability = Math.Max(graceBefore, def.Duration);
                 ship.RecalculateStats(null);
             }
             else if (slot == SnakeAbilitySlot.Trail)
