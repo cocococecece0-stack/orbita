@@ -213,7 +213,7 @@ jobs:
     if: needs.credentials.outputs.available == 'true'
     # GameCI v4 still calls the legacy Unity Hub headless CLI, removed in Hub 4.x.
     # Pin macOS 15/arm64 so the Hub 3.x installer below can be used.
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 120
     steps:
       - name: Checkout
