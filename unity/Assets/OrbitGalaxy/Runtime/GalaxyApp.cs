@@ -78,7 +78,6 @@ namespace Orbit.Galaxy.Unity
             if (_renderer != null) _renderer.Initialize(this);
             if (_ui != null) _ui.Initialize(this);
             ApplySettings();
-            if (_ui != null) _ui.ShowMenu();
         }
 
         private void Update()

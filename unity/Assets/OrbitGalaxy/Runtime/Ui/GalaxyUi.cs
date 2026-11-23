@@ -37,6 +37,7 @@ namespace Orbit.Galaxy.Unity
         private Image _toastPanel;
         private Text _toastLabel;
         private float _toastUntil;
+        private float _splashUntil;
         private int _lastScreenWidth;
         private int _lastScreenHeight;
         private Rect _lastSafeArea;
@@ -99,7 +100,28 @@ namespace Orbit.Galaxy.Unity
             GalaxyUiTheme.SetLargeText(app.Profile != null && app.Profile.Settings != null && app.Profile.Settings.LargeText);
             GalaxyUiTheme.SetColorblind(app.Profile != null && app.Profile.Settings != null && app.Profile.Settings.Colorblind);
             GalaxyUiTheme.ReducedMotion = app.Profile != null && app.Profile.Settings != null && app.Profile.Settings.ReducedMotion;
-            ShowMenu();
+            ShowSplash();
+        }
+
+        /// <summary>
+        /// Branded boot splash shown before the main menu. It is our own identity screen and does not
+        /// replace or bypass the Unity engine splash required by the Personal license. Auto-advances.
+        /// </summary>
+        public void ShowSplash()
+        {
+            RectTransform root = BeginScreen("splash", false);
+            if (root == null) return;
+            DrawBackdrop(root, GalaxyUiTheme.AccentA);
+            GalaxyUiTheme.Label(root, "ОРБИТА", 120, GalaxyUiTheme.Paper, TextAnchor.MiddleCenter,
+                GBox.At(0f, 96f, 1200f, 140f), FontStyle.Bold);
+            GalaxyUiTheme.Label(root, "ГАЛАКТИКА", 120, GalaxyUiTheme.AccentA, TextAnchor.MiddleCenter,
+                GBox.At(0f, -40f, 1200f, 140f), FontStyle.Bold);
+            GalaxyUiTheme.Panel(root, "Акцент", GalaxyUiTheme.AccentB, GBox.At(0f, -128f, 320f, 6f));
+            GalaxyUiTheme.Label(root, "АРЕНА · ЭВОЛЮЦИЯ · ДОМИНИРОВАНИЕ", 22, GalaxyUiTheme.AccentC,
+                TextAnchor.MiddleCenter, GBox.At(0f, -176f, 900f, 36f), FontStyle.Bold);
+            GalaxyUiTheme.Label(root, "Загрузка…", 18, GalaxyUiTheme.Muted, TextAnchor.MiddleCenter,
+                GBox.BottomAt(0f, 40f, 600f, 30f));
+            _splashUntil = Time.unscaledTime + (GalaxyUiTheme.ReducedMotion ? 0.35f : 1.15f);
         }
 
         public void ShowMenu()
@@ -406,6 +428,11 @@ namespace Orbit.Galaxy.Unity
             }
             if (_toastPanel != null && _toastPanel.gameObject.activeSelf && Time.unscaledTime > _toastUntil)
                 _toastPanel.gameObject.SetActive(false);
+            if (_screen == "splash" && _splashUntil > 0f && Time.unscaledTime >= _splashUntil)
+            {
+                _splashUntil = 0f;
+                ShowMenu();
+            }
         }
 
         private void OnDestroy()

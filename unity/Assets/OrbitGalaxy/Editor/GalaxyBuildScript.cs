@@ -128,6 +128,202 @@ namespace Orbit.Galaxy.Editor
             PlayerSettings.runInBackground = false;
             SetAndroidTargetSettings();
             SetIosMinimumVersion();
+            SetMobileUiSettings();
+            SetManagedStripping();
+            ConfigureBranding();
+        }
+
+        /// <summary>
+        /// Full-screen landscape mobile UI: hide the iOS status bar/home indicator and require full screen
+        /// so the Safe Area math in the runtime matches what the player sees. Android stays offline.
+        /// </summary>
+        private static void SetMobileUiSettings()
+        {
+            try
+            {
+                PlayerSettings.iOS.requiresFullScreen = true;
+                PlayerSettings.iOS.statusBarHidden = true;
+                PlayerSettings.iOS.hideHomeIndicator = true;
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning("Could not apply iOS UI settings: " + exception.Message);
+            }
+
+            try { PlayerSettings.Android.forceInternetPermission = false; }
+            catch (Exception exception) { Debug.LogWarning("Could not clear Android internet permission: " + exception.Message); }
+
+            // Target a modern Android API while keeping minSdk 23. Reflection tolerates editor
+            // builds whose enum does not yet name the newest level.
+            try
+            {
+                PropertyInfo targetSdk = typeof(PlayerSettings.Android).GetProperty(
+                    "targetSdkVersion", BindingFlags.Public | BindingFlags.Static);
+                if (targetSdk != null && targetSdk.CanWrite)
+                {
+                    string[] candidates = { "AndroidApiLevel34", "AndroidApiLevel33", "AndroidApiLevelAuto" };
+                    foreach (string name in candidates)
+                    {
+                        try
+                        {
+                            targetSdk.SetValue(null, Enum.Parse(targetSdk.PropertyType, name), null);
+                            break;
+                        }
+                        catch (Exception) { /* try the next candidate */ }
+                    }
+                }
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning("Could not apply Android target SDK: " + exception.Message);
+            }
+        }
+
+        /// <summary>
+        /// Low stripping keeps the reflection-based SaveManager facade and core types alive under IL2CPP.
+        /// Higher levels can remove members the save layer resolves by name at runtime.
+        /// </summary>
+        private static void SetManagedStripping()
+        {
+            try
+            {
+                PlayerSettings.SetManagedStrippingLevel(NamedBuildTarget.Android, ManagedStrippingLevel.Low);
+                PlayerSettings.SetManagedStrippingLevel(NamedBuildTarget.iOS, ManagedStrippingLevel.Low);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning("Could not set managed stripping level: " + exception.Message);
+            }
+        }
+
+        /// <summary>
+        /// Own ORBITA GALAXY identity: a procedurally drawn app icon and a dark engine splash background.
+        /// The Unity Personal splash/logo is left intact (license requirement); the branded boot screen
+        /// is drawn by the runtime GalaxyUi.ShowSplash after the engine splash.
+        /// </summary>
+        private static void ConfigureBranding()
+        {
+            try
+            {
+                PlayerSettings.SplashScreen.show = true;
+                PlayerSettings.SplashScreen.backgroundColor = new Color32(7, 10, 24, 255);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning("Could not set splash background: " + exception.Message);
+            }
+
+            try
+            {
+                Texture2D master = EnsureIconMaster();
+                if (master != null)
+                {
+                    AssignIcons(NamedBuildTarget.Android, master);
+                    AssignIcons(NamedBuildTarget.iOS, master);
+                }
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning("Could not assign Galaxy app icon: " + exception.Message);
+            }
+        }
+
+        private const string IconFolder = "Assets/OrbitGalaxy/Branding";
+        private const string IconMasterPath = IconFolder + "/GalaxyIcon.png";
+
+        /// <summary>
+        /// Unity only accepts an icon list whose length matches GetIconSizes, so we export the master
+        /// emblem at every required size and assign the whole set. Textures are persisted as assets so
+        /// they survive into the player build.
+        /// </summary>
+        private static void AssignIcons(NamedBuildTarget target, Texture2D master)
+        {
+            int[] sizes = PlayerSettings.GetIconSizes(target);
+            if (sizes == null || sizes.Length == 0) return;
+            var icons = new Texture2D[sizes.Length];
+            for (int i = 0; i < sizes.Length; i++)
+            {
+                int size = Mathf.Max(16, sizes[i]);
+                string path = IconFolder + "/icon_" + target + "_" + size + ".png";
+                Texture2D icon = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+                if (icon == null)
+                {
+                    icon = Resample(master, size);
+                    System.IO.File.WriteAllBytes(path, icon.EncodeToPNG());
+                    UnityEngine.Object.DestroyImmediate(icon);
+                    AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
+                    ConfigureIconImporter(path);
+                    icon = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+                }
+                icons[i] = icon;
+            }
+            PlayerSettings.SetIcons(target, icons, IconKind.Application);
+        }
+
+        private static void ConfigureIconImporter(string path)
+        {
+            var importer = AssetImporter.GetAtPath(path) as TextureImporter;
+            if (importer == null) return;
+            importer.textureType = TextureImporterType.Default;
+            importer.isReadable = true;
+            importer.maxTextureSize = 1024;
+            importer.textureCompression = TextureImporterCompression.Uncompressed;
+            importer.SaveAndReimport();
+        }
+
+        private static Texture2D Resample(Texture2D source, int size)
+        {
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            var px = new Color32[size * size];
+            for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                    px[y * size + x] = source.GetPixelBilinear((x + 0.5f) / size, (y + 0.5f) / size);
+            tex.SetPixels32(px);
+            tex.Apply(false, false);
+            return tex;
+        }
+
+        /// <summary>Draws and imports a 1024px orbital emblem once; reused on every build.</summary>
+        private static Texture2D EnsureIconMaster()
+        {
+            EnsureFolder(IconFolder);
+            var existing = AssetDatabase.LoadAssetAtPath<Texture2D>(IconMasterPath);
+            if (existing != null) return existing;
+
+            const int n = 1024;
+            var tex = new Texture2D(n, n, TextureFormat.RGBA32, false);
+            var px = new Color32[n * n];
+            Color32 top = new Color32(20, 26, 62, 255);
+            Color32 bottom = new Color32(8, 10, 26, 255);
+            Color32 ring = new Color32(61, 230, 255, 255);
+            Color32 core = new Color32(182, 255, 61, 255);
+            for (int y = 0; y < n; y++)
+            {
+                float v = y / (float)(n - 1);
+                Color32 bg = Color32.Lerp(bottom, top, v);
+                for (int x = 0; x < n; x++)
+                {
+                    float dx = (x + 0.5f) / n - 0.5f;
+                    float dy = (y + 0.5f) / n - 0.5f;
+                    float r = Mathf.Sqrt(dx * dx + dy * dy);
+                    Color32 c = bg;
+                    float ex = dx / 0.40f;
+                    float ey = (dy + dx * 0.32f) / 0.16f;
+                    float er = Mathf.Sqrt(ex * ex + ey * ey);
+                    if (er > 0.86f && er < 1.06f) c = ring;
+                    if (r < 0.13f) c = core;
+                    else if (r < 0.17f) c = Color32.Lerp(core, bg, (r - 0.13f) / 0.04f);
+                    if ((x * 73856093 ^ y * 19349663) % 997 == 0 && r > 0.2f) c = new Color32(220, 232, 255, 255);
+                    px[y * n + x] = c;
+                }
+            }
+            tex.SetPixels32(px);
+            tex.Apply(false, true);
+            System.IO.File.WriteAllBytes(IconMasterPath, tex.EncodeToPNG());
+            UnityEngine.Object.DestroyImmediate(tex);
+            AssetDatabase.ImportAsset(IconMasterPath, ImportAssetOptions.ForceUpdate);
+            ConfigureIconImporter(IconMasterPath);
+            return AssetDatabase.LoadAssetAtPath<Texture2D>(IconMasterPath);
         }
 
         /// <summary>
