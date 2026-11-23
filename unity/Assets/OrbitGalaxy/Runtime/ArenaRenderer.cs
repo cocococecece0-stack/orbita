@@ -222,7 +222,7 @@ namespace Orbit.Galaxy.Unity
                     SpawnBurst(ev.Position, TextureFactory.Orange, 5, 90f, 8f, 0.3f, false);
                     break;
                 case SimEventKind.Ability:
-                    SpawnBurst(ev.Position, TextureFactory.Cyan, 14, 190f, 10f, 0.6f, true);
+                    SpawnAbilityEffect(ev);
                     break;
                 case SimEventKind.BossSpawn:
                     SpawnBurst(ev.Position, TextureFactory.Coral, 38, 340f, 17f, 1.3f, true);
@@ -542,6 +542,75 @@ namespace Orbit.Galaxy.Unity
                 color.a *= t;
                 float size = particle.Size * (0.4f + 0.6f * t);
                 Spawn(particle.Position, size, color, TextureFactory.Glow(), 0f, 20);
+            }
+        }
+
+        /// <summary>Each snake ability gets a distinct activation signature without new event types.</summary>
+        private void SpawnAbilityEffect(SimEvent ev)
+        {
+            AbilityKind kind = (AbilityKind)ev.Value;
+            switch (kind)
+            {
+                case AbilityKind.Dash:
+                    SpawnDirectionalBurst(ev.Position, AbilityFacing(ev.ActorId), TextureFactory.Cyan,
+                        14, 300f, 11f, 0.45f);
+                    SpawnBurst(ev.Position, TextureFactory.Lime, 8, 150f, 9f, 0.4f, true);
+                    break;
+                case AbilityKind.Shield:
+                    SpawnBurst(ev.Position, TextureFactory.Cyan, 24, 230f, 14f, 0.9f, true);
+                    break;
+                case AbilityKind.Magnet:
+                    SpawnBurst(ev.Position, TextureFactory.Violet, 30, 360f, 16f, 1.1f, true);
+                    SpawnBurst(ev.Position, TextureFactory.Lime, 8, 90f, 8f, 0.7f, false);
+                    break;
+                case AbilityKind.Overdrive:
+                    SpawnBurst(ev.Position, TextureFactory.Sun, 18, 260f, 12f, 0.9f, true);
+                    SpawnBurst(ev.Position, TextureFactory.Lime, 10, 180f, 9f, 0.6f, false);
+                    break;
+                case AbilityKind.Phase:
+                    SpawnBurst(ev.Position, TextureFactory.Violet, 22, 320f, 12f, 0.7f, false);
+                    SpawnBurst(ev.Position, TextureFactory.Pink, 8, 180f, 10f, 0.5f, true);
+                    break;
+                default:
+                    SpawnBurst(ev.Position, TextureFactory.Cyan, 14, 190f, 10f, 0.6f, true);
+                    break;
+            }
+        }
+
+        private Vec2 AbilityFacing(int actorId)
+        {
+            MatchSimulation match = _app == null ? null : _app.Match;
+            if (match != null && match.Ships != null)
+            {
+                for (int i = 0; i < match.Ships.Count; i++)
+                {
+                    Ship ship = match.Ships[i];
+                    if (ship != null && ship.Id == actorId) return ship.Facing;
+                }
+            }
+            return Vec2.Up;
+        }
+
+        private void SpawnDirectionalBurst(Vec2 position, Vec2 facing, Color color, int count,
+            float speed, float size, float life)
+        {
+            int available = _particleLimit - _particles.Count;
+            if (available <= 0) return;
+            int amount = Mathf.Min(count, available);
+            Vec2 dir = facing.SqrMagnitude > 0.0001f ? facing.Normalized : Vec2.Up;
+            Vec2 side = dir.Perpendicular;
+            for (int i = 0; i < amount; i++)
+            {
+                float along = speed * UnityEngine.Random.Range(0.7f, 1.3f);
+                float across = speed * UnityEngine.Random.Range(-0.22f, 0.22f);
+                Particle particle = new Particle();
+                particle.Position = position;
+                particle.Velocity = dir * along + side * across;
+                particle.Life = life * UnityEngine.Random.Range(0.8f, 1.2f);
+                particle.MaxLife = particle.Life;
+                particle.Size = size * UnityEngine.Random.Range(0.7f, 1.3f);
+                particle.Color = color;
+                _particles.Add(particle);
             }
         }
 

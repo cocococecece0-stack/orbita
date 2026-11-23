@@ -40,6 +40,11 @@ namespace Orbit.Galaxy.Unity
             RectTransform root = BeginScreen("evolution", false);
             if (root == null) return;
             DrawBackdrop(root, GalaxyUiTheme.Violet);
+            if (options != null && options.Count > 0 && SnakeEvolutionSystem.IsSnakeOffer(options[0]))
+            {
+                DrawSnakeEvolution(root, options);
+                return;
+            }
             GalaxyUiTheme.Label(root, "ВЫБОР ЭВОЛЮЦИИ", 54, GalaxyUiTheme.Paper, TextAnchor.MiddleLeft,
                 GBox.At(-560f, 394f, 700f, 72f), FontStyle.Bold);
             GalaxyUiTheme.Label(root, "Выберите ветвь — изменения сохраняются до конца матча", 21, GalaxyUiTheme.AccentC,
@@ -82,6 +87,71 @@ namespace Orbit.Galaxy.Unity
 
             GalaxyUiTheme.Label(root, "Подсказка: Титан держит удар, Фантом охотится, Рой контролирует поле, Сингулярность притягивает ресурсы.",
                 18, GalaxyUiTheme.Muted, TextAnchor.MiddleCenter, GBox.At(0f, -376f, 1500f, 40f));
+        }
+
+        private void DrawSnakeEvolution(RectTransform root, List<EvolutionDef> options)
+        {
+            GalaxyUiTheme.Label(root, "РОСТ ЗМЕЙКИ", 54, GalaxyUiTheme.Paper, TextAnchor.MiddleLeft,
+                GBox.At(-560f, 394f, 700f, 72f), FontStyle.Bold);
+            GalaxyUiTheme.Label(root, "Выберите одно направление — оно действует до конца матча", 21,
+                GalaxyUiTheme.AccentC, TextAnchor.MiddleLeft, GBox.At(-560f, 350f, 800f, 34f));
+
+            List<EvolutionDef> cards = PickEvolutionOptions(options);
+            float[] xs = { -530f, 0f, 530f };
+            for (int i = 0; i < cards.Count && i < 3; i++)
+            {
+                EvolutionDef def = cards[i];
+                SnakeUpgradeDef upgrade = SnakeEvolutionSystem.Find(def.Id);
+                Color accent = upgrade == null ? BranchColor(def.Branch) : BranchColor(upgrade.Branch);
+                Image card = GalaxyUiTheme.Panel(root, "Рост " + def.Id, new Color32(16, 23, 48, 248),
+                    GBox.At(xs[i], -16f, 492f, 636f), GalaxyUiTheme.Round);
+                GalaxyUiTheme.Panel(card.transform, "Верхняя полоса", accent,
+                    new GBox(0f, 1f, 1f, 1f, 0f, -8f, 0f, 0f));
+                GalaxyUiTheme.Label(card.transform,
+                    (upgrade == null ? "НОВЫЙ ПУТЬ" : GrowthPathName(upgrade.Path)) +
+                    " · УРОВЕНЬ " + def.Tier, 18, accent, TextAnchor.MiddleCenter,
+                    GBox.Inset(12f, 588f, 12f, 14f), FontStyle.Bold);
+                GalaxyUiTheme.Label(card.transform, def.Name, 38, GalaxyUiTheme.Paper,
+                    TextAnchor.MiddleCenter, GBox.Inset(12f, 536f, 12f, 50f), FontStyle.Bold);
+
+                RectTransform hullRt = GalaxyUiTheme.Place(card.transform, "Образец роста", GBox.At(0f, 152f, 150f, 150f));
+                Image hull = hullRt.gameObject.AddComponent<Image>();
+                hull.sprite = GalaxyUiTheme.Hull(def.Hull);
+                hull.color = accent;
+                hull.raycastTarget = false;
+
+                GalaxyUiTheme.Label(card.transform, def.Description, 19, GalaxyUiTheme.Paper,
+                    TextAnchor.UpperCenter, new GBox(0f, 0f, 1f, 0f, 24f, 300f, -24f, 410f));
+                GalaxyUiTheme.Label(card.transform,
+                    "ТОЛЬКО НА МАТЧ\nБез оплаты и без скрытых бонусов к силе.",
+                    17, GalaxyUiTheme.Muted, TextAnchor.UpperCenter,
+                    new GBox(0f, 0f, 1f, 0f, 28f, 130f, -28f, 292f));
+
+                EvolutionDef captured = def;
+                GalaxyUiTheme.MakeButton(card.transform, "Выбрать рост", "ВЫБРАТЬ НАПРАВЛЕНИЕ", accent,
+                    GalaxyUiTheme.Ink, GBox.Inset(24f, 20f, 24f, 548f), 22, delegate
+                    {
+                        if (_app != null) _app.ChooseEvolution(captured);
+                        ShowHud();
+                    });
+            }
+
+            GalaxyUiTheme.Label(root,
+                "Направления: сбор энергии, манёвренность, длина, защита, магнит. Каждый уровень даёт выбор из трёх.",
+                18, GalaxyUiTheme.Muted, TextAnchor.MiddleCenter, GBox.At(0f, -376f, 1500f, 40f));
+        }
+
+        private static string GrowthPathName(SnakeGrowthPath path)
+        {
+            switch (path)
+            {
+                case SnakeGrowthPath.Collection: return "СБОР";
+                case SnakeGrowthPath.Acceleration: return "РАЗГОН";
+                case SnakeGrowthPath.Size: return "ДЛИНА";
+                case SnakeGrowthPath.Protection: return "ЗАЩИТА";
+                case SnakeGrowthPath.Magnet: return "МАГНИТ";
+                default: return "РОСТ";
+            }
         }
 
         private List<EvolutionDef> PickEvolutionOptions(List<EvolutionDef> options)
@@ -204,12 +274,18 @@ namespace Orbit.Galaxy.Unity
             GalaxyUiTheme.Label(stats.transform, lines, 19, GalaxyUiTheme.Paper, TextAnchor.UpperLeft,
                 GBox.Inset(24f, 18f, 24f, 52f));
 
+            ProgressionRewards rewardsSummary = _app == null ? null : _app.LastRewards;
+            int creditReward = rewardsSummary == null ? result.Credits : rewardsSummary.Credits;
+            int crystalReward = rewardsSummary == null ? result.CrystalsReward : rewardsSummary.Crystals;
+            int matterReward = rewardsSummary == null ? result.DarkMatter : rewardsSummary.DarkMatter;
+            int accountXp = rewardsSummary == null ? result.AccountXp : Mathf.RoundToInt(rewardsSummary.Xp);
+
             Image rewards = GalaxyUiTheme.Panel(root, "Награды", new Color32(20, 32, 46, 246), GBox.At(250f, 250f, 620f, 124f), GalaxyUiTheme.Round);
             GalaxyUiTheme.Label(rewards.transform, "НАГРАДЫ", 19, GalaxyUiTheme.AccentA, TextAnchor.MiddleLeft,
                 GBox.Inset(18f, 84f, 18f, 8f), FontStyle.Bold);
-            GalaxyUiTheme.Label(rewards.transform, "+" + result.Credits + " кредитов    +" + result.CrystalsReward +
-                " кристаллов    +" + result.Xp + " XP    +" + result.AccountXp + " XP аккаунта", 20, GalaxyUiTheme.Paper,
-                TextAnchor.MiddleLeft, GBox.Inset(18f, 18f, 18f, 46f));
+            GalaxyUiTheme.Label(rewards.transform, "+" + creditReward + " кредитов    +" + crystalReward +
+                " кристаллов    +" + matterReward + " ТМ\n+" + result.Xp + " XP матча    +" + accountXp + " XP аккаунта",
+                18, GalaxyUiTheme.Paper, TextAnchor.MiddleLeft, GBox.Inset(18f, 10f, 18f, 46f));
 
             Image streak = GalaxyUiTheme.Panel(root, "Серии", new Color32(32, 22, 52, 246), GBox.At(250f, 112f, 620f, 124f), GalaxyUiTheme.Round);
             AccountProfile profile = _app == null ? null : _app.Profile;
@@ -223,12 +299,12 @@ namespace Orbit.Galaxy.Unity
             Image achievements = GalaxyUiTheme.Panel(root, "Достижения", new Color32(20, 28, 58, 246), GBox.At(250f, -20f, 620f, 128f), GalaxyUiTheme.Round);
             GalaxyUiTheme.Label(achievements.transform, "ДОСТИЖЕНИЯ МАТЧА", 19, GalaxyUiTheme.Sun, TextAnchor.MiddleLeft,
                 GBox.Inset(18f, 88f, 18f, 8f), FontStyle.Bold);
-            List<string> earned = EarnedAchievements(result, profile);
-            ProgressionRewards rewards = _app == null ? null : _app.LastRewards;
-            if (rewards != null)
+            int goalSlots = rewardsSummary == null ? 0 : Mathf.Min(rewardsSummary.SnakeGoals.Count, 3);
+            List<string> earned = EarnedAchievements(result, profile, goalSlots > 0 ? 5 : 6);
+            if (rewardsSummary != null)
             {
-                for (int i = 0; i < rewards.SnakeGoals.Count && earned.Count < 8; i++)
-                    earned.Add("ЗМЕЙКА: " + rewards.SnakeGoals[i]);
+                for (int i = 0; i < goalSlots && earned.Count < 8; i++)
+                    earned.Add("ЗМЕЙКА: " + rewardsSummary.SnakeGoals[i]);
             }
             string earnedText = earned.Count == 0
                 ? "В этом матче новых достижений нет — продолжайте охоту."
@@ -291,14 +367,14 @@ namespace Orbit.Galaxy.Unity
             return sb.Length == 0 ? "Ярких моментов не зафиксировано." : sb.ToString();
         }
 
-        private static List<string> EarnedAchievements(MatchResult result, AccountProfile profile)
+        private static List<string> EarnedAchievements(MatchResult result, AccountProfile profile, int limit = 6)
         {
             List<string> names = new List<string>();
-            for (int i = 0; i < ContentDatabase.Achievements.Length; i++)
+            for (int i = 0; i < ContentDatabase.Achievements.Length && names.Count < limit; i++)
             {
                 AchievementDef def = ContentDatabase.Achievements[i];
                 if (def == null || !AchievementEarned(def, result, profile)) continue;
-                if (names.Count < 6) names.Add(def.Name);
+                names.Add(def.Name);
             }
             return names;
         }
@@ -681,7 +757,8 @@ namespace Orbit.Galaxy.Unity
             DrawBackdrop(root, GalaxyUiTheme.Violet);
             AccountProfile p = _app == null ? null : _app.Profile;
             int ownedCount = p == null || p.Owned == null ? 0 : p.Owned.Count;
-            DrawHeader(root, "КОЛЛЕКЦИЯ", "Открыто " + ownedCount + " из " + ContentDatabase.Cosmetics.Length +
+            int totalCosmetics = ContentDatabase.Cosmetics.Length + SnakeCosmeticCatalog.All.Length;
+            DrawHeader(root, "КОЛЛЕКЦИЯ", "Открыто " + ownedCount + " из " + totalCosmetics +
                 " предметов · сведений: " + (p == null || p.Secrets == null ? 0 : p.Secrets.Count), ShowMenu);
             DrawTabs(root, CollectionTabs, _collectionTab, delegate(int index) { _collectionTab = index; ShowCollection(); });
             if (_collectionTab == 3)
@@ -769,7 +846,7 @@ namespace Orbit.Galaxy.Unity
                 GalaxyUiTheme.Label(row.transform, def.Description, 16, GalaxyUiTheme.Muted, TextAnchor.MiddleLeft,
                     new GBox(0f, 0f, 1f, 1f, 22f, 30f, -420f, -54f));
                 GBar bar = GalaxyUiTheme.Bar(row.transform, "Прогресс " + def.Id, new Color32(30, 38, 66, 255),
-                    GalaxyUiTheme.Violet, new GBox(0f, 0f, 1f, 1f, 980f, 24f, -420f, -56f));
+                    GalaxyUiTheme.Violet, new GBox(0f, 0f, 1f, 1f, 780f, 24f, -450f, -56f));
                 bar.Set(def.Target > 0 ? Mathf.Clamp01(current / (float)def.Target) : 0f);
                 string status = done ? "ВЫПОЛНЕНО" : Mathf.Min(current, def.Target) + " / " + def.Target;
                 GalaxyUiTheme.Label(row.transform, status, 18, done ? GalaxyUiTheme.AccentA : GalaxyUiTheme.AccentC,
@@ -790,13 +867,13 @@ namespace Orbit.Galaxy.Unity
                 GalaxyUiTheme.Label(row.transform, def.Purpose, 15, GalaxyUiTheme.Paper, TextAnchor.MiddleLeft,
                     new GBox(0f, 0f, 1f, 1f, 22f, 27f, -420f, -44f));
                 GalaxyUiTheme.Label(row.transform,
-                    "Клавиша " + def.Shortcut + "   Энергия " + def.Cost.ToString("F0") +
+                    "Выбор: " + def.Shortcut + ", применение: E   Энергия " + def.Cost.ToString("F0") +
                     "   Перезарядка " + def.Cooldown.ToString("F1") + "с   Действие " + def.Duration.ToString("F1") + "с",
                     14, GalaxyUiTheme.Muted, TextAnchor.MiddleLeft,
                     new GBox(0f, 0f, 1f, 1f, 22f, 5f, -420f, -66f));
                 y += h + 8f;
             }
-            GalaxyUiTheme.Label(content, "Награды: кредиты, кристаллы и косметика змейки. Ни один бонус не повышает боевые статы.",
+            GalaxyUiTheme.Label(content, "Награды змейки: кредиты, кристаллы и косметика. Они не повышают боевые статы; Q — быстрый импульс.",
                 18, GalaxyUiTheme.Muted, TextAnchor.MiddleLeft, GBox.TopRow(y, 40f, 22f, 22f));
             y += 48f;
             GalaxyUiTheme.SetScrollHeight(content, y + 12f);
@@ -810,8 +887,8 @@ namespace Orbit.Galaxy.Unity
             float y = 0f;
             y = DrawSnakeSection(content, "ГОЛОВЫ", "head", p, y);
             y = DrawSnakeSection(content, "ЭНЕРГЕТИЧЕСКИЕ ХВОСТЫ", "tail", p, y);
-            GalaxyUiTheme.Label(content, "Все образцы открываются целями змейки — без покупок и без бонусов к силе.",
-                18, GalaxyUiTheme.Muted, TextAnchor.MiddleLeft, GBox.TopRow(y, 40f, 22f, 22f));
+            GalaxyUiTheme.Label(content, "Образцы открываются целями змейки — без покупок и бонусов к силе. Голова/хвост змейки используют слоты корабля/следа.",
+                17, GalaxyUiTheme.Muted, TextAnchor.MiddleLeft, GBox.TopRow(y, 40f, 22f, 22f));
             y += 48f;
             GalaxyUiTheme.SetScrollHeight(content, y + 12f);
             GalaxyUiTheme.MakeButton(root, "Цели змейки", "ЦЕЛИ ЗМЕЙКИ", GalaxyUiTheme.PanelSoft, GalaxyUiTheme.Paper,
@@ -833,15 +910,36 @@ namespace Orbit.Galaxy.Unity
                 Image row = GalaxyUiTheme.Panel(content, "Змейный предмет " + def.Id,
                     equipped ? new Color32(24, 44, 40, 248) : new Color32(16, 23, 48, 248),
                     GBox.TopRow(y, h, 18f, 18f), GalaxyUiTheme.Round);
-                Color tint = ParseHex(def.PrimaryHex, GalaxyUiTheme.AccentA);
-                Image dot = GalaxyUiTheme.CircleImage(row.transform, "Образец", owned ? tint : new Color32(62, 72, 104, 255),
-                    new GBox(0f, 0.5f, 0f, 0.5f, 20f, -16f, 52f, 16f));
-                dot.raycastTarget = false;
+                Color locked = new Color32(62, 72, 104, 255);
+                Color primary = owned ? ParseHex(def.PrimaryHex, GalaxyUiTheme.AccentA) : locked;
+                Color secondary = owned ? ParseHex(def.AccentHex, GalaxyUiTheme.Violet) : locked;
+                if (def.Category == "head")
+                {
+                    RectTransform previewRt = GalaxyUiTheme.Place(row.transform, "Образец головы",
+                        new GBox(0f, 0.5f, 0f, 0.5f, 14f, -22f, 58f, 22f));
+                    Image preview = previewRt.gameObject.AddComponent<Image>();
+                    preview.sprite = GalaxyUiTheme.Hull(def.Hull);
+                    preview.color = primary;
+                    preview.raycastTarget = false;
+                    Image accentDot = GalaxyUiTheme.CircleImage(row.transform, "Акцент градиента", secondary,
+                        new GBox(0f, 0.5f, 0f, 0.5f, 40f, -6f, 58f, 12f));
+                    accentDot.raycastTarget = false;
+                }
+                else
+                {
+                    Image tail = GalaxyUiTheme.CircleImage(row.transform, "Образец хвоста", primary,
+                        new GBox(0f, 0.5f, 0f, 0.5f, 14f, -22f, 58f, 22f));
+                    tail.raycastTarget = false;
+                    Image glow = GalaxyUiTheme.CircleImage(row.transform, "Свечение хвоста", secondary,
+                        new GBox(0f, 0.5f, 0f, 0.5f, 38f, -8f, 56f, 10f));
+                    glow.raycastTarget = false;
+                }
+                string hint = def.Category == "tail" ? def.Hint + "   ·   " + TailStyleName(def.Style) : def.Hint;
                 GalaxyUiTheme.Label(row.transform, owned ? def.Name : "???", 21,
                     owned ? (def.Rare ? GalaxyUiTheme.Sun : GalaxyUiTheme.Paper) : GalaxyUiTheme.Muted,
-                    TextAnchor.MiddleLeft, new GBox(0f, 0f, 1f, 1f, 68f, 36f, -520f, -4f), FontStyle.Bold);
-                GalaxyUiTheme.Label(row.transform, def.Hint, 15, GalaxyUiTheme.Muted, TextAnchor.MiddleLeft,
-                    new GBox(0f, 0f, 1f, 1f, 68f, 6f, -520f, -38f));
+                    TextAnchor.MiddleLeft, new GBox(0f, 0f, 1f, 1f, 72f, 36f, -520f, -4f), FontStyle.Bold);
+                GalaxyUiTheme.Label(row.transform, hint, 15, GalaxyUiTheme.Muted, TextAnchor.MiddleLeft,
+                    new GBox(0f, 0f, 1f, 1f, 72f, 6f, -520f, -38f));
                 GalaxyUiTheme.Label(row.transform, equipped ? "НАДЕТО" : (owned ? "В АНГАРЕ" : "ЗАКРЫТО"), 18,
                     equipped ? GalaxyUiTheme.AccentA : GalaxyUiTheme.Muted, TextAnchor.MiddleRight,
                     new GBox(0f, 0f, 1f, 1f, 1080f, 8f, -22f, -8f), FontStyle.Bold);
@@ -855,6 +953,18 @@ namespace Orbit.Galaxy.Unity
                 y += h + 8f;
             }
             return y + 18f;
+        }
+
+        private static string TailStyleName(SnakeTailStyle style)
+        {
+            switch (style)
+            {
+                case SnakeTailStyle.Pulse: return "пульсирующий";
+                case SnakeTailStyle.Spark: return "искрящийся";
+                case SnakeTailStyle.Ribbon: return "лента";
+                case SnakeTailStyle.Spectrum: return "спектр";
+                default: return "свечение";
+            }
         }
 
         private static bool IsSnakeEquipped(AccountProfile p, SnakeCosmeticDef def)

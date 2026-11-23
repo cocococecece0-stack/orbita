@@ -243,7 +243,7 @@ namespace Orbit.Galaxy.Unity
                     string state = SnakeAbilities.Status(player, slot);
                     bool selected = player.ActiveAbility == def.Kind;
                     bool active = SnakeAbilities.IsActive(player, slot);
-                    string text = def.HudName + "\n" + def.Cost.ToString("F0") + "Э " + state;
+                    string text = "[" + def.Shortcut + "] " + def.HudName + "\n" + def.Cost.ToString("F0") + "Э " + state;
                     SetText(_abilityLabels[i], text, active || selected ? GalaxyUiTheme.Sun
                         : (state == "ГОТОВ" ? GalaxyUiTheme.AccentA : GalaxyUiTheme.Muted));
                 }
@@ -532,6 +532,9 @@ namespace Orbit.Galaxy.Unity
                     delegate { if (_app != null) _app.SetAbilitySlot(captured); });
                 _abilityLabels[slot] = btn.GetComponentInChildren<Text>();
             }
+            GalaxyUiTheme.Label(hud, "1–5 — выбор · E / ЛКМ — применить · Q / ПКМ — рывок", 13,
+                GalaxyUiTheme.Muted, TextAnchor.MiddleLeft,
+                new GBox(0f, 1f, 0f, 1f, 20f, -448f, 400f, -416f));
 
             RectTransform feed = GalaxyUiTheme.Place(hud, "Лента событий",
                 new GBox(0.5f, 0f, 0.5f, 0f, -250f, 540f, 250f, 700f));

@@ -155,19 +155,21 @@ namespace Orbit.Galaxy.Unity
                 || Key(UnityEngine.KeyCode.LeftShift)
                 || Key(UnityEngine.KeyCode.RightShift);
 
+            // Keyboard edges must keep working after a HUD click leaves the cursor over a button.
+            if (KeyDown(UnityEngine.KeyCode.Alpha1) || KeyDown(UnityEngine.KeyCode.Keypad1)) _abilitySlot = 0;
+            if (KeyDown(UnityEngine.KeyCode.Alpha2) || KeyDown(UnityEngine.KeyCode.Keypad2)) _abilitySlot = 1;
+            if (KeyDown(UnityEngine.KeyCode.Alpha3) || KeyDown(UnityEngine.KeyCode.Keypad3)) _abilitySlot = 2;
+            if (KeyDown(UnityEngine.KeyCode.Alpha4) || KeyDown(UnityEngine.KeyCode.Keypad4)) _abilitySlot = 3;
+            if (KeyDown(UnityEngine.KeyCode.Alpha5) || KeyDown(UnityEngine.KeyCode.Keypad5)) _abilitySlot = 4;
+            if (KeyDown(UnityEngine.KeyCode.E) || KeyDown(UnityEngine.KeyCode.LeftControl)) _abilityPressed = true;
+            if (KeyDown(UnityEngine.KeyCode.Q) || KeyDown(UnityEngine.KeyCode.RightControl)) _dashPressed = true;
+            if (KeyDown(UnityEngine.KeyCode.F)) _firePressed = true;
+
             bool overInterface = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
             if (!overInterface)
             {
-                if (KeyDown(UnityEngine.KeyCode.Alpha1) || KeyDown(UnityEngine.KeyCode.Keypad1)) _abilitySlot = 0;
-                if (KeyDown(UnityEngine.KeyCode.Alpha2) || KeyDown(UnityEngine.KeyCode.Keypad2)) _abilitySlot = 1;
-                if (KeyDown(UnityEngine.KeyCode.Alpha3) || KeyDown(UnityEngine.KeyCode.Keypad3)) _abilitySlot = 2;
-                if (KeyDown(UnityEngine.KeyCode.Alpha4) || KeyDown(UnityEngine.KeyCode.Keypad4)) _abilitySlot = 3;
-                if (KeyDown(UnityEngine.KeyCode.Alpha5) || KeyDown(UnityEngine.KeyCode.Keypad5)) _abilitySlot = 4;
-                if (MouseDown(0) || KeyDown(UnityEngine.KeyCode.E) || KeyDown(UnityEngine.KeyCode.LeftControl))
-                    _abilityPressed = true;
-                if (MouseDown(1) || KeyDown(UnityEngine.KeyCode.Q) || KeyDown(UnityEngine.KeyCode.RightControl))
-                    _dashPressed = true;
-                if (KeyDown(UnityEngine.KeyCode.F)) _firePressed = true;
+                if (MouseDown(0)) _abilityPressed = true;
+                if (MouseDown(1)) _dashPressed = true;
             }
             if (_ability != null && _ability.WasPressed) _abilityPressed = true;
             if (_dash != null && _dash.WasPressed) _dashPressed = true;
@@ -186,6 +188,14 @@ namespace Orbit.Galaxy.Unity
             if (KeyDown(UnityEngine.KeyCode.JoystickButton0)) _abilityPressed = true;
             if (KeyDown(UnityEngine.KeyCode.JoystickButton1)) _dashPressed = true;
             if (KeyDown(UnityEngine.KeyCode.JoystickButton2)) _firePressed = true;
+            // Shoulder cycle reaches all five slots without a mouse or keyboard.
+            if (SnakeAbilities.Count > 0)
+            {
+                if (KeyDown(UnityEngine.KeyCode.JoystickButton4))
+                    _abilitySlot = _abilitySlot <= 0 ? SnakeAbilities.Count - 1 : _abilitySlot - 1;
+                if (KeyDown(UnityEngine.KeyCode.JoystickButton7))
+                    _abilitySlot = _abilitySlot < 0 ? 0 : (_abilitySlot + 1) % SnakeAbilities.Count;
+            }
             _boostHeld = _boostHeld
                 || Key(UnityEngine.KeyCode.JoystickButton5)
                 || Key(UnityEngine.KeyCode.JoystickButton6);
